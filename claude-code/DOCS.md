@@ -42,15 +42,19 @@ https://github.com/LayerTM/ClaudeInHA
 Find **Claude Code** in the store and click **Install**.
 The first install downloads the Claude Code binary (~100 MB) and may take a few minutes.
 
-### 3. Configure
+### 3. Configure authentication (choose one)
 
-Go to the **Configuration** tab and set:
+Go to the **Configuration** tab.
 
-| Option | Value |
-|--------|-------|
-| **API Key** | Your Anthropic API key (`sk-ant-...`) |
-| **Skip Permission Prompts** | `false` (recommended initially) |
-| **Auto-Update** | `true` (recommended) |
+**Option A — API Key (simplest):**
+Enter your Anthropic API key (`sk-ant-...`) in the **API Key** field. Get one at [console.anthropic.com](https://console.anthropic.com).
+
+**Option B — Claude.ai subscription (Pro/Max/Teams/Enterprise):**
+Leave the **API Key** field empty. After starting the add-on, open the terminal and run:
+```
+claude auth login
+```
+A URL will appear — open it in your browser, complete the login, and you're set. The session persists across add-on restarts.
 
 ### 4. Start
 
@@ -58,7 +62,7 @@ Click **Start** on the **Info** tab.
 
 ### 5. Open the terminal
 
-Click **Claude Code** in the left sidebar, or toggle **Show in sidebar** on the Info tab first.
+Click **Claude Code** in the left sidebar (toggle **Show in sidebar** on the Info tab if not visible).
 
 ---
 

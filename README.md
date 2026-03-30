@@ -20,7 +20,7 @@ This repository provides a [Home Assistant](https://www.home-assistant.io/) add-
    https://github.com/LayerTM/ClaudeInHA
    ```
 2. Install **Claude Code** from the store
-3. Set your Anthropic API key in the **Configuration** tab
+3. **Either** set your Anthropic API key in the **Configuration** tab, **or** leave it empty and run `claude auth login` in the terminal after starting (for Claude.ai Pro/Max/Teams subscribers)
 4. Start the add-on and open the **Claude Code** sidebar panel
 
 ## Requirements
