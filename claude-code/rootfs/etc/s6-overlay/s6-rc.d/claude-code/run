@@ -1,0 +1,117 @@
+#!/command/with-contenv bashio
+# ==============================================================================
+# claude-code: single longrun service
+# Phase 1: initialization (persistent HOME, API key, env, CLAUDE.md)
+# Phase 2: exec ttyd → tmux → claude
+# ==============================================================================
+
+# ==============================
+# Phase 1: Initialization
+# ==============================
+
+bashio::log.info "Initializing Claude Code add-on..."
+
+# --- Persistent HOME ---
+# Claude Code binary is installed to /root/.local at build time.
+# Copy to /data/home/.local so updates and config persist across restarts.
+if [ ! -d /data/home/.local ]; then
+    bashio::log.info "First run — setting up persistent home directory..."
+    mkdir -p /data/home
+    cp -a /root/.local /data/home/.local
+fi
+
+export HOME=/data/home
+export PATH="/data/home/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export TERM=xterm-256color
+export LANG=C.UTF-8
+export USE_BUILTIN_RIPGREP=0
+
+# --- Anthropic API Key ---
+api_key=$(bashio::config 'api_key')
+if bashio::var.has_value "${api_key}"; then
+    export ANTHROPIC_API_KEY="${api_key}"
+    bashio::log.info "Anthropic API key configured"
+else
+    bashio::log.warning "No API key set — run 'claude auth login' in the terminal"
+fi
+
+# --- Model override ---
+model=$(bashio::config 'model')
+if bashio::var.has_value "${model}"; then
+    export ANTHROPIC_MODEL="${model}"
+    bashio::log.info "Model override: ${model}"
+fi
+
+# --- Auto-update ---
+if bashio::config.true 'auto_update'; then
+    bashio::log.info "Checking for Claude Code updates..."
+    /data/home/.local/bin/claude update 2>&1 \
+        || bashio::log.warning "Update check failed (non-critical)"
+else
+    export DISABLE_AUTOUPDATER=1
+    bashio::log.info "Auto-update disabled"
+fi
+
+# --- User environment variables (KEY=VALUE) ---
+for env_entry in $(bashio::config 'environment_vars'); do
+    key="${env_entry%%=*}"
+    val="${env_entry#*=}"
+    if [ -n "${key}" ]; then
+        export "${key}=${val}"
+        bashio::log.info "Custom env: ${key}"
+    fi
+done
+
+# --- Working directory and CLAUDE.md ---
+mkdir -p /data/workdir
+mkdir -p /data/home/.claude/skills
+
+cp /usr/share/claude-ha/CLAUDE.md /data/workdir/CLAUDE.md
+
+custom=$(bashio::config 'custom_instructions')
+if bashio::var.has_value "${custom}"; then
+    printf "\n\n---\n\n# User Custom Instructions\n\n%s\n" "${custom}" \
+        >> /data/workdir/CLAUDE.md
+fi
+
+# Copy CLAUDE.md to /homeassistant if mounted and not already present
+if [ -d /homeassistant ] && [ -w /homeassistant ]; then
+    if [ ! -f /homeassistant/CLAUDE.md ]; then
+        cp /data/workdir/CLAUDE.md /homeassistant/CLAUDE.md
+    fi
+fi
+
+# --- Init commands ---
+for cmd in $(bashio::config 'init_commands'); do
+    bashio::log.info "Running init command: ${cmd}"
+    eval "${cmd}" 2>&1 \
+        || bashio::log.warning "Init command failed: ${cmd}"
+done
+
+bashio::log.info "Initialization complete"
+
+# ==============================
+# Phase 2: Start ttyd
+# ==============================
+
+declare ingress_port
+ingress_port=$(bashio::addon.ingress_port)
+
+bashio::log.info "Starting ttyd web terminal on port ${ingress_port}..."
+
+# Prefer /homeassistant as working dir
+if [ -d /homeassistant ] && [ -w /homeassistant ]; then
+    cd /homeassistant
+else
+    cd /data/workdir
+fi
+
+exec ttyd \
+    --port "${ingress_port}" \
+    --interface hassio \
+    --writable \
+    --ping-interval 30 \
+    -t fontSize=14 \
+    -t rendererType=webgl \
+    -t disableLeaveAlert=true \
+    tmux -u new -A -s claude /usr/local/bin/start-claude

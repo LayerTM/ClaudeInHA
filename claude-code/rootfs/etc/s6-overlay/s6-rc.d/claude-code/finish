@@ -1,13 +1,11 @@
 #!/usr/bin/env bashio
 # ==============================================================================
-# claude-ttyd finish: called when ttyd exits
-# Halts the add-on on unexpected exit (non-zero exit code).
-# Normal shutdown (code 0 or 256) is allowed.
+# claude-code finish: halt add-on on unexpected exit
 # ==============================================================================
 declare EXIT_CODE=${1}
 
 if [[ "${EXIT_CODE}" -ne 0 ]] && [[ "${EXIT_CODE}" -ne 256 ]]; then
-    bashio::log.error "ttyd exited unexpectedly with code ${EXIT_CODE} — stopping add-on"
+    bashio::log.error "Service exited unexpectedly (code: ${EXIT_CODE}) — stopping add-on"
     echo "${EXIT_CODE}" > /run/s6-linux-init-container-results/exitcode
     exec /run/s6/basedir/bin/halt
 fi
