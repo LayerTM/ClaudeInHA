@@ -108,7 +108,6 @@ fi
 
 exec ttyd \
     --port "${ingress_port}" \
-    --interface hassio \
     --writable \
     --ping-interval 30 \
     -t fontSize=14 \
