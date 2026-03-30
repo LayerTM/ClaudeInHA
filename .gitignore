@@ -1,0 +1,35 @@
+# Secrets — NEVER commit these
+.env
+.env.*
+*.secret
+secrets.yaml
+secrets.json
+
+# Claude Code local state — never commit these
+.claude/
+*.local.json
+
+# Local tool directories
+.tldr/
+.tldrignore
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+*.pyc
+__pycache__/
+node_modules/
+dist/
+
+# Logs
+*.log

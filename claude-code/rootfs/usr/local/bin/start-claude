@@ -1,0 +1,37 @@
+#!/command/with-contenv bashio
+# ==============================================================================
+# start-claude: wrapper script launched by tmux inside ttyd
+# Reads add-on options and starts Claude Code with appropriate flags.
+# ==============================================================================
+
+declare -a claude_args
+
+# Read bypass_permissions option.
+# When enabled, adds --dangerously-skip-permissions so Claude Code does not
+# prompt for confirmation before running commands or editing files.
+if bashio::config.true 'bypass_permissions'; then
+    claude_args+=(--dangerously-skip-permissions)
+    bashio::log.info "Claude Code running with bypass permissions"
+fi
+
+# Set working directory: prefer /homeassistant (HA config), fallback to /data/workdir
+if [ -d /homeassistant ] && [ -w /homeassistant ]; then
+    cd /homeassistant
+else
+    cd /data/workdir
+fi
+
+# Print welcome banner
+cat << 'EOF'
+╔══════════════════════════════════════════════════════════════╗
+║              Claude Code — Home Assistant Add-on             ║
+║                                                              ║
+║  • HA config: /homeassistant                                 ║
+║  • Shared:    /share                                         ║
+║  • HA API:    http://supervisor/core/api  ($SUPERVISOR_TOKEN) ║
+║                                                              ║
+║  Type 'claude' to start a new session, or just start typing. ║
+╚══════════════════════════════════════════════════════════════╝
+EOF
+
+exec claude "${claude_args[@]}"

@@ -1,0 +1,61 @@
+name: "Claude Code"
+version: "0.1.0"
+slug: claude-code
+description: "Claude Code AI assistant embedded in Home Assistant — full terminal access with skills, MCP servers, and complete HA integration"
+url: "https://github.com/LayerTM/ClaudeInHA"
+
+arch:
+  - aarch64
+  - amd64
+
+startup: application
+boot: auto
+init: false
+timeout: 300
+
+ingress: true
+ingress_port: 0
+ingress_entry: /
+ingress_stream: true
+panel_icon: "mdi:console-line"
+panel_title: "Claude Code"
+panel_admin: true
+
+hassio_api: true
+homeassistant_api: true
+hassio_role: default
+auth_api: false
+
+map:
+  - type: homeassistant_config
+    read_only: false
+  - type: addon_config
+    read_only: false
+  - type: share
+    read_only: false
+  - type: ssl
+  - type: media
+    read_only: false
+  - type: backup
+
+options:
+  api_key: ""
+  bypass_permissions: false
+  auto_update: true
+  model: ""
+  custom_instructions: ""
+  environment_vars: []
+  init_commands: []
+
+schema:
+  api_key: "password"
+  bypass_permissions: bool
+  auto_update: bool
+  model: "str?"
+  custom_instructions: "str?"
+  environment_vars:
+    - "str"
+  init_commands:
+    - "str"
+
+stage: experimental

@@ -1,0 +1,44 @@
+configuration:
+  api_key:
+    name: Anthropic API Key
+    description: >-
+      Your Anthropic API key from console.anthropic.com.
+      Leave empty to authenticate using 'claude auth login' in the terminal
+      (requires running the command manually after the add-on starts).
+  bypass_permissions:
+    name: Skip Permission Prompts
+    description: >-
+      When enabled, Claude Code will NOT ask for confirmation before running
+      shell commands, editing files, or taking other actions.
+      Only enable this if you fully trust Claude's decisions.
+      Corresponds to the --dangerously-skip-permissions flag.
+  auto_update:
+    name: Auto-Update Claude Code
+    description: >-
+      When enabled, Claude Code checks for and installs updates on every
+      add-on startup. Disable if you want to pin a specific version.
+      You can still update manually by running 'claude update' in the terminal.
+  model:
+    name: Model Override
+    description: >-
+      Override the default Claude model. Examples: claude-opus-4-6,
+      claude-sonnet-4-6. Leave empty to use the Claude Code default.
+  custom_instructions:
+    name: Custom Instructions
+    description: >-
+      Additional instructions appended to the built-in Home Assistant
+      context (CLAUDE.md). Use this to add your preferences, coding
+      standards, or project-specific context.
+  environment_vars:
+    name: Extra Environment Variables
+    description: >-
+      Additional environment variables passed to Claude Code.
+      Format: KEY=VALUE — one per entry.
+      Example: MY_VAR=hello or NODE_OPTIONS=--max-old-space-size=4096
+  init_commands:
+    name: Initialization Commands
+    description: >-
+      Shell commands run during add-on startup before Claude Code launches.
+      Useful for installing additional tools or MCP servers.
+      Examples: 'npm install -g @anthropic-ai/mcp-server-github'
+      or 'apk add --no-cache ffmpeg'
