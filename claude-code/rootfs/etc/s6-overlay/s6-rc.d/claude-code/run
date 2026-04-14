@@ -171,17 +171,35 @@ else
     cd /data/workdir
 fi
 
-# ttyd options kept minimal — the combo below matches the config that was
-# known-working in v0.1.x. Extra `-t` flags I added in v0.2.1 (copyOnSelect,
-# rightClickSelectsWord, macOptionIsMeta, cursorBlink) turned out to either
-# be no-ops (copyOnSelect is not an actual ttyd/xterm.js option) or to
-# interact badly with HA's ingress-iframe clipboard behavior. Sticking to
-# the minimal v0.1.x set restores working copy/paste in the sidebar.
+# ttyd options:
+#   --writable / --ping-interval / fontSize / disableLeaveAlert — standard.
+#   rendererType=dom — use the xterm.js DOM renderer instead of ttyd
+#     1.7.7's hardcoded WebGL default. With WebGL, xterm.js paints
+#     terminal text to a canvas and window.getSelection() returns only
+#     an accessibility-layer proxy of the visible text, which makes
+#     ttyd's copy-on-select (document.execCommand('copy') on
+#     terminal.onSelectionChange) silently no-op in browsers that
+#     exclude that proxy from real selections — notably the HA Android
+#     app WebView. The DOM renderer emits real text spans, so native
+#     selection, Ctrl+Shift+C and right-click Copy all behave normally.
+#   ignoreBracketedPasteMode=true — tell xterm.js to send pasted text
+#     as raw bytes rather than wrapping it in DECSET 2004 escapes
+#     (\e[200~…\e[201~), regardless of whether the running program
+#     enabled bracketed paste mode. Required because paste at Claude's
+#     interactive prompts otherwise produces no output. Side effect:
+#     bash/zsh lose paste-bracketing (multi-line shell paste runs
+#     line-by-line) and vim loses paste autodetect (use `:set paste`
+#     if needed).
+# Note: Claude's TUI enables mouse tracking (DECSET 1000/1002/1003) so
+# a plain drag inside Claude is forwarded to Claude rather than
+# starting a selection. Hold Shift to override — the welcome banner
+# documents this.
 exec ttyd \
     --port "${ingress_port}" \
     --writable \
     --ping-interval 30 \
     -t fontSize=14 \
-    -t rendererType=webgl \
+    -t rendererType=dom \
     -t disableLeaveAlert=true \
+    -t ignoreBracketedPasteMode=true \
     tmux -u new -A -s claude /usr/local/bin/start-claude

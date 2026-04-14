@@ -29,11 +29,13 @@ cat << 'EOF'
 ║  HA API: http://supervisor/core/api   (auth: $SUPERVISOR_TOKEN)  ║
 ║                                                                  ║
 ║  Clipboard in the HA sidebar:                                    ║
-║    • Copy:  select text, then Ctrl+Shift+C (or right-click)      ║
-║    • Paste: Ctrl+Shift+V (or right-click → Paste)                ║
+║    • Copy:  drag to select, then Ctrl+Shift+C                    ║
+║    • Paste: click in the terminal, then Ctrl+Shift+V             ║
+║    • Inside Claude, hold Shift for mouse (Claude grabs clicks):  ║
+║      Shift+drag selects, Shift+right-click opens browser menu    ║
 ║    • URLs in output are clickable — just click them              ║
-║    • If copy/paste still misbehaves, click "OPEN WEB UI" on      ║
-║      the add-on Info page to open the terminal in its own tab    ║
+║    • Stuck? "OPEN WEB UI" on the add-on Info page opens this     ║
+║      terminal in its own browser tab (bypasses the HA iframe)    ║
 ╚══════════════════════════════════════════════════════════════════╝
 EOF
 

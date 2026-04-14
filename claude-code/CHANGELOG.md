@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.2.4] — 2026-04-14
+
+### Fixed
+- **Copy from the terminal works reliably across browsers.** ttyd is
+  launched with `-t rendererType=dom` (xterm.js DOM renderer) instead
+  of ttyd 1.7.7's hardcoded WebGL default. With WebGL, xterm.js
+  paints terminal text to a canvas and `window.getSelection()`
+  returns only an accessibility-layer proxy of the visible text;
+  ttyd's copy-on-select path (`document.execCommand('copy')` on
+  `terminal.onSelectionChange`) then silently no-ops in browsers
+  that exclude that proxy from real selections — notably the HA
+  Android app WebView. The DOM renderer emits real text spans, so
+  native browser selection, `Ctrl+Shift+C`, and right-click Copy
+  all behave normally.
+- **Paste at Claude's prompts works.** Added
+  `-t ignoreBracketedPasteMode=true` so xterm.js sends pasted text
+  as raw bytes instead of wrapping it in DECSET 2004 escapes
+  (`\e[200~…\e[201~`). With the wrapping, paste at Claude's
+  interactive prompts produced no output at all; the flag restores
+  `Cmd+V` / `Ctrl+Shift+V` for the OAuth code and regular input.
+  Side effect: `bash`/`zsh` no longer distinguish pasted text from
+  typing (multi-line shell paste executes line-by-line) and `vim`
+  loses paste autodetect — use `:set paste` manually if needed.
+
+### Changed
+- Welcome banner documents two xterm.js behaviors users will hit
+  inside Claude:
+  - **Mouse tracking.** Claude enables DECSET 1000/1002/1003, so a
+    plain drag or right-click inside Claude is forwarded to Claude
+    rather than starting a browser selection or opening the browser
+    context menu. Hold `Shift` to override: `Shift+drag` selects
+    text, `Shift+right-click` opens the browser context menu
+    (Copy / Paste).
+  - **Focus for `Ctrl+Shift+V`.** xterm.js's hidden textarea needs
+    keyboard focus to receive the paste event — click in the
+    terminal first after switching tabs to copy an OAuth code.
+
 ## [0.2.3] — 2026-04-14
 
 ### Fixed
