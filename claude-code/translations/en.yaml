@@ -2,9 +2,19 @@ configuration:
   api_key:
     name: Anthropic API Key
     description: >-
-      Your Anthropic API key from console.anthropic.com.
-      Leave empty to authenticate using 'claude auth login' in the terminal
-      (requires running the command manually after the add-on starts).
+      Your Anthropic API key from console.anthropic.com (starts with sk-ant-).
+      Use this if you pay for the API directly.
+      Leave empty if you use a Pro/Max/Team subscription — then fill
+      'OAuth Token' instead, or log in interactively with 'claude auth login'.
+  oauth_token:
+    name: OAuth Token (Pro/Max/Team subscription)
+    description: >-
+      Long-lived OAuth token for subscription-based login.
+      Run 'claude setup-token' on any machine with a normal browser
+      (your laptop, desktop, etc.) — it prints a token valid for about
+      one year. Paste that token here. This avoids having to paste the
+      auth code into the ingress terminal, which is tricky inside the
+      HA iframe. Leave empty if you use Anthropic API Key instead.
   bypass_permissions:
     name: Skip Permission Prompts
     description: >-

@@ -76,13 +76,28 @@ sync_claude_from_image() {
 
 sync_claude_from_image
 
-# --- Anthropic API Key ---
+# --- Authentication ---
+# Three ways to authenticate (in order of precedence Claude Code uses):
+#   1. ANTHROPIC_API_KEY       — direct API key from console.anthropic.com
+#   2. CLAUDE_CODE_OAUTH_TOKEN — long-lived OAuth token from `claude setup-token`
+#      (run once on any machine with a browser, valid ~1 year)
+#   3. Interactive `claude auth login` in the terminal (least convenient here
+#      because pasting into the HA ingress iframe can be tricky).
 api_key=$(bashio::config 'api_key')
+oauth_token=$(bashio::config 'oauth_token')
+
 if bashio::var.has_value "${api_key}"; then
     export ANTHROPIC_API_KEY="${api_key}"
     bashio::log.info "Anthropic API key configured"
-else
-    bashio::log.warning "No API key set — run 'claude auth login' in the terminal"
+fi
+
+if bashio::var.has_value "${oauth_token}"; then
+    export CLAUDE_CODE_OAUTH_TOKEN="${oauth_token}"
+    bashio::log.info "CLAUDE_CODE_OAUTH_TOKEN configured"
+fi
+
+if ! bashio::var.has_value "${api_key}" && ! bashio::var.has_value "${oauth_token}"; then
+    bashio::log.warning "No api_key or oauth_token set — run 'claude' and follow the browser login, or generate a token with 'claude setup-token' on another machine"
 fi
 
 # --- Model override ---
@@ -163,4 +178,8 @@ exec ttyd \
     -t fontSize=14 \
     -t rendererType=webgl \
     -t disableLeaveAlert=true \
+    -t 'copyOnSelect=true' \
+    -t 'cursorBlink=true' \
+    -t 'rightClickSelectsWord=false' \
+    -t 'macOptionIsMeta=true' \
     tmux -u new -A -s claude /usr/local/bin/start-claude

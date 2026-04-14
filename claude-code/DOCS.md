@@ -46,15 +46,24 @@ The first install downloads the Claude Code binary (~100 MB) and may take a few 
 
 Go to the **Configuration** tab.
 
-**Option A — API Key (simplest):**
+**Option A — API Key (pay-per-use, simplest):**
 Enter your Anthropic API key (`sk-ant-...`) in the **API Key** field. Get one at [console.anthropic.com](https://console.anthropic.com).
 
-**Option B — Claude.ai subscription (Pro/Max/Teams/Enterprise):**
-Leave the **API Key** field empty. After starting the add-on, open the terminal and run:
+**Option B — OAuth token from a subscription (Pro/Max/Team/Enterprise, recommended):**
+On another machine where you have a normal browser (your laptop, desktop, etc.), install Claude Code and run:
 ```
-claude auth login
+claude setup-token
 ```
-A URL will appear — open it in your browser, complete the login, and you're set. The session persists across add-on restarts.
+It prints a long-lived OAuth token (valid ~1 year). Copy it and paste it into the **OAuth Token** field in the add-on configuration. Done — no interactive login inside the HA terminal needed.
+
+**Option C — Interactive login in the terminal (last resort):**
+Leave both fields empty, start the add-on, open the terminal, and run:
+```
+claude
+```
+A URL appears — open it in your browser and complete login. If the browser doesn't redirect back and instead shows a code to paste, you'll need to paste it into the terminal.
+
+> **Why the options matter**: the HA ingress panel renders the terminal inside an iframe, which some browsers restrict for clipboard access. Pasting into the ingress terminal can be hit-or-miss. Option B (`oauth_token`) sidesteps the issue entirely. If you must use Option C, it often helps to open the add-on in a new browser tab (outside the sidebar iframe) — click **OPEN WEB UI** on the add-on's Info page.
 
 ### 4. Start
 
@@ -69,11 +78,25 @@ Click **Claude Code** in the left sidebar (toggle **Show in sidebar** on the Inf
 ## Configuration Options
 
 ### API Key
-Your Anthropic API key (`sk-ant-...`). Get one at [console.anthropic.com](https://console.anthropic.com).
+Your Anthropic API key (`sk-ant-...`). Get one at [console.anthropic.com](https://console.anthropic.com). Billed pay-per-use.
 
-Leave empty if you prefer to log in via subscription (see [Authentication without API Key](#authentication-without-api-key)).
+Leave empty if you prefer to log in via subscription (see [OAuth Token](#oauth-token-promaxteam-subscription) or [Authentication without API Key](#authentication-without-api-key)).
 
 **Security**: The key is stored encrypted by the HA Supervisor and is never visible in logs or committed to version control.
+
+### OAuth Token (Pro/Max/Team subscription)
+Long-lived OAuth token generated from a Claude.ai subscription. When set, the add-on exports it as `CLAUDE_CODE_OAUTH_TOKEN` and Claude Code uses it without any interactive login.
+
+How to generate one:
+1. On any machine with a regular browser (laptop, desktop), install Claude Code: `curl -fsSL https://claude.ai/install.sh | bash`
+2. Run `claude setup-token`
+3. Complete the OAuth flow in the browser
+4. Copy the token it prints (valid for about 1 year)
+5. Paste into this field
+
+The token authenticates against your subscription. It never leaves the add-on's encrypted config.
+
+**Why use this instead of `claude auth login`?** Home Assistant serves add-on terminals inside an iframe, which some browsers restrict for clipboard access. Pasting the OAuth code back into the ingress terminal can be flaky. `oauth_token` avoids the terminal paste step entirely.
 
 ### Skip Permission Prompts
 When **enabled**, Claude Code will not ask for confirmation before:
@@ -335,15 +358,30 @@ This prevents the "version rolled back after restart/update" behavior and means 
 
 ## Authentication Without API Key
 
-If you have a Claude.ai **Pro/Max/Teams** subscription, you can use it instead of an API key:
+If you have a Claude.ai **Pro/Max/Teams** subscription, you have two options:
 
-1. Leave the **API Key** field empty
+### A. Generate an OAuth token on another machine (recommended)
+
+1. On your laptop/desktop: `curl -fsSL https://claude.ai/install.sh | bash`
+2. Run `claude setup-token` — complete the browser OAuth flow
+3. Copy the printed token
+4. Paste it into the **OAuth Token** field in the add-on Configuration
+5. Restart the add-on — done, no terminal interaction needed
+
+### B. Interactive login inside the add-on terminal
+
+1. Leave both **API Key** and **OAuth Token** fields empty
 2. Start the add-on
-3. Open the sidebar terminal
-4. Run: `claude auth login`
-5. Claude will display a URL — open it in your browser
-6. Complete authentication
-7. Your session will be saved to `/data/home/.claude/` and persist across restarts
+3. Open the sidebar terminal (or better: click **OPEN WEB UI** to open in a new tab — clipboard works better outside the iframe)
+4. Run: `claude`
+5. Claude will display a URL — open it in a browser, complete login
+6. If prompted, paste the returned code back into the terminal
+7. Your session is saved to `/data/home/.claude/` and persists across restarts
+
+**Tips for pasting into the ingress terminal:**
+- Use `Ctrl+Shift+V` (Linux/Windows) or `Cmd+V` (macOS) — xterm.js binds paste to the shifted shortcut
+- Select text with the mouse to auto-copy (add-on enables `copyOnSelect`)
+- If paste still fails, open the add-on in a new browser tab via the **OPEN WEB UI** button on the Info page — iframe clipboard restrictions don't apply there
 
 ---
 
@@ -359,6 +397,14 @@ Normal if using OAuth login. Run `claude auth login` in the terminal.
 
 ### Slow first startup
 Normal — the first start copies the Claude Code binary to persistent storage and may check for updates. Subsequent starts are fast.
+
+### Can't paste into the terminal / OAuth URL has broken newlines
+Home Assistant shows the add-on inside an iframe, which some browsers restrict for clipboard access. Workarounds:
+
+- **Easiest fix**: don't paste at all — use the **OAuth Token** config option instead. Generate a token on another machine with `claude setup-token`, paste it into the add-on config, restart. No terminal paste needed.
+- Click **OPEN WEB UI** on the add-on's Info page to open the terminal in a standalone tab. Clipboard restrictions don't apply outside the HA iframe.
+- Use `Ctrl+Shift+V` (Linux/Windows) or `Cmd+V` (macOS) for paste — xterm.js binds paste to the shifted shortcut.
+- For copying: select text with the mouse and it's copied automatically (`copyOnSelect` is enabled).
 
 ### Session lost after add-on restart
 The tmux session itself is recreated on restart (so your terminal scrollback is gone), but Claude's conversation history and OAuth login persist in `/data/home/.claude/`. Use `claude --resume` to pick up the last conversation.
