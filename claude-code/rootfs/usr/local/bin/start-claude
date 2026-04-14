@@ -4,15 +4,14 @@
 # Reads add-on options and starts Claude Code with appropriate flags.
 # ==============================================================================
 
-declare -a claude_args
-
-# Read bypass_permissions option.
-# When enabled, adds --dangerously-skip-permissions so Claude Code does not
-# prompt for confirmation before running commands or editing files.
-if bashio::config.true 'bypass_permissions'; then
-    claude_args+=(--dangerously-skip-permissions)
-    bashio::log.info "Claude Code running with bypass permissions"
-fi
+# Force HOME to the persistent location. `with-contenv` at the top of this
+# script loads vars from s6's container_environment; if HOME=/root is there,
+# Claude would store auth tokens and sessions in /root/.claude/ (ephemeral,
+# wiped on every container restart), forcing the user to re-login each time.
+# Pinning HOME here ensures `claude auth login`, `claude --resume`, and all
+# session state land in /data/home/.claude/ (persistent across restarts).
+export HOME=/data/home
+export PATH="/data/home/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Set working directory: prefer /homeassistant (HA config), fallback to /data/workdir
 if [ -d /homeassistant ] && [ -w /homeassistant ]; then
@@ -33,5 +32,30 @@ cat << 'EOF'
 ║  Type 'claude' to start a new session, or just start typing. ║
 ╚══════════════════════════════════════════════════════════════╝
 EOF
+
+# --- Full launch override ---
+# If `launch_command` is set in the add-on config, run it verbatim instead of
+# the default `claude` invocation. This is the escape hatch for power users
+# who need non-default flags, wrappers, or entirely different commands.
+launch_command=$(bashio::config 'launch_command')
+if bashio::var.has_value "${launch_command}"; then
+    bashio::log.info "Using custom launch_command"
+    exec bash -c "${launch_command}"
+fi
+
+# --- Default launch: assemble claude args from options ---
+declare -a claude_args
+
+if bashio::config.true 'bypass_permissions'; then
+    claude_args+=(--dangerously-skip-permissions)
+    bashio::log.info "Claude Code running with --dangerously-skip-permissions"
+fi
+
+# Append any user-provided extra_args (one entry per arg).
+# bashio::config outputs array elements one per line, so `while read` preserves
+# values that contain spaces (unlike `for x in $(...)` which word-splits).
+while IFS= read -r arg; do
+    [ -n "${arg}" ] && claude_args+=("${arg}")
+done < <(bashio::config 'extra_args')
 
 exec claude "${claude_args[@]}"

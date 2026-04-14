@@ -12,6 +12,8 @@ configuration:
       shell commands, editing files, or taking other actions.
       Only enable this if you fully trust Claude's decisions.
       Corresponds to the --dangerously-skip-permissions flag.
+      The add-on automatically sets IS_SANDBOX=1 so this flag works even
+      though the container runs as root.
   auto_update:
     name: Auto-Update Claude Code
     description: >-
@@ -42,3 +44,18 @@ configuration:
       Useful for installing additional tools or MCP servers.
       Examples: 'npm install -g @anthropic-ai/mcp-server-github'
       or 'apk add --no-cache ffmpeg'
+  extra_args:
+    name: Extra Claude Arguments
+    description: >-
+      Extra command-line arguments appended to the default 'claude' invocation.
+      One argument per entry (do not combine multiple flags on one line).
+      Examples: --resume, --model, claude-sonnet-4-6, --verbose
+  launch_command:
+    name: Custom Launch Command
+    description: >-
+      Full command to run instead of the default 'claude' invocation.
+      When set, this replaces the default launch entirely — bypass_permissions
+      and extra_args are ignored. Use for advanced customization such as
+      wrapping claude in another tool or running a different binary.
+      Example: claude --resume --dangerously-skip-permissions
+      Leave empty to use the default launch behavior.

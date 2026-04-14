@@ -1,5 +1,5 @@
 name: "Claude Code"
-version: "0.1.1"
+version: "0.2.0"
 slug: claude-code
 description: "Claude Code AI assistant embedded in Home Assistant — full terminal access with skills, MCP servers, and complete HA integration"
 url: "https://github.com/LayerTM/ClaudeInHA"
@@ -46,6 +46,8 @@ options:
   custom_instructions: ""
   environment_vars: []
   init_commands: []
+  extra_args: []
+  launch_command: ""
 
 schema:
   api_key: "password"
@@ -57,5 +59,8 @@ schema:
     - "str"
   init_commands:
     - "str"
+  extra_args:
+    - "str"
+  launch_command: "str?"
 
 stage: experimental

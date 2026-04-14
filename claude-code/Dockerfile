@@ -33,12 +33,20 @@ RUN apk add --no-cache \
     ttyd
 
 # Install Claude Code native binary (supports linux-x64-musl and linux-arm64-musl)
-# Installed to /root/.local/bin/claude — will be copied to persistent /data/home at runtime
-ENV HOME=/root
-RUN curl -fsSL https://claude.ai/install.sh | bash
+# Installed to /root/.local/bin/claude — will be copied to persistent /data/home at runtime.
+# HOME is set inline for this RUN only (NOT as ENV) so s6's container_environment
+# does not bake HOME=/root in. If it did, `with-contenv` in service scripts would
+# override our HOME=/data/home and Claude would store auth/sessions in /root/.claude/
+# (ephemeral) instead of /data/home/.claude/ (persistent).
+RUN HOME=/root curl -fsSL https://claude.ai/install.sh | bash
 
 ENV PATH="/root/.local/bin:${PATH}"
 ENV USE_BUILTIN_RIPGREP=0
+
+# Tell Claude Code we're inside a container sandbox.
+# Recent Claude Code versions refuse --dangerously-skip-permissions under root
+# unless this is set. HA add-ons always run as root in an isolated container.
+ENV IS_SANDBOX=1
 
 # Copy rootfs (S6 services, scripts, default CLAUDE.md)
 COPY rootfs /

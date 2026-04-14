@@ -26,6 +26,56 @@ export TERM=xterm-256color
 export LANG=C.UTF-8
 export USE_BUILTIN_RIPGREP=0
 
+# Tell Claude Code we're running inside a container sandbox.
+# Without this, --dangerously-skip-permissions is refused when the process
+# runs as root (recent Claude Code versions added this safety check).
+# HA add-ons always run as root inside an isolated Docker container,
+# which is already a sandbox from the host's perspective.
+export IS_SANDBOX=1
+
+# --- Sync Claude binary from image if newer ---
+# When the add-on image is rebuilt with a newer bundled Claude version,
+# the persistent copy in /data/home/.local would otherwise stay on the
+# older version until `claude update` runs. This ensures image upgrades
+# actually deliver the newer binary.
+sync_claude_from_image() {
+    local image_bin="/root/.local/bin/claude"
+    local persistent_bin="/data/home/.local/bin/claude"
+
+    [ -x "${image_bin}" ] || return 0
+    [ -x "${persistent_bin}" ] || return 0
+
+    local image_v persistent_v newer
+    image_v=$("${image_bin}" --version 2>/dev/null | awk '{print $1}') || image_v=""
+    persistent_v=$("${persistent_bin}" --version 2>/dev/null | awk '{print $1}') || persistent_v=""
+
+    if [ -z "${image_v}" ] || [ -z "${persistent_v}" ]; then
+        bashio::log.warning "Could not determine Claude version for binary sync"
+        return 0
+    fi
+
+    if [ "${image_v}" = "${persistent_v}" ]; then
+        bashio::log.info "Claude Code version: ${persistent_v}"
+        return 0
+    fi
+
+    newer=$(printf '%s\n%s\n' "${image_v}" "${persistent_v}" | sort -V | tail -n1)
+
+    if [ "${newer}" = "${image_v}" ]; then
+        bashio::log.info "Image has newer Claude (${image_v} > ${persistent_v}) — syncing to persistent storage"
+        cp -af "${image_bin}" "${persistent_bin}"
+        # Also refresh any supporting files the installer may have placed alongside.
+        if [ -d /root/.local/share/claude ]; then
+            mkdir -p /data/home/.local/share
+            cp -af /root/.local/share/claude /data/home/.local/share/
+        fi
+    else
+        bashio::log.info "Persistent Claude (${persistent_v}) is newer than image (${image_v}) — keeping persistent"
+    fi
+}
+
+sync_claude_from_image
+
 # --- Anthropic API Key ---
 api_key=$(bashio::config 'api_key')
 if bashio::var.has_value "${api_key}"; then

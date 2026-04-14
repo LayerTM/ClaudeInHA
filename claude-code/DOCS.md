@@ -83,6 +83,8 @@ When **enabled**, Claude Code will not ask for confirmation before:
 
 This corresponds to the `--dangerously-skip-permissions` flag. Enable it when you want fully autonomous operation. **Use with caution** — Claude will execute actions without confirmation.
 
+> **Note on root execution**: Recent Claude Code versions refuse to run `--dangerously-skip-permissions` under the root user. HA add-ons always run as root inside their container, so the add-on exports `IS_SANDBOX=1` (which Claude recognizes as "already sandboxed") to make the flag work. No user action is required.
+
 ### Auto-Update Claude Code
 When **enabled** (default), Claude Code checks for and installs updates each time the add-on starts. This allows Claude Code to update independently of new add-on releases.
 
@@ -117,6 +119,26 @@ Shell commands run at add-on startup before Claude Code launches. Use this to in
 - `npm install -g @modelcontextprotocol/server-github`
 - `apk add --no-cache ffmpeg`
 - `pip install homeassistant-api`
+
+### Extra Claude Arguments
+Additional CLI flags passed to the default `claude` invocation. One argument per entry — do not combine multiple flags on a single line.
+
+Examples:
+- `--resume` — auto-resume the last session on start
+- `--verbose`
+- `--model`, `claude-sonnet-4-6` — two entries, flag and value
+
+These are appended after any flags set by `bypass_permissions`.
+
+### Custom Launch Command
+Full command string that replaces the default `claude` invocation entirely. When set, `bypass_permissions` and `extra_args` are ignored — the string you provide is what gets executed inside the tmux session.
+
+Use this for advanced cases like:
+- `claude --resume --dangerously-skip-permissions`
+- `claude --model claude-opus-4-6 --verbose --resume`
+- Wrapping claude with another tool (`env FOO=bar claude ...`)
+
+Leave empty to keep the default launch behavior (recommended for most users).
 
 ---
 
@@ -284,9 +306,15 @@ Claude Code updates are **independent** of add-on version updates.
 |--------|-------------|
 | Auto-update on startup | Every add-on start (if Auto-Update is enabled) |
 | Manual: `claude update` | On demand from the terminal |
-| Add-on update | Rebuilds container with latest binary (also pulls updates) |
+| Add-on update | Rebuilds container with latest binary (auto-synced to persistent storage if newer) |
 
 The Claude Code binary is stored in persistent storage (`/data/home/.local/`) so updates survive add-on restarts without re-downloading from scratch.
+
+On every startup, the add-on compares the Claude version bundled in the container image with the version in persistent storage:
+- If the **image** has a newer binary (e.g. after an add-on update), it is synced to persistent storage.
+- If the **persistent** binary is newer (e.g. after `claude update` ran previously), it is kept.
+
+This prevents the "version rolled back after restart/update" behavior and means you do not need to run `claude update` manually after each add-on upgrade.
 
 ---
 
@@ -333,7 +361,9 @@ Normal if using OAuth login. Run `claude auth login` in the terminal.
 Normal — the first start copies the Claude Code binary to persistent storage and may check for updates. Subsequent starts are fast.
 
 ### Session lost after add-on restart
-Expected behavior — add-on restart creates a new container and new tmux session. Use `claude --resume` to continue from the last conversation.
+The tmux session itself is recreated on restart (so your terminal scrollback is gone), but Claude's conversation history and OAuth login persist in `/data/home/.claude/`. Use `claude --resume` to pick up the last conversation.
+
+If you are being prompted to re-run `claude auth login` after every restart, ensure you are on add-on version **0.2.0 or newer** — earlier versions had a bug where auth tokens were stored in an ephemeral location.
 
 ### Claude Code update fails
 Non-critical — logged as a warning. Check your internet connection. Try `claude update` manually in the terminal.
