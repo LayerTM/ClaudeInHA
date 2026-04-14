@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.2] — 2026-04-14
+
+### Fixed
+- Mouse selection now actually copies to the browser clipboard. v0.2.1
+  shipped `set -g mouse on` in the bundled tmux config, which made tmux
+  intercept every mouse event before xterm.js could see it. The result
+  was that drag-to-select went into tmux's internal copy-mode buffer and
+  never reached the browser clipboard — the OSC 52 forwarding I tried
+  also had double-escaped backslashes in `terminal-overrides`, so even
+  that path was broken. The fix is simpler: leave tmux's mouse off and
+  let xterm.js handle selection natively. With ttyd's `copyOnSelect=true`
+  (shipped in v0.2.1), drag-to-select now copies straight to the
+  browser clipboard, and right-click falls through to the browser's
+  context menu (so paste works there too).
+
 ## [0.2.1] — 2026-04-14
 
 ### Added
