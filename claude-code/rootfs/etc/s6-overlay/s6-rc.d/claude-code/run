@@ -171,6 +171,12 @@ else
     cd /data/workdir
 fi
 
+# ttyd options kept minimal — the combo below matches the config that was
+# known-working in v0.1.x. Extra `-t` flags I added in v0.2.1 (copyOnSelect,
+# rightClickSelectsWord, macOptionIsMeta, cursorBlink) turned out to either
+# be no-ops (copyOnSelect is not an actual ttyd/xterm.js option) or to
+# interact badly with HA's ingress-iframe clipboard behavior. Sticking to
+# the minimal v0.1.x set restores working copy/paste in the sidebar.
 exec ttyd \
     --port "${ingress_port}" \
     --writable \
@@ -178,8 +184,4 @@ exec ttyd \
     -t fontSize=14 \
     -t rendererType=webgl \
     -t disableLeaveAlert=true \
-    -t 'copyOnSelect=true' \
-    -t 'cursorBlink=true' \
-    -t 'rightClickSelectsWord=false' \
-    -t 'macOptionIsMeta=true' \
     tmux -u new -A -s claude /usr/local/bin/start-claude

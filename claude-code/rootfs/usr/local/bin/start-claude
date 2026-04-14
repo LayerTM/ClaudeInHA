@@ -22,16 +22,40 @@ fi
 
 # Print welcome banner
 cat << 'EOF'
-╔══════════════════════════════════════════════════════════════╗
-║              Claude Code — Home Assistant Add-on             ║
-║                                                              ║
-║  • HA config: /homeassistant                                 ║
-║  • Shared:    /share                                         ║
-║  • HA API:    http://supervisor/core/api  ($SUPERVISOR_TOKEN) ║
-║                                                              ║
-║  Type 'claude' to start a new session, or just start typing. ║
-╚══════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════╗
+║              Claude Code — Home Assistant Add-on                 ║
+║                                                                  ║
+║  Paths:  /homeassistant  /share  /media  /ssl  /backup           ║
+║  HA API: http://supervisor/core/api   (auth: $SUPERVISOR_TOKEN)  ║
+║                                                                  ║
+║  Clipboard in the HA sidebar:                                    ║
+║    • Copy:  select text, then Ctrl+Shift+C (or right-click)      ║
+║    • Paste: Ctrl+Shift+V (or right-click → Paste)                ║
+║    • URLs in output are clickable — just click them              ║
+║    • If copy/paste still misbehaves, click "OPEN WEB UI" on      ║
+║      the add-on Info page to open the terminal in its own tab    ║
+╚══════════════════════════════════════════════════════════════════╝
 EOF
+
+# If the user has no credentials yet, surface the auth guidance up front so
+# the login step isn't a guessing game. Claude Code stores tokens in
+# ~/.claude/.credentials.json after a successful login.
+if [ -z "${ANTHROPIC_API_KEY:-}" ] \
+   && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] \
+   && [ ! -f "${HOME}/.claude/.credentials.json" ]; then
+    cat << 'EOF'
+
+First-time login — pick one:
+  1. Easiest: generate a token on another machine with a regular browser,
+     then paste it into the add-on config field "OAuth Token" and restart.
+     On that machine:   claude setup-token
+  2. Or run  claude  below — a URL will appear (clickable). Open it,
+     complete login, copy the code back and paste with Ctrl+Shift+V.
+     Tip: if pasting into the sidebar fails, open the add-on via the
+     "OPEN WEB UI" button to escape the HA iframe.
+
+EOF
+fi
 
 # --- Full launch override ---
 # If `launch_command` is set in the add-on config, run it verbatim instead of

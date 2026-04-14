@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.2.3] — 2026-04-14
+
+### Fixed
+- In-terminal authentication via `claude` (the classic login flow) is usable
+  again in the HA sidebar. The `-t copyOnSelect=true` / `cursorBlink=true` /
+  `rightClickSelectsWord=false` / `macOptionIsMeta=true` options I added in
+  v0.2.1 were either silently ignored (there is no `copyOnSelect` in ttyd or
+  xterm.js) or interfered with how the HA ingress iframe proxies mouse
+  events and clipboard permissions. Combined with the bundled
+  `/etc/tmux.conf` (added at the same time), the result was that selecting
+  text did not copy and pasting the OAuth code failed. Both are now gone —
+  the ttyd invocation is back to the minimal v0.1.x form and tmux runs on
+  its own defaults.
+
+### Changed
+- Welcome banner in the tmux session now documents the actual working
+  shortcuts (`Ctrl+Shift+C` / `Ctrl+Shift+V`, right-click, clickable URLs)
+  and points at "OPEN WEB UI" as the escape hatch when the sidebar iframe
+  misbehaves in a given browser.
+- When no credentials are configured and no prior login exists on disk, the
+  banner prints a short two-option first-time-setup guide before dropping
+  the user at the shell — so the login step is not a guessing game.
+
 ## [0.2.2] — 2026-04-14
 
 ### Fixed
