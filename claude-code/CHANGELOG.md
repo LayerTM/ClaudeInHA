@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.2.5] — 2026-04-14
+
+### Changed
+- **Mouse wheel now scrolls terminal history.** `/etc/tmux.conf`
+  ships with `set -g mouse on` and `history-limit 50000`, so wheel
+  events scroll through 50k lines of tmux scrollback instead of
+  being silently swallowed by Claude's mouse tracking.
+- **Selection now uses `Shift+drag`.** With `mouse on`, plain drag
+  and right-click are consumed by tmux / Claude, but xterm.js's
+  `SelectionService.shouldForceSelection()` short-circuits CSI
+  forwarding whenever Shift is held on non-Mac
+  (`Terminal.ts:780`). So `Shift+drag` still produces a native
+  browser selection that `Ctrl+Shift+C` copies, and
+  `Shift+right-click` still opens the browser context menu.
+- **xterm.js scrollback bumped from 1000 to 10000 lines**
+  (`-t scrollback=10000`). tmux owns the long history, but
+  xterm.js's own scrollback is what `Shift+PageUp` and the wheel
+  draw on directly; the previous 1000-line default filled too
+  quickly.
+- Welcome banner reorganised into a single **Mouse / clipboard**
+  section listing wheel / copy / paste / Shift-bypass /
+  right-click / clickable URLs / OPEN WEB UI escape hatch.
+
+This re-enables `set -g mouse on`, which was removed in v0.2.2
+because plain drag landed in tmux's copy-mode buffer with no
+fallback. v0.2.5 keeps `mouse on` and relies on xterm.js's
+existing Shift-modifier bypass for browser-side selection — that
+path was always present, just unused.
+
 ## [0.2.4] — 2026-04-14
 
 ### Fixed

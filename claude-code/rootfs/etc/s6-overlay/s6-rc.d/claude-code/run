@@ -190,6 +190,10 @@ fi
 #     bash/zsh lose paste-bracketing (multi-line shell paste runs
 #     line-by-line) and vim loses paste autodetect (use `:set paste`
 #     if needed).
+#   scrollback=10000 — keep 10k lines of history in the web terminal
+#     instead of xterm.js's 1000-line default. Reachable with
+#     Shift+PageUp / Shift+PageDown; tmux's own history-limit (set in
+#     /etc/tmux.conf) is larger still and reachable via Ctrl+b [.
 # Note: Claude's TUI enables mouse tracking (DECSET 1000/1002/1003) so
 # a plain drag inside Claude is forwarded to Claude rather than
 # starting a selection. Hold Shift to override — the welcome banner
@@ -202,4 +206,5 @@ exec ttyd \
     -t rendererType=dom \
     -t disableLeaveAlert=true \
     -t ignoreBracketedPasteMode=true \
+    -t scrollback=10000 \
     tmux -u new -A -s claude /usr/local/bin/start-claude

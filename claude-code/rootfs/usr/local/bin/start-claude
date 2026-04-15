@@ -28,12 +28,14 @@ cat << 'EOF'
 ║  Paths:  /homeassistant  /share  /media  /ssl  /backup           ║
 ║  HA API: http://supervisor/core/api   (auth: $SUPERVISOR_TOKEN)  ║
 ║                                                                  ║
-║  Clipboard in the HA sidebar:                                    ║
-║    • Copy:  drag to select, then Ctrl+Shift+C                    ║
-║    • Paste: click in the terminal, then Ctrl+Shift+V             ║
-║    • Inside Claude, hold Shift for mouse (Claude grabs clicks):  ║
-║      Shift+drag selects, Shift+right-click opens browser menu    ║
-║    • URLs in output are clickable — just click them              ║
+║  Mouse / clipboard:                                              ║
+║    • Wheel:  scrolls terminal history (tmux, 50k lines)          ║
+║    • Copy:   Shift+drag to select, then Ctrl+Shift+C             ║
+║    • Paste:  click in the terminal, then Ctrl+Shift+V            ║
+║    • Why Shift? Plain mouse goes to tmux / Claude (mouse         ║
+║      tracking); Shift bypasses for native browser selection      ║
+║    • Shift+right-click — browser context menu (Copy / Paste)     ║
+║    • URLs in output are clickable                                ║
 ║    • Stuck? "OPEN WEB UI" on the add-on Info page opens this     ║
 ║      terminal in its own browser tab (bypasses the HA iframe)    ║
 ╚══════════════════════════════════════════════════════════════════╝

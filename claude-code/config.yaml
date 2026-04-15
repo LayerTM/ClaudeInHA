@@ -1,5 +1,5 @@
 name: "Claude Code"
-version: "0.2.4"
+version: "0.2.5"
 slug: claude-code
 description: "Claude Code AI assistant embedded in Home Assistant — full terminal access with skills, MCP servers, and complete HA integration"
 url: "https://github.com/LayerTM/ClaudeInHA"
