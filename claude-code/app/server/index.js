@@ -71,6 +71,9 @@ server.on('upgrade', (req, socket, head) => {
     socket.destroy();
     return;
   }
+  // Interactive echo must never wait on Nagle/delayed-ACK — that is the classic
+  // "mushy remote shell" latency (up to ~40ms per keystroke). Ship immediately.
+  socket.setNoDelay(true);
   wss.handleUpgrade(req, socket, head, (ws) => terminal.attach(ws));
 });
 

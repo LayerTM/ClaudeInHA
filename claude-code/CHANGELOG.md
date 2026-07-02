@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.3.0] — 2026-07-02
+
+Makes the console feel like a real desktop terminal — snappy, crisp, and with
+the full status line.
+
+### Changed
+- **Status line is now `ccstatusline`** — the same tool the desktop Claude Code
+  uses — bundled in the image and seeded with the rich three-line layout (model,
+  thinking effort, reset/weekly timers, git root/branch/changes, version, free
+  memory, token counts, input/output speed, a context-usage bar, session clock,
+  cost, and session/weekly usage). Replaces the earlier minimal script. Seeded
+  only when no status line is configured, so a custom one is never overwritten.
+- **New "Terracotta Noir" theme.** A crisp near-black canvas with a faint cool
+  undertone makes Claude's coloured output and the terracotta cursor read as
+  vivid jewel tones instead of muddy pastels; the foreground jumps to a razor
+  15:1. Refined chrome: calmer monochrome toolbar icons, a terracotta-underlined
+  active tab, interior padding, and a sleek inset scrollbar.
+
+### Fixed
+- **Responsiveness — typing and scrolling now feel native.** Disabled Nagle on
+  the terminal socket (`setNoDelay`), which was holding each keystroke's echo up
+  to ~40 ms — the main "mushy" feel. Wheel scrolling is instant again (dropped
+  the 100 ms animation) at a desktop-native line count. tmux now passes 24-bit
+  truecolour through (it was downsampling to 256, banding colours), and the
+  palette renders exactly as designed (`minimumContrastRatio` no longer silently
+  brightens dim text). Scrollback no longer rubber-bands the parent HA page.
+
 ## [1.2.1] — 2026-07-02
 
 ### Fixed

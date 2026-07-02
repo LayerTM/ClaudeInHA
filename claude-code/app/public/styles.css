@@ -17,14 +17,16 @@
 }
 
 :root {
-  --bg: #1c1c1e;
-  --bg-raised: #2a2a2d;
-  --bg-hover: #3a3a3e;
-  --fg: #e4e4e7;
-  --fg-dim: #9d9da3;
+  --bg: #14141a;             /* terminal canvas — matches the xterm background */
+  --chrome-hi: #20202a;      /* toolbar top of gradient */
+  --bg-raised: #1a1a21;      /* toolbar / menus / dialogs */
+  --bg-hover: rgba(255, 255, 255, 0.07);
+  --fg: #ede9e0;
+  --fg-dim: #9a9aa4;
   --accent: #d97757;
-  --border: #3f3f44;
-  --danger: #e5484d;
+  --brand-soft: rgba(217, 119, 87, 0.18);
+  --border: rgba(255, 255, 255, 0.09);
+  --danger: #f15b54;
 }
 
 * { box-sizing: border-box; }
@@ -48,10 +50,11 @@ body {
 #toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
-  background: var(--bg-raised);
+  gap: 3px;
+  padding: 5px 8px;
+  background: linear-gradient(180deg, var(--chrome-hi), var(--bg-raised));
   border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   flex: 0 0 auto;
   overflow-x: auto;
   scrollbar-width: none;
@@ -62,17 +65,22 @@ body {
 
 .btn {
   background: transparent;
-  color: var(--fg);
+  color: var(--fg-dim);
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 7px;
   padding: 5px 9px;
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
   white-space: nowrap;
   position: relative;
+  /* Tame the loud multicolour emoji into a calm monochrome icon row that only
+     lights up on hover — reads as a toolbar, not a row of emoji. */
+  filter: grayscale(0.4) opacity(0.85);
+  transition: background 120ms ease, color 120ms ease, filter 120ms ease;
 }
-.btn:hover { background: var(--bg-hover); }
+.btn:hover { background: var(--bg-hover); color: var(--fg); filter: none; }
+.btn:active { background: var(--brand-soft); }
 .btn.primary {
   background: var(--accent);
   color: #fff;
@@ -120,7 +128,8 @@ body {
 .tab.active {
   background: var(--bg);
   color: var(--fg);
-  border-color: var(--border);
+  /* Fuse the active tab into the terminal below with a terracotta underline. */
+  box-shadow: inset 0 -2px 0 var(--accent), inset 0 0 0 1px var(--border);
 }
 .tab .close {
   font-size: 11px;
@@ -173,13 +182,28 @@ body {
   flex: 1 1 auto;
   position: relative;
   min-height: 0;
-  padding: 2px 0 0 4px;
+  /* Interior breathing room — the seam-safe way to add air (line-height is
+     frozen at 1.0 so box-drawing stays connected). fit() re-runs on resize. */
+  padding: 8px 8px 4px 10px;
 }
 #terminal, #terminal .xterm { height: 100%; }
 
 /* Held until the terminal is fitted and the webfont has settled (app.js), so
    the 80x24 default and any font swap never flash on screen. */
 body.booting #term-wrap { visibility: hidden; }
+
+/* Sleek inset scrollbar (default fat gray bars read as "browser"); and keep
+   scrollback bounces from rubber-banding the parent HA panel. */
+.xterm-viewport { overscroll-behavior: contain; }
+.xterm-viewport::-webkit-scrollbar { width: 11px; }
+.xterm-viewport::-webkit-scrollbar-track { background: transparent; }
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.13);
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+.xterm-viewport::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.24); }
 
 #drop-hint {
   position: absolute;

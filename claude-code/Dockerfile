@@ -101,6 +101,12 @@ ARG PLAYWRIGHT_MCP_VERSION=0.0.77
 RUN npm install -g "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
     && npm cache clean --force
 
+# --- ccstatusline (the rich status line the desktop Claude Code uses) ---
+# Bundled so no runtime npx download is needed; wired as Claude's statusLine.
+ARG CCSTATUSLINE_VERSION=2.2.22
+RUN npm install -g "ccstatusline@${CCSTATUSLINE_VERSION}" \
+    && npm cache clean --force
+
 # Force HTTPS for GitHub clones (plugin marketplaces) — the container has no SSH key.
 RUN git config --system url."https://github.com/".insteadOf "git@github.com:"
 
@@ -139,7 +145,6 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/claude-code/run \
              /usr/local/bin/start-remote \
              /usr/local/bin/update-claude \
              /usr/local/bin/provision-extras \
-             /usr/local/bin/cc-statusline \
              /usr/local/bin/ha-shot \
              /usr/local/bin/ha-check \
              /usr/local/bin/ha-state

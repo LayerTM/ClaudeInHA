@@ -151,18 +151,29 @@ done < <(bashio::config 'environment_vars')
 mkdir -p /data/workdir /data/uploads
 mkdir -p /data/home/.claude/skills
 
-# --- Rich status line in the embedded Claude TUI ---
-# Point Claude at our bundled status line script. Seeded only when absent so a
-# user who later customises .statusLine is never overwritten; script upgrades
-# ship transparently because settings.json only stores the command path.
+# --- Rich status line (ccstatusline — the same tool desktop Claude Code uses) ---
+# Seed the bundled ccstatusline config into the persistent home and point
+# Claude's statusLine at the bundled ccstatusline binary. Both are seeded only
+# when absent, so any user customisation is never overwritten.
+cc_cfg_dir=/data/home/.config/ccstatusline
+mkdir -p "${cc_cfg_dir}"
+if [ ! -f "${cc_cfg_dir}/settings.json" ]; then
+    cp /usr/share/claude-ha/ccstatusline-settings.json "${cc_cfg_dir}/settings.json" \
+        && bashio::log.info "Status line config seeded (ccstatusline)"
+fi
+
 settings_file=/data/home/.claude/settings.json
 [ -f "${settings_file}" ] || echo '{}' > "${settings_file}"
-if [ -z "$(jq -r '.statusLine // empty' "${settings_file}" 2>/dev/null)" ]; then
+cur_sl_cmd="$(jq -r '.statusLine.command // ""' "${settings_file}" 2>/dev/null)"
+# Seed when absent, and migrate our own previous default (the 1.2.x cc-statusline
+# script, now removed) to ccstatusline. Any other (user-custom) command is left
+# untouched.
+if [ -z "${cur_sl_cmd}" ] || [ "${cur_sl_cmd}" = "/usr/local/bin/cc-statusline" ]; then
     tmp_settings="$(mktemp)"
-    if jq '.statusLine = {type: "command", command: "/usr/local/bin/cc-statusline", padding: 0}' \
+    if jq '.statusLine = {type: "command", command: "/usr/local/bin/ccstatusline", padding: 0}' \
           "${settings_file}" > "${tmp_settings}" 2>/dev/null; then
         mv "${tmp_settings}" "${settings_file}"
-        bashio::log.info "Status line configured"
+        bashio::log.info "Status line configured (ccstatusline)"
     else
         rm -f "${tmp_settings}"
     fi
