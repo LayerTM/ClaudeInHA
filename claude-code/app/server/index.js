@@ -28,6 +28,15 @@ function sourceAllowed(socket) {
 const app = express();
 app.disable('x-powered-by');
 
+// HA ingress serves the panel such that relative asset URLs resolve with a
+// leading double slash (…/<token>//vendor/xterm.js). Collapse leading slashes so
+// exact routes match — otherwise vendor scripts 404, and with X-Content-Type-
+// Options: nosniff the HTML 404 body is refused as a script → blank console.
+app.use((req, res, next) => {
+  if (req.url.startsWith('//')) req.url = req.url.replace(/^\/+/, '/');
+  next();
+});
+
 app.use((req, res, next) => {
   if (!sourceAllowed(req.socket)) return res.status(403).send('Forbidden');
   next();
@@ -57,7 +66,7 @@ const server = http.createServer(app);
 
 const wss = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, socket, head) => {
-  const url = new URL(req.url, 'http://localhost');
+  const url = new URL(req.url.replace(/^\/+/, '/'), 'http://localhost');
   if (url.pathname !== '/ws' || !sourceAllowed(socket)) {
     socket.destroy();
     return;

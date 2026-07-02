@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.3] — 2026-07-02
+
+### Fixed
+- **Blank console (no tabs, empty terminal) behind real Home Assistant ingress.**
+  HA ingress resolves the panel's relative asset URLs with a leading double
+  slash (`…/<token>//vendor/xterm.js`). The static assets survived (Express
+  normalizes it) but the xterm vendor scripts were served by exact-match routes
+  that did not, so they 404'd; with `X-Content-Type-Options: nosniff` the HTML
+  404 body was refused as a script, `Terminal` was undefined, and the frontend
+  threw before rendering. The server now collapses leading slashes for both HTTP
+  and WebSocket requests, so every asset resolves regardless of the ingress
+  path shape. Only reproduced through the real ingress proxy, not direct access.
+
 ## [1.1.2] — 2026-07-02
 
 ### Fixed
