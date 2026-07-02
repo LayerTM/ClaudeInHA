@@ -1,441 +1,71 @@
 # Claude Code — Home Assistant Add-on
 
-Claude Code is Anthropic's official AI coding assistant. This add-on embeds the full Claude Code CLI into Home Assistant as a web terminal accessible from the sidebar. Claude has direct access to your HA configuration files and APIs, enabling it to create automations, debug integrations, write scripts, and manage your entire HA setup through conversation.
-
----
-
-## What Claude Code Can Do
-
-- Read and edit any file in `/homeassistant` (your HA config)
-- Create and modify automations, scripts, scenes, and templates
-- Query the Home Assistant REST API (entity states, services, logs)
-- Restart HA, reload automations, call any service
-- Install tools (npm packages, Python packages, Alpine packages)
-- Run shell commands, search files, use git
-- Connect to external MCP servers (GitHub, databases, APIs, etc.)
-- Use custom skills (slash commands) and plugins
-- Access the internet for documentation, APIs, and packages
-
----
-
-## Prerequisites
-
-- A Home Assistant OS or Supervised installation
-- An **Anthropic API key** from [console.anthropic.com](https://console.anthropic.com)
-  *(Free tier available; alternatively use Claude.ai subscription via `claude auth login`)*
-
----
+Runs the full [Claude Code CLI](https://code.claude.com/docs) inside Home Assistant, presented as a web console in the sidebar. Claude has direct access to your HA configuration and APIs: it can create automations, debug integrations, run shell commands, and manage your setup through conversation.
 
 ## Installation
 
-### 1. Add this repository to Home Assistant
+1. **Settings → Add-ons → Add-on Store** → ⋮ → **Repositories** → add
+   `https://github.com/LayerTM/ClaudeInHA`
+2. Install **Claude Code** and start it.
+3. Open the **Claude Code** sidebar panel.
 
-Go to **Settings → Add-ons → Add-on Store** → three-dot menu (⋮) → **Repositories**
+## Authentication (pick one)
 
-Paste:
-```
-https://github.com/LayerTM/ClaudeInHA
-```
+| Method | How |
+|---|---|
+| **Subscription (recommended)** | Leave both fields empty, open the console, run `claude` and follow the login URL. The login persists across restarts. |
+| **OAuth token** | On any machine run `claude setup-token`, paste the printed token into **OAuth Token**. No interactive login needed. Note: this token type does not support Remote Control. |
+| **API key** | Paste a key from [console.anthropic.com](https://console.anthropic.com) into **API Key**. Pay-per-use. |
 
-### 2. Install the add-on
+## The console
 
-Find **Claude Code** in the store and click **Install**.
-The first install downloads the Claude Code binary (~100 MB) and may take a few minutes.
+- **Tabs** — ✳ Claude plus any number of shell tabs (+). Exiting Claude shows a restart menu; the session never dies with it.
+- **Copy** — select with Shift+drag (copies automatically), or use the ⧉ menu to copy the visible screen / recent output / full history without selecting anything. When the browser blocks clipboard access (plain HTTP, Android app), copies land in the 📥 tray — tap an entry to copy it.
+- **Paste** — Ctrl+Shift+V / Cmd+V, or the 📋 button.
+- **Attach files & images** — drag & drop anywhere, paste an image from the clipboard, or use 📎 (opens camera/gallery on phones). The file is saved under `/data/uploads` and its path is typed into the prompt.
+- **Update Claude** — ⬆ button, or `update-claude` in a shell tab (`update-claude 2.1.150` installs a specific version). Only the Claude session restarts; the add-on keeps running. With **Auto-Update** enabled the CLI also updates at every add-on start.
+- **Mobile** — a key bar (Esc, Tab, arrows, ^C…) appears on touch devices; ⛶ hides the HA chrome for a full-screen terminal.
 
-### 3. Configure authentication (choose one)
+## Configuration options
 
-Go to the **Configuration** tab.
+| Option | Purpose |
+|---|---|
+| `api_key` / `oauth_token` | Authentication (see above). Stored encrypted by the Supervisor. |
+| `bypass_permissions` | Start Claude with `--dangerously-skip-permissions` (fully autonomous). |
+| `auto_update` | Update the CLI at every add-on start. Manual `update-claude` always works. |
+| `model` | Model override, e.g. `claude-sonnet-4-6`. |
+| `custom_instructions` | Text appended to the built-in HA context (CLAUDE.md). |
+| `environment_vars` | Extra env vars, `KEY=VALUE` per entry. |
+| `init_commands` | Shell commands run at startup (install tools, MCP servers). |
+| `extra_args` | Extra `claude` CLI arguments, one per entry. |
+| `launch_command` | Full replacement for the default `claude` invocation. |
+| `upload_retention_days` | Auto-delete attached files after N days (0 = keep). |
+| `remote_control` | Adds a tab running `claude remote-control`: drive this session from the Claude mobile app / claude.ai. Requires a full `/login` (subscription); `oauth_token` and API keys are not sufficient. |
 
-**Option A — API Key (pay-per-use, simplest):**
-Enter your Anthropic API key (`sk-ant-...`) in the **API Key** field. Get one at [console.anthropic.com](https://console.anthropic.com).
+## Claude in Home Assistant
 
-**Option B — OAuth token from a subscription (Pro/Max/Team/Enterprise, recommended):**
-On another machine where you have a normal browser (your laptop, desktop, etc.), install Claude Code and run:
-```
-claude setup-token
-```
-It prints a long-lived OAuth token (valid ~1 year). Copy it and paste it into the **OAuth Token** field in the add-on configuration. Done — no interactive login inside the HA terminal needed.
-
-**Option C — Interactive login in the terminal (last resort):**
-Leave both fields empty, start the add-on, open the terminal, and run:
-```
-claude
-```
-A URL appears — open it in your browser and complete login. If the browser doesn't redirect back and instead shows a code to paste, you'll need to paste it into the terminal.
-
-> **Why the options matter**: the HA ingress panel renders the terminal inside an iframe, which some browsers restrict for clipboard access. Pasting into the ingress terminal can be hit-or-miss. Option B (`oauth_token`) sidesteps the issue entirely. If you must use Option C, it often helps to open the add-on in a new browser tab (outside the sidebar iframe) — click **OPEN WEB UI** on the add-on's Info page.
-
-### 4. Start
-
-Click **Start** on the **Info** tab.
-
-### 5. Open the terminal
-
-Click **Claude Code** in the left sidebar (toggle **Show in sidebar** on the Info tab if not visible).
-
----
-
-## Configuration Options
-
-### API Key
-Your Anthropic API key (`sk-ant-...`). Get one at [console.anthropic.com](https://console.anthropic.com). Billed pay-per-use.
-
-Leave empty if you prefer to log in via subscription (see [OAuth Token](#oauth-token-promaxteam-subscription) or [Authentication without API Key](#authentication-without-api-key)).
-
-**Security**: The key is stored encrypted by the HA Supervisor and is never visible in logs or committed to version control.
-
-### OAuth Token (Pro/Max/Team subscription)
-Long-lived OAuth token generated from a Claude.ai subscription. When set, the add-on exports it as `CLAUDE_CODE_OAUTH_TOKEN` and Claude Code uses it without any interactive login.
-
-How to generate one:
-1. On any machine with a regular browser (laptop, desktop), install Claude Code: `curl -fsSL https://claude.ai/install.sh | bash`
-2. Run `claude setup-token`
-3. Complete the OAuth flow in the browser
-4. Copy the token it prints (valid for about 1 year)
-5. Paste into this field
-
-The token authenticates against your subscription. It never leaves the add-on's encrypted config.
-
-**Why use this instead of `claude auth login`?** Home Assistant serves add-on terminals inside an iframe, which some browsers restrict for clipboard access. Pasting the OAuth code back into the ingress terminal can be flaky. `oauth_token` avoids the terminal paste step entirely.
-
-### Skip Permission Prompts
-When **enabled**, Claude Code will not ask for confirmation before:
-- Running shell commands
-- Editing or creating files
-- Calling any tool
-
-This corresponds to the `--dangerously-skip-permissions` flag. Enable it when you want fully autonomous operation. **Use with caution** — Claude will execute actions without confirmation.
-
-> **Note on root execution**: Recent Claude Code versions refuse to run `--dangerously-skip-permissions` under the root user. HA add-ons always run as root inside their container, so the add-on exports `IS_SANDBOX=1` (which Claude recognizes as "already sandboxed") to make the flag work. No user action is required.
-
-### Auto-Update Claude Code
-When **enabled** (default), Claude Code checks for and installs updates each time the add-on starts. This allows Claude Code to update independently of new add-on releases.
-
-When **disabled**, set `DISABLE_AUTOUPDATER=1` and no automatic updates occur. You can still update manually:
-```bash
-claude update
-```
-
-### Model Override
-Specify a model to use instead of Claude Code's default. Examples:
-- `claude-opus-4-6` — most capable
-- `claude-sonnet-4-6` — fast and capable
-- `claude-haiku-4-5-20251001` — fastest
-
-Leave empty for the default model.
-
-### Custom Instructions
-Text appended to the built-in Home Assistant context file (`CLAUDE.md`). Use this to add:
-- Your preferences ("always use descriptive entity names")
-- Project context ("this house has Philips Hue lights and a Sonos system")
-- Coding standards
-
-### Extra Environment Variables
-Additional environment variables. Format: `KEY=VALUE` — one per entry.
-
-Example uses:
-- `GITHUB_TOKEN=ghp_...` (for GitHub MCP server)
-- `NODE_OPTIONS=--max-old-space-size=4096` (increase Node.js memory)
-
-### Initialization Commands
-Shell commands run at add-on startup before Claude Code launches. Use this to install additional tools or MCP servers that should be available every time. Examples:
-- `npm install -g @modelcontextprotocol/server-github`
-- `apk add --no-cache ffmpeg`
-- `pip install homeassistant-api`
-
-### Extra Claude Arguments
-Additional CLI flags passed to the default `claude` invocation. One argument per entry — do not combine multiple flags on a single line.
-
-Examples:
-- `--resume` — auto-resume the last session on start
-- `--verbose`
-- `--model`, `claude-sonnet-4-6` — two entries, flag and value
-
-These are appended after any flags set by `bypass_permissions`.
-
-### Custom Launch Command
-Full command string that replaces the default `claude` invocation entirely. When set, `bypass_permissions` and `extra_args` are ignored — the string you provide is what gets executed inside the tmux session.
-
-Use this for advanced cases like:
-- `claude --resume --dangerously-skip-permissions`
-- `claude --model claude-opus-4-6 --verbose --resume`
-- Wrapping claude with another tool (`env FOO=bar claude ...`)
-
-Leave empty to keep the default launch behavior (recommended for most users).
-
----
-
-## Using Claude Code with Home Assistant
-
-Open the sidebar panel and start describing what you want. Claude Code has full access to your HA config and can take direct action.
-
-### Example prompts
-
-**Automations:**
-```
-Create an automation that turns on the living room lights at sunset
-and turns them off at 11pm
-```
-
-```
-Add a trigger to my "Morning routine" automation that also fires
-when I arrive home
-```
-
-**Debugging:**
-```
-Check my configuration.yaml for any errors and show me what's wrong
-```
-
-```
-I'm getting errors in the HA log about my MQTT integration.
-Show me the last 50 error lines and help me fix them
-```
-
-**Scripts:**
-```
-Create a script that gradually dims all lights over 30 minutes
-and plays a goodnight announcement
-```
-
-**System:**
-```
-List all my entities and show me which ones haven't reported
-a state change in the last 24 hours
-```
-
-```
-Restart Home Assistant after validating the configuration
-```
-
-### Accessing the HA API directly
-
-Claude Code has `$SUPERVISOR_TOKEN` available for direct API calls:
+Claude works in `/homeassistant` (your config) with `/share`, `/media`, `/ssl`, `/backup` mounted. The Supervisor API is available via `$SUPERVISOR_TOKEN`:
 
 ```bash
-# Inside the terminal, query any HA API endpoint
 curl -sS -H "Authorization: Bearer $SUPERVISOR_TOKEN" \
   http://supervisor/core/api/states | jq '.[].entity_id'
 ```
 
----
+The bundled `CLAUDE.md` teaches Claude the HA API, config patterns, and safety rules (validate config before restart, prefer reloads, and so on).
 
-## Session Persistence
+MCP servers, skills, and plugins work exactly as in the desktop CLI: `.mcp.json` in `/homeassistant`, skills under `/data/home/.claude/skills/`, `claude plugin install <name>`.
 
-Claude Code runs inside a **tmux session**. This means:
+## Persistence
 
-- Closing the browser tab does **not** end the Claude session
-- Reopen the sidebar panel to reconnect to your existing session
-- The session continues running even if you navigate away from HA
-- On add-on **restart**, a new tmux session is created (the previous session ends)
-
-Session history is preserved in `~/.claude/sessions/` and can be resumed:
-```bash
-claude --resume    # Resume last session
-claude -c          # Continue most recent conversation
-```
-
----
-
-## Advanced: MCP Servers
-
-MCP (Model Context Protocol) servers extend Claude Code with additional tools and data sources.
-
-### Configure via file
-
-Create or edit `/homeassistant/.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_your_token"
-      }
-    },
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/homeassistant"]
-    }
-  }
-}
-```
-
-> **Security**: Do not put real API tokens in files committed to version control.
-> Use the **Extra Environment Variables** add-on option and reference them via `${VAR_NAME}`.
-
-### Configure via CLI (current session)
-
-```bash
-claude mcp add github -- npx -y @modelcontextprotocol/server-github
-claude mcp list
-claude mcp remove github
-```
-
-### Install MCP servers permanently
-
-Add to **Initialization Commands** in add-on config:
-```
-npm install -g @modelcontextprotocol/server-github
-```
-
-Then reference with `command: "mcp-server-github"` (no `npx -y` needed).
-
----
-
-## Advanced: Skills and Plugins
-
-### Skills (Slash Commands)
-
-Skills are custom slash commands defined in Markdown files.
-
-Place skill files in `/data/home/.claude/skills/<skill-name>/SKILL.md`.
-
-Example — create a HA-specific commit skill:
-```bash
-mkdir -p /data/home/.claude/skills/ha-backup
-cat > /data/home/.claude/skills/ha-backup/SKILL.md << 'EOF'
----
-name: ha-backup
-description: Create a backup of the HA configuration
----
-
-Create a timestamped backup of /homeassistant to /share/backups/
-using tar. Name it ha-config-YYYY-MM-DD.tar.gz
-EOF
-```
-
-Use it with `/ha-backup` in Claude Code.
-
-### Plugins
-
-Install plugins from the Claude Code marketplace or local path:
-
-```bash
-claude plugin install <name>
-claude plugin list
-claude plugin update <name>
-```
-
----
-
-## Updating Claude Code
-
-Claude Code updates are **independent** of add-on version updates.
-
-| Method | When it runs |
-|--------|-------------|
-| Auto-update on startup | Every add-on start (if Auto-Update is enabled) |
-| Manual: `claude update` | On demand from the terminal |
-| Add-on update | Rebuilds container with latest binary (auto-synced to persistent storage if newer) |
-
-The Claude Code binary is stored in persistent storage (`/data/home/.local/`) so updates survive add-on restarts without re-downloading from scratch.
-
-On every startup, the add-on compares the Claude version bundled in the container image with the version in persistent storage:
-- If the **image** has a newer binary (e.g. after an add-on update), it is synced to persistent storage.
-- If the **persistent** binary is newer (e.g. after `claude update` ran previously), it is kept.
-
-This prevents the "version rolled back after restart/update" behavior and means you do not need to run `claude update` manually after each add-on upgrade.
-
----
-
-## File Locations
-
-| Purpose | Path |
-|---------|------|
-| HA configuration | `/homeassistant/` |
-| Claude Code binary | `/data/home/.local/bin/claude` |
-| Claude Code config | `/data/home/.claude/` |
-| Skills | `/data/home/.claude/skills/` |
-| HA context (CLAUDE.md) | `/homeassistant/CLAUDE.md` and `/data/workdir/CLAUDE.md` |
-| MCP config | `/homeassistant/.mcp.json` |
-| Shared storage | `/share/` |
-| Media | `/media/` |
-
----
-
-## Authentication Without API Key
-
-If you have a Claude.ai **Pro/Max/Teams** subscription, you have two options:
-
-### A. Generate an OAuth token on another machine (recommended)
-
-1. On your laptop/desktop: `curl -fsSL https://claude.ai/install.sh | bash`
-2. Run `claude setup-token` — complete the browser OAuth flow
-3. Copy the printed token
-4. Paste it into the **OAuth Token** field in the add-on Configuration
-5. Restart the add-on — done, no terminal interaction needed
-
-### B. Interactive login inside the add-on terminal
-
-1. Leave both **API Key** and **OAuth Token** fields empty
-2. Start the add-on
-3. Open the sidebar terminal (or better: click **OPEN WEB UI** to open in a new tab — clipboard works better outside the iframe)
-4. Run: `claude`
-5. Claude will display a URL — open it in a browser, complete login
-6. If prompted, paste the returned code back into the terminal
-7. Your session is saved to `/data/home/.claude/` and persists across restarts
-
-**Tips for pasting into the ingress terminal:**
-- Use `Ctrl+Shift+V` (Linux/Windows) or `Cmd+V` (macOS) — xterm.js binds paste to the shifted shortcut
-- Select text with the mouse to auto-copy (add-on enables `copyOnSelect`)
-- If paste still fails, open the add-on in a new browser tab via the **OPEN WEB UI** button on the Info page — iframe clipboard restrictions don't apply there
-
----
+Everything that matters lives in `/data` and survives restarts and updates: login and sessions (`/data/home/.claude`), the CLI binary (`/data/home/.local`), uploads (`/data/uploads`). Resume the last conversation with `claude --resume` or the `c` option in the exit menu.
 
 ## Troubleshooting
 
-### Blank screen / terminal not loading
-- Check add-on logs (**Info** tab → **Log**)
-- Try restarting the add-on
-- Check that the add-on is fully started (green indicator)
-
-### "No API key set" warning in logs
-Normal if using OAuth login. Run `claude auth login` in the terminal.
-
-### Slow first startup
-Normal — the first start copies the Claude Code binary to persistent storage and may check for updates. Subsequent starts are fast.
-
-### Can't paste into the terminal / OAuth URL has broken newlines
-Home Assistant shows the add-on inside an iframe, which some browsers restrict for clipboard access. Workarounds:
-
-- **Easiest fix**: don't paste at all — use the **OAuth Token** config option instead. Generate a token on another machine with `claude setup-token`, paste it into the add-on config, restart. No terminal paste needed.
-- Click **OPEN WEB UI** on the add-on's Info page to open the terminal in a standalone tab. Clipboard restrictions don't apply outside the HA iframe.
-- Use `Ctrl+Shift+V` (Linux/Windows) or `Cmd+V` (macOS) for paste — xterm.js binds paste to the shifted shortcut.
-- For copying: select text with the mouse and it's copied automatically (`copyOnSelect` is enabled).
-
-### Session lost after add-on restart
-The tmux session itself is recreated on restart (so your terminal scrollback is gone), but Claude's conversation history and OAuth login persist in `/data/home/.claude/`. Use `claude --resume` to pick up the last conversation.
-
-If you are being prompted to re-run `claude auth login` after every restart, ensure you are on add-on version **0.2.0 or newer** — earlier versions had a bug where auth tokens were stored in an ephemeral location.
-
-### Claude Code update fails
-Non-critical — logged as a warning. Check your internet connection. Try `claude update` manually in the terminal.
-
-### Permission denied errors
-If Claude is blocked from editing files, check that `homeassistant_config` is mapped with `read_only: false` in the add-on config. This is the default — if you modified it, restore it.
-
-### MCP server not found
-Run the install command manually in the terminal first to check for errors:
-```bash
-npx -y @modelcontextprotocol/server-github
-```
-
----
-
-## Security
-
-- **API key**: Stored encrypted by HA Supervisor. Never visible in logs or git.
-- **SUPERVISOR_TOKEN**: Injected automatically at runtime by HA. Not stored anywhere.
-- **Network**: ttyd web terminal binds to the internal HA network only — not exposed externally. Access is gated by HA authentication.
-- **bypass_permissions**: Grants Claude Code unrestricted action. Only enable if you understand the implications and trust the AI's judgment.
-- **Container isolation**: This add-on runs in an isolated Docker container with no special Linux capabilities beyond what's needed.
-
----
+- **Blank screen** — check the add-on log; restart the add-on.
+- **401 / frozen after long idle** — the ingress session expires after 15 minutes without traffic; the console reloads automatically, or refresh the page.
+- **Copy does not reach the clipboard** — expected on plain-HTTP setups and in the Android app: use the 📥 tray (one tap) or serve HA over HTTPS.
+- **`bypass_permissions` refuses to start** — the add-on sets `IS_SANDBOX=1` automatically; if a CLI update ever breaks this, run `claude install <previous-version> --force` in a shell tab and report an issue.
 
 ## Support
 
-- GitHub Issues: [github.com/LayerTM/ClaudeInHA](https://github.com/LayerTM/ClaudeInHA/issues)
-- Claude Code documentation: [docs.anthropic.com/claude-code](https://docs.anthropic.com/claude-code)
+Issues: [github.com/LayerTM/ClaudeInHA](https://github.com/LayerTM/ClaudeInHA/issues)

@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.0.0] — 2026-07-02
+
+Complete rework: the ttyd terminal is replaced by a purpose-built web console
+(Node.js + xterm.js 6) designed for HA ingress, plain-HTTP setups, and mobile
+companion apps.
+
+### Added
+- **Tabs**: the Claude session plus any number of shell tabs. Exiting Claude
+  opens a restart menu (restart / shell / update / resume) instead of killing
+  the session.
+- **Clipboard that works everywhere**: selection copies automatically
+  (Shift+drag); the ⧉ menu copies the visible screen, recent output, or full
+  history straight from tmux without selecting; OSC 52 copies from Claude
+  itself are captured. When the browser blocks clipboard access (plain HTTP,
+  Android WebView), copies land in a 📥 tray for one-tap manual copy.
+- **File and image attachments**: drag & drop, clipboard image paste, and a
+  file picker (camera/gallery on phones). Files are streamed to
+  `/data/uploads` and the path is typed into Claude's prompt. Retention is
+  configurable (`upload_retention_days`).
+- **In-place CLI updates**: ⬆ toolbar button or `update-claude [version]` in
+  any shell tab; only the Claude session restarts, never the add-on.
+- **Mobile key bar** (Esc, Tab, ⇧Tab, ^C, arrows, /, @) and a full-screen
+  kiosk toggle that hides the HA chrome.
+- **Remote Control option** (`remote_control`): runs `claude remote-control`
+  in an extra tab so the official Claude mobile app can drive the session.
+- Automatic reconnect with session keep-alive; expired ingress sessions
+  reload transparently.
+
+### Changed
+- Base image: Alpine → Debian 13 (eliminates musl-related breakage of the
+  native Claude installer; better MCP/npm compatibility).
+- `ingress_port` is now a fixed 8099; uploads stream through ingress
+  (`ingress_stream` already enabled).
+- tmux now runs with `allow-passthrough on` and `set-clipboard on` so
+  Claude's own copy path reaches the browser.
+
+### Removed
+- ttyd (and its bundled xterm.js 5.x) — replaced by the built-in console.
+
 ## [0.2.5] — 2026-04-14
 
 ### Changed

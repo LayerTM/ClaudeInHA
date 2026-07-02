@@ -6,55 +6,71 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV TERM=xterm-256color
 ENV LANG=C.UTF-8
 
-# System packages
-# - bash curl git jq: essentials
-# - libgcc libstdc++ ncurses: required by Claude Code native binary on Alpine (musl)
-# - nodejs npm: MCP servers, plugins, skills that use npm packages
-# - openssh-client: git over SSH
-# - python3 py3-pip: Python-based MCP servers
-# - ripgrep: Claude Code search (USE_BUILTIN_RIPGREP=0 uses this instead of bundled)
-# - tmux: session persistence (browser disconnect doesn't kill Claude session)
-# - ttyd: web terminal server (same as hassio-addons/addon-ssh)
-RUN apk add --no-cache \
-    bash \
-    curl \
-    git \
-    jq \
-    libgcc \
-    libstdc++ \
-    ncurses \
-    nodejs \
-    npm \
-    openssh-client \
-    python3 \
-    py3-pip \
-    ripgrep \
-    tmux \
-    ttyd
+# System packages:
+# - build-essential python3: node-pty native build + npm packages with gyp deps
+# - tmux: session persistence across browser disconnects
+# - ripgrep: Claude Code search (USE_BUILTIN_RIPGREP=0)
+# - remaining: general CLI tooling for Claude and MCP servers
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        gnupg \
+        jq \
+        less \
+        nano \
+        openssh-client \
+        procps \
+        python3 \
+        python3-pip \
+        python3-venv \
+        ripgrep \
+        tmux \
+        unzip \
+        xz-utils \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code native binary (supports linux-x64-musl and linux-arm64-musl)
-# Installed to /root/.local/bin/claude — will be copied to persistent /data/home at runtime.
-# HOME is set inline for this RUN only (NOT as ENV) so s6's container_environment
-# does not bake HOME=/root in. If it did, `with-contenv` in service scripts would
-# override our HOME=/data/home and Claude would store auth/sessions in /root/.claude/
-# (ephemeral) instead of /data/home/.claude/ (persistent).
+# Node.js LTS from official dist tarballs (deterministic, arch-aware)
+ARG NODE_VERSION=24.18.0
+RUN arch="$(dpkg --print-architecture)" \
+    && case "${arch}" in \
+         amd64) node_arch="x64" ;; \
+         arm64) node_arch="arm64" ;; \
+         *) echo "Unsupported architecture: ${arch}" && exit 1 ;; \
+       esac \
+    && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" \
+       | tar -xJ -C /usr/local --strip-components=1 --no-same-owner \
+    && node --version && npm --version
+
+# Claude Code native binary.
+# Installed to /root/.local/bin/claude — copied to persistent /data/home at runtime.
+# HOME is set inline for this RUN only (not as ENV) so s6's container_environment
+# does not bake HOME=/root in and override the persistent HOME=/data/home.
 RUN HOME=/root curl -fsSL https://claude.ai/install.sh | bash
 
 ENV PATH="/root/.local/bin:${PATH}"
 ENV USE_BUILTIN_RIPGREP=0
 
-# Tell Claude Code we're inside a container sandbox.
-# Recent Claude Code versions refuse --dangerously-skip-permissions under root
-# unless this is set. HA add-ons always run as root in an isolated container.
+# Claude Code refuses --dangerously-skip-permissions under root unless it
+# detects a sandbox. HA add-ons run as root in an isolated container.
 ENV IS_SANDBOX=1
 
-# Copy rootfs (S6 services, scripts, default CLAUDE.md)
+# Web console app
+COPY app /opt/claude-console
+RUN cd /opt/claude-console \
+    && npm ci --omit=dev \
+    && npm cache clean --force
+
+# S6 services, scripts, default CLAUDE.md
 COPY rootfs /
 
-# Make all scripts executable
-RUN find /etc/s6-overlay/s6-rc.d -name "run" -exec chmod +x {} \; \
-    && find /etc/s6-overlay/s6-rc.d -name "finish" -exec chmod +x {} \; \
-    && chmod +x /usr/local/bin/start-claude
+RUN chmod +x /etc/s6-overlay/s6-rc.d/claude-code/run \
+             /etc/s6-overlay/s6-rc.d/claude-code/finish \
+             /usr/local/bin/start-claude \
+             /usr/local/bin/update-claude
 
 LABEL \
     io.hass.name="Claude Code" \

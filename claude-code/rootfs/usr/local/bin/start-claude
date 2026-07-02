@@ -1,89 +1,64 @@
 #!/command/with-contenv bashio
 # ==============================================================================
-# start-claude: wrapper script launched by tmux inside ttyd
-# Reads add-on options and starts Claude Code with appropriate flags.
+# start-claude: runs inside the "claude" tmux window.
+# Launches Claude Code with configured flags; on exit shows a small menu so
+# the session survives (restart / shell / update) instead of dying.
 # ==============================================================================
 
-# Force HOME to the persistent location. `with-contenv` at the top of this
-# script loads vars from s6's container_environment; if HOME=/root is there,
-# Claude would store auth tokens and sessions in /root/.claude/ (ephemeral,
-# wiped on every container restart), forcing the user to re-login each time.
-# Pinning HOME here ensures `claude auth login`, `claude --resume`, and all
-# session state land in /data/home/.claude/ (persistent across restarts).
+# Pin HOME to persistent storage: with-contenv may bring HOME=/root from the
+# container environment, which would send auth tokens and sessions to an
+# ephemeral location.
 export HOME=/data/home
 export PATH="/data/home/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-# Set working directory: prefer /homeassistant (HA config), fallback to /data/workdir
+# Working directory: prefer HA config, fall back to add-on storage
 if [ -d /homeassistant ] && [ -w /homeassistant ]; then
     cd /homeassistant
 else
     cd /data/workdir
 fi
 
-# Print welcome banner
-cat << 'EOF'
-╔══════════════════════════════════════════════════════════════════╗
-║              Claude Code — Home Assistant Add-on                 ║
-║                                                                  ║
-║  Paths:  /homeassistant  /share  /media  /ssl  /backup           ║
-║  HA API: http://supervisor/core/api   (auth: $SUPERVISOR_TOKEN)  ║
-║                                                                  ║
-║  Mouse / clipboard:                                              ║
-║    • Wheel:  scrolls terminal history (tmux, 50k lines)          ║
-║    • Copy:   Shift+drag to select, then Ctrl+Shift+C             ║
-║    • Paste:  click in the terminal, then Ctrl+Shift+V            ║
-║    • Why Shift? Plain mouse goes to tmux / Claude (mouse         ║
-║      tracking); Shift bypasses for native browser selection      ║
-║    • Shift+right-click — browser context menu (Copy / Paste)     ║
-║    • URLs in output are clickable                                ║
-║    • Stuck? "OPEN WEB UI" on the add-on Info page opens this     ║
-║      terminal in its own browser tab (bypasses the HA iframe)    ║
-╚══════════════════════════════════════════════════════════════════╝
-EOF
+build_default_args() {
+    claude_args=()
+    if bashio::config.true 'bypass_permissions'; then
+        claude_args+=(--dangerously-skip-permissions)
+    fi
+    while IFS= read -r arg; do
+        [ -n "${arg}" ] && claude_args+=("${arg}")
+    done < <(bashio::config 'extra_args')
+}
 
-# If the user has no credentials yet, surface the auth guidance up front so
-# the login step isn't a guessing game. Claude Code stores tokens in
-# ~/.claude/.credentials.json after a successful login.
-if [ -z "${ANTHROPIC_API_KEY:-}" ] \
-   && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] \
-   && [ ! -f "${HOME}/.claude/.credentials.json" ]; then
-    cat << 'EOF'
+run_claude() {
+    local launch_command
+    launch_command=$(bashio::config 'launch_command')
+    if bashio::var.has_value "${launch_command}"; then
+        bash -c "${launch_command}"
+    else
+        local claude_args
+        build_default_args
+        claude "${claude_args[@]}"
+    fi
+}
 
-First-time login — pick one:
-  1. Easiest: generate a token on another machine with a regular browser,
-     then paste it into the add-on config field "OAuth Token" and restart.
-     On that machine:   claude setup-token
-  2. Or run  claude  below — a URL will appear (clickable). Open it,
-     complete login, copy the code back and paste with Ctrl+Shift+V.
-     Tip: if pasting into the sidebar fails, open the add-on via the
-     "OPEN WEB UI" button to escape the HA iframe.
+show_menu() {
+    local v
+    v=$(claude --version 2>/dev/null | awk '{print $1}')
+    echo ""
+    echo "Claude exited. [Claude Code ${v:-unknown}]"
+    echo "  r) restart Claude          s) drop to shell"
+    echo "  u) update Claude, restart  c) resume last conversation"
+    echo ""
+    read -r -n 1 -p "> " choice
+    echo ""
+    case "${choice}" in
+        s|S) bash ;;
+        u|U) update-claude && run_claude ;;
+        c|C) claude --continue ;;
+        *)   : ;;
+    esac
+}
 
-EOF
-fi
-
-# --- Full launch override ---
-# If `launch_command` is set in the add-on config, run it verbatim instead of
-# the default `claude` invocation. This is the escape hatch for power users
-# who need non-default flags, wrappers, or entirely different commands.
-launch_command=$(bashio::config 'launch_command')
-if bashio::var.has_value "${launch_command}"; then
-    bashio::log.info "Using custom launch_command"
-    exec bash -c "${launch_command}"
-fi
-
-# --- Default launch: assemble claude args from options ---
-declare -a claude_args
-
-if bashio::config.true 'bypass_permissions'; then
-    claude_args+=(--dangerously-skip-permissions)
-    bashio::log.info "Claude Code running with --dangerously-skip-permissions"
-fi
-
-# Append any user-provided extra_args (one entry per arg).
-# bashio::config outputs array elements one per line, so `while read` preserves
-# values that contain spaces (unlike `for x in $(...)` which word-splits).
-while IFS= read -r arg; do
-    [ -n "${arg}" ] && claude_args+=("${arg}")
-done < <(bashio::config 'extra_args')
-
-exec claude "${claude_args[@]}"
+while true; do
+    run_claude
+    show_menu
+done

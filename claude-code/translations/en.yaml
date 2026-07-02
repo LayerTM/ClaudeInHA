@@ -69,3 +69,16 @@ configuration:
       wrapping claude in another tool or running a different binary.
       Example: claude --resume --dangerously-skip-permissions
       Leave empty to use the default launch behavior.
+  upload_retention_days:
+    name: Uploaded File Retention (days)
+    description: >-
+      Files attached through the web console are stored in /data/uploads.
+      Files older than this many days are deleted automatically.
+      Set 0 to keep uploads forever.
+  remote_control:
+    name: Remote Control (Claude mobile app)
+    description: >-
+      Runs 'claude remote-control' in an extra tab so the official Claude
+      mobile app / claude.ai can drive this machine's session. Requires a
+      full '/login' inside the terminal (Pro/Max/Team subscription) — an
+      OAuth token from 'claude setup-token' or an API key is not enough.
