@@ -70,6 +70,7 @@ COPY rootfs /
 RUN chmod +x /etc/s6-overlay/s6-rc.d/claude-code/run \
              /etc/s6-overlay/s6-rc.d/claude-code/finish \
              /usr/local/bin/start-claude \
+             /usr/local/bin/start-remote \
              /usr/local/bin/update-claude
 
 LABEL \

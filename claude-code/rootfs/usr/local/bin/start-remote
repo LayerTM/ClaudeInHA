@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# start-remote: runs inside the "remote" tmux window when remote_control is on.
+# Keeps `claude remote-control` alive and, when it exits (e.g. not logged in),
+# shows guidance and waits — so the tab never silently vanishes.
+# ==============================================================================
+
+export HOME=/data/home
+export PATH="/data/home/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+cd /data/workdir 2>/dev/null || cd /
+
+while true; do
+    claude remote-control
+    echo ""
+    echo "Remote Control stopped. It needs a full claude.ai login"
+    echo "(Pro/Max/Team) — an API key or setup-token is not enough."
+    echo "Log in from the Claude tab (run 'claude', then /login), then:"
+    echo "  r) retry Remote Control    s) drop to shell"
+    echo ""
+    read -r -n 1 -p "> " choice
+    echo ""
+    case "${choice}" in
+        s|S) bash ;;
+        *)   : ;;
+    esac
+done

@@ -91,8 +91,9 @@ async function main() {
 
   if (process.env.REMOTE_CONTROL === 'true') {
     // Official Anthropic Remote Control: runs in its own tab so the session
-    // URL and QR code render in a real terminal. Requires a full-scope /login.
-    tmux.ensureWindow('remote', ['claude', 'remote-control']).catch((err) => {
+    // URL and QR code render in a real terminal. Requires a full-scope /login;
+    // the wrapper keeps the tab alive with guidance if that's missing.
+    tmux.ensureWindow('remote', ['/usr/local/bin/start-remote']).catch((err) => {
       console.error('remote-control window failed:', err.stderr || err.message);
     });
   }
