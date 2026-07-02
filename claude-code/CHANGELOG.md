@@ -71,7 +71,7 @@ path was always present, just unused.
 ### Fixed
 - In-terminal authentication via `claude` (the classic login flow) is usable
   again in the HA sidebar. The `-t copyOnSelect=true` / `cursorBlink=true` /
-  `rightClickSelectsWord=false` / `macOptionIsMeta=true` options I added in
+  `rightClickSelectsWord=false` / `macOptionIsMeta=true` options added in
   v0.2.1 were either silently ignored (there is no `copyOnSelect` in ttyd or
   xterm.js) or interfered with how the HA ingress iframe proxies mouse
   events and clipboard permissions. Combined with the bundled
@@ -96,7 +96,7 @@ path was always present, just unused.
   shipped `set -g mouse on` in the bundled tmux config, which made tmux
   intercept every mouse event before xterm.js could see it. The result
   was that drag-to-select went into tmux's internal copy-mode buffer and
-  never reached the browser clipboard — the OSC 52 forwarding I tried
+  never reached the browser clipboard — the OSC 52 forwarding attempt
   also had double-escaped backslashes in `terminal-overrides`, so even
   that path was broken. The fix is simpler: leave tmux's mouse off and
   let xterm.js handle selection natively. With ttyd's `copyOnSelect=true`
