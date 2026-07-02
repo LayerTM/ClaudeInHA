@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.4] — 2026-07-02
+
+### Fixed
+- **Terminal not filling the panel right after the add-on (re)starts.** On the
+  first render — while the HA panel iframe is still animating to full size and
+  the WebSocket is reconnecting — `fit()` could run against a not-yet-sized
+  container and stick the terminal at its 80x24 default. Fitting is now guarded
+  against zero-size, re-run on several settle timers and on `body` resize, so
+  the terminal reliably grows to fill the panel once layout settles.
+
 ## [1.1.3] — 2026-07-02
 
 ### Fixed

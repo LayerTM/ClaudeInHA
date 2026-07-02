@@ -186,7 +186,7 @@
   } catch {
     /* WebGL unavailable (old WebView) — DOM renderer is the default fallback */
   }
-  fit.fit();
+  if (els.terminal.clientWidth > 1 && els.terminal.clientHeight > 1) fit.fit();
 
   // OSC 52: Claude's own copy path. Never reject — swallow so nothing leaks
   // as text; deliver via cascade (clipboard on HTTPS, tray on HTTP).
@@ -233,11 +233,24 @@
     let raf = 0;
     return () => {
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => fit.fit());
+      raf = requestAnimationFrame(() => {
+        // Fitting a zero-size element sticks the terminal at its 80x24 default.
+        // Inside the HA panel the iframe/container can still be sizing (panel
+        // transition) when boot runs, so skip until it has real dimensions;
+        // the delayed refits and observers below re-run once it settles.
+        if (els.terminal.clientWidth > 1 && els.terminal.clientHeight > 1) {
+          try { fit.fit(); } catch { /* renderer not ready yet */ }
+        }
+      });
     };
   })();
   window.addEventListener('resize', refit);
+  window.addEventListener('load', refit);
   new ResizeObserver(refit).observe(els.terminal);
+  new ResizeObserver(refit).observe(document.body);
+  // Catch late layout in dynamically-sized/animated hosts (the HA panel opens
+  // with a transition, so the container reaches full size after first paint).
+  [60, 200, 500, 1000, 2000].forEach((ms) => setTimeout(refit, ms));
 
   function setFontSize(delta) {
     const size = Math.min(28, Math.max(8, term.options.fontSize + delta));
