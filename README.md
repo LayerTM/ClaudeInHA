@@ -8,6 +8,8 @@ Anthropic's [Claude Code](https://code.claude.com/docs) CLI, embedded in Home As
 
 [![Open your Home Assistant instance and show the add-on repository dialog.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FLayerTM%2FClaudeInHA)
 
+[![lint](https://github.com/LayerTM/ClaudeInHA/actions/workflows/lint.yml/badge.svg)](https://github.com/LayerTM/ClaudeInHA/actions/workflows/lint.yml)
+[![secret-scan](https://github.com/LayerTM/ClaudeInHA/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/LayerTM/ClaudeInHA/actions/workflows/secret-scan.yml)
 ![Version](https://img.shields.io/badge/version-1.1.0-D97757)
 ![Architectures](https://img.shields.io/badge/arch-amd64%20%7C%20aarch64-2ea043)
 ![License](https://img.shields.io/badge/license-MIT-blue)
