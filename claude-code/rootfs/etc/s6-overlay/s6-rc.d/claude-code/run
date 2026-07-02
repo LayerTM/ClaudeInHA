@@ -86,6 +86,26 @@ if ! bashio::var.has_value "${api_key}" && ! bashio::var.has_value "${oauth_toke
     bashio::log.notice "No api_key or oauth_token set — log in from the Claude tab (run 'claude' and follow the URL) or use a token from 'claude setup-token'"
 fi
 
+# --- Home Assistant access token (LLAT) ---
+# Persists across add-on updates (stored by the Supervisor). Feeds the browser
+# dashboard screenshots, hass-cli, hass-mcp, and direct WS/REST access as the
+# user. Exported under the several names those tools expect.
+# Read straight from options.json (no Supervisor API dependency).
+ha_token=$(jq -r '.ha_token // ""' /data/options.json 2>/dev/null || echo "")
+export HA_URL="http://homeassistant:8123"
+if [ -n "${ha_token}" ]; then
+    export HA_TOKEN="${ha_token}"
+    export HASS_TOKEN="${ha_token}"
+    export HASS_SERVER="${HA_URL}"
+    bashio::log.info "HA Token configured (dashboard screenshots + HA tools enabled)"
+fi
+
+# `ha` (Supervisor CLI) reads SUPERVISOR_API_TOKEN, but the runtime injects
+# SUPERVISOR_TOKEN — bridge the two so `ha ...` works with zero prep.
+if [ -n "${SUPERVISOR_TOKEN:-}" ]; then
+    export SUPERVISOR_API_TOKEN="${SUPERVISOR_TOKEN}"
+fi
+
 # --- Model override ---
 model=$(bashio::config 'model')
 if bashio::var.has_value "${model}"; then
@@ -141,7 +161,18 @@ while IFS= read -r cmd; do
         || bashio::log.warning "Init command failed: ${cmd%% *}"
 done < <(bashio::config 'init_commands')
 
-bashio::log.info "Initialization complete"
+# --- Provision bundled + user-declared extras (skills, plugins, MCP) ---
+# Runs in the background so it never delays the console. Idempotent: only
+# missing pieces install, and it persists in /data across restarts/updates.
+{
+    CC_USER_MARKETPLACES="$(jq -r '(.marketplaces // [])[]' /data/options.json 2>/dev/null)" \
+    CC_USER_PLUGINS="$(jq -r '(.plugins // [])[]' /data/options.json 2>/dev/null)" \
+    CC_SKILLS_GIT="$(jq -r '.skills_git // ""' /data/options.json 2>/dev/null)" \
+    HA_TOKEN="${HA_TOKEN:-}" HA_URL="${HA_URL}" \
+    /usr/local/bin/provision-extras
+} >/data/provision.log 2>&1 &
+
+bashio::log.info "Initialization complete (provisioning extras in background — see /data/provision.log)"
 
 # ==============================
 # Phase 2: Start web console

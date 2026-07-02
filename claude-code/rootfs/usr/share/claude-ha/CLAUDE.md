@@ -221,6 +221,25 @@ claude mcp add my-server -- npx -y @scope/mcp-server
 - **Skills** (slash commands): place in `/data/home/.claude/skills/<skill-name>/SKILL.md`
 - **Plugins**: `claude plugin install <name>`
 - **List current skills**: available as `/skill-name` in Claude Code
+- This add-on ships a **Home Assistant skill pack** (`/ha-config-edit`, `/ha-automation`, `/ha-debug`, `/ha-entity`, `/ha-screenshot`, `/ha-backup`, `/ha-addon`, `/ha-onboard`) plus general plugins (superpowers, frontend-design, playwright, …). Everything installed lives in `/data/home/.claude` and persists across add-on updates.
+
+---
+
+## Bundled tools (already installed — no setup)
+
+| Tool | Use |
+|---|---|
+| `ha` | Supervisor CLI: `ha core check` (validate config), `ha core reload`, `ha core info`, `ha addons`, `ha backups new --name X` |
+| `ha-check` | Validate the HA configuration (wraps `ha core check`) — run before any restart |
+| `ha-state [entity\|domain.]` | Query entity state(s): `ha-state`, `ha-state light.kitchen`, `ha-state light.` |
+| `ha-shot <path> [out.png] [WxH]` | Screenshot a Lovelace dashboard to PNG, then **read the PNG** to verify. Needs the HA Token option set. e.g. `ha-shot /lovelace/0 /tmp/d.png 1280x800` |
+| `yq` | Edit YAML config files programmatically (2-space output, HA-safe) |
+| `hass-cli` | Entity/service queries via the Core API (works when the HA Token is set) |
+| Playwright MCP | Browser automation tools (`browser_navigate`, `browser_take_screenshot`, `browser_snapshot`); Chromium is preinstalled |
+
+**Visually verifying dashboards/UI:** use `ha-shot` (fast, static) or the Playwright MCP `browser_navigate` → `http://homeassistant:8123<path>` + `browser_take_screenshot` (interactive). Always **read the resulting PNG** — a screenshot you don't look at proves nothing.
+
+**HA Token:** if the add-on's *HA Token* option is set, `HA_TOKEN` / `HA_URL` (`http://homeassistant:8123`) / `HASS_TOKEN` / `HASS_SERVER` are exported, enabling `ha-shot`, `hass-cli`, and the `hass-mcp` MCP server. Without it, use the Supervisor-proxied API with `$SUPERVISOR_TOKEN` (above) for states/services — that always works.
 
 ---
 

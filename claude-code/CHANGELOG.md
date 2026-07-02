@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.1.0] — 2026-07-02
+
+Turns the add-on into a zero-prep AI workstation for Home Assistant: the tools
+Claude needs are preinstalled and pre-wired, so a fresh session is productive
+immediately.
+
+### Added
+- **Browser testing built in.** Chromium (+ CJK/emoji fonts) is preinstalled;
+  `ha-shot <dashboard-path> [out.png] [WxH]` captures an authenticated Lovelace
+  dashboard to PNG, and a Playwright MCP server (`browser_navigate`,
+  `browser_take_screenshot`, …) is registered for interactive browser work —
+  both driving the system Chromium, no per-session install.
+- **HA Token option (`ha_token`).** A Long-Lived Access Token, stored by the
+  Supervisor so it persists across updates. When set it enables dashboard
+  screenshots, `hass-cli`, the `hass-mcp` MCP server, and WebSocket/REST access
+  as the user. Optional — everything else works without it.
+- **Bundled Home Assistant skill pack**: `/ha-config-edit`, `/ha-automation`,
+  `/ha-debug`, `/ha-entity`, `/ha-screenshot`, `/ha-backup`, `/ha-addon`,
+  `/ha-onboard` — installed into the persistent config on first start.
+- **Bundled general plugins** (Anthropic marketplaces): superpowers,
+  frontend-design, skill-creator, security-guidance, context7, code-review,
+  code-simplifier, feature-dev, commit-commands, claude-md-management, hookify,
+  document-skills. Installed once and kept across updates.
+- **Declarative extras**: `plugins`, `marketplaces`, and `skills_git` options
+  to add your own plugins/marketplaces/skills on top of the bundled pack,
+  reconciled on every start.
+- **Preinstalled CLIs**: `ha` (Supervisor CLI), `yq` (YAML), `hass-cli`, plus
+  `ha-check` and `ha-state` helpers, all documented in the built-in `CLAUDE.md`.
+
+### Notes
+- Provisioning runs in the background and is idempotent — it never blocks the
+  console and only installs what is missing.
+- The image is larger than 1.0.0 (bundled Chromium and tools).
+
 ## [1.0.0] — 2026-07-02
 
 Complete rework: the ttyd terminal is replaced by a purpose-built web console

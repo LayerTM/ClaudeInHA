@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Query Home Assistant entity state(s).
+#   ha-state                 → list all entity_ids
+#   ha-state <entity_id>     → full state JSON for one entity
+#   ha-state <domain.>       → all entities in a domain (e.g. ha-state light.)
+set -o pipefail
+API="http://supervisor/core/api"
+AUTH="Authorization: Bearer ${SUPERVISOR_TOKEN}"
+
+arg="${1:-}"
+if [ -z "${arg}" ]; then
+    curl -sS -H "${AUTH}" "${API}/states" | jq -r '.[].entity_id' | sort
+elif [[ "${arg}" == *. ]]; then
+    # domain mode: "light." → all light.* entities
+    domain="${arg%.}"
+    curl -sS -H "${AUTH}" "${API}/states" \
+        | jq --arg d "${domain}" '[.[] | select(.entity_id | startswith($d + "."))]'
+else
+    curl -sS -H "${AUTH}" "${API}/states/${arg}" | jq .
+fi
