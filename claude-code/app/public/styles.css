@@ -1,3 +1,21 @@
+/* Bundled terminal font (fetched into public/fonts at build time). Relative
+   URLs so they resolve under the HA ingress path. font-display: block avoids a
+   fallback-metrics flash; the terminal is also held hidden until it loads. */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("fonts/jetbrains-mono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url("fonts/jetbrains-mono-700.woff2") format("woff2");
+}
+
 :root {
   --bg: #1c1c1e;
   --bg-raised: #2a2a2d;
@@ -158,6 +176,10 @@ body {
   padding: 2px 0 0 4px;
 }
 #terminal, #terminal .xterm { height: 100%; }
+
+/* Held until the terminal is fitted and the webfont has settled (app.js), so
+   the 80x24 default and any font swap never flash on screen. */
+body.booting #term-wrap { visibility: hidden; }
 
 #drop-hint {
   position: absolute;

@@ -12,10 +12,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Claude Code">
+  <link rel="preload" href="fonts/jetbrains-mono-400.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/jetbrains-mono-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="vendor/xterm.css">
   <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="booting">
   <header id="toolbar">
     <nav id="tabs" aria-label="Sessions"></nav>
     <button id="tab-add" class="btn" title="New shell tab">+</button>

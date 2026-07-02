@@ -156,15 +156,51 @@
   const savedFont = Number(localStorage.getItem('cc-font-size')) || 14;
   const term = new XTerminal({
     fontSize: savedFont,
-    fontFamily: 'ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace',
-    scrollback: 10000,
+    fontFamily: '"JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace',
+    fontWeight: 400,
+    fontWeightBold: 700,
+    // lineHeight 1.0 + letterSpacing 0 keep the TUI's box-drawing seamless;
+    // WebGL customGlyphs then draws box/block/powerline glyphs edge-to-edge.
+    lineHeight: 1.0,
+    letterSpacing: 0,
     cursorBlink: true,
+    cursorStyle: 'block',
+    cursorInactiveStyle: 'outline',
+    scrollback: 10000,
+    scrollSensitivity: 1,
+    fastScrollSensitivity: 5,
+    smoothScrollDuration: 100,
+    minimumContrastRatio: 4.5,
+    drawBoldTextInBrightColors: true,
+    allowTransparency: false,
+    macOptionIsMeta: true,
     allowProposedApi: true,
     theme: {
       background: '#1c1c1e',
-      foreground: '#e4e4e7',
+      foreground: '#e4e0d8',
       cursor: '#d97757',
-      selectionBackground: '#d9775766',
+      cursorAccent: '#1c1c1e',
+      selectionBackground: '#d9775747',
+      selectionInactiveBackground: '#d9775724',
+      black: '#2c2c30',
+      red: '#e5817b',
+      green: '#a3c98d',
+      yellow: '#e6c07b',
+      blue: '#82a9c9',
+      magenta: '#c39ac9',
+      cyan: '#7fbfb3',
+      white: '#d7d3cb',
+      brightBlack: '#6f6f75',
+      brightRed: '#ef9a8f',
+      brightGreen: '#b9d99a',
+      brightYellow: '#f0d199',
+      brightBlue: '#9dc0dd',
+      brightMagenta: '#d4b0d8',
+      brightCyan: '#9ad4c8',
+      brightWhite: '#f2eee6',
+      scrollbarSliderBackground: '#ffffff14',
+      scrollbarSliderHoverBackground: '#ffffff26',
+      scrollbarSliderActiveBackground: '#ffffff33',
     },
   });
   const fit = new FitAddon();
@@ -186,7 +222,6 @@
   } catch {
     /* WebGL unavailable (old WebView) — DOM renderer is the default fallback */
   }
-  if (els.terminal.clientWidth > 1 && els.terminal.clientHeight > 1) fit.fit();
 
   // OSC 52: Claude's own copy path. Never reject — swallow so nothing leaks
   // as text; deliver via cascade (clipboard on HTTPS, tray on HTTP).
@@ -229,34 +264,70 @@
   });
   term.onResize(({ cols, rows }) => send({ t: 'resize', cols, rows }));
 
-  const refit = (() => {
+  // Sizing & reveal — instant, reactive, no timers. The terminal stays hidden
+  // (body.booting) until it has both (a) been fitted to a real-sized container
+  // and (b) had its webfont settle, so neither the 80x24 default nor a font
+  // swap ever flashes. A ResizeObserver then drives every later fit, so panel,
+  // window and keybar resizes track in the same frame.
+  let sizedOnce = false;
+  let fontSettled = false;
+  function reveal() {
+    if (sizedOnce && fontSettled) document.body.classList.remove('booting');
+  }
+  function fitToContainer() {
+    if (els.terminal.clientWidth <= 1 || els.terminal.clientHeight <= 1) return false;
+    try { fit.fit(); } catch { return false; }
+    sizedOnce = true;
+    reveal();
+    return true;
+  }
+  const scheduleFit = (() => {
     let raf = 0;
     return () => {
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        // Fitting a zero-size element sticks the terminal at its 80x24 default.
-        // Inside the HA panel the iframe/container can still be sizing (panel
-        // transition) when boot runs, so skip until it has real dimensions;
-        // the delayed refits and observers below re-run once it settles.
-        if (els.terminal.clientWidth > 1 && els.terminal.clientHeight > 1) {
-          try { fit.fit(); } catch { /* renderer not ready yet */ }
-        }
-      });
+      raf = requestAnimationFrame(fitToContainer);
     };
   })();
-  window.addEventListener('resize', refit);
-  window.addEventListener('load', refit);
-  new ResizeObserver(refit).observe(els.terminal);
-  new ResizeObserver(refit).observe(document.body);
-  // Catch late layout in dynamically-sized/animated hosts (the HA panel opens
-  // with a transition, so the container reaches full size after first paint).
-  [60, 200, 500, 1000, 2000].forEach((ms) => setTimeout(refit, ms));
+  // First fit: `defer` scripts can run a frame before the HA panel lays the
+  // iframe out, so retry each animation frame until the container has a real
+  // size — then stop and let the observer take over. No arbitrary delays.
+  (function firstFit() {
+    if (!fitToContainer()) requestAnimationFrame(firstFit);
+  })();
+  new ResizeObserver(scheduleFit).observe(els.terminal);
+  window.addEventListener('resize', scheduleFit);
+
+  // Measure with the real webfont, not a fallback: force-load both weights,
+  // then re-fit and rebuild the WebGL glyph atlas so cells and glyphs realign.
+  // Gating the reveal on this settling (it always settles — success or failure)
+  // means the first frame the user sees is the final font at the final size.
+  const fontsReady = document.fonts
+    ? Promise.allSettled([
+        document.fonts.load(`400 ${savedFont}px "JetBrains Mono"`),
+        document.fonts.load(`700 ${savedFont}px "JetBrains Mono"`),
+      ])
+    : Promise.resolve();
+  fontsReady.then(() => {
+    fontSettled = true;
+    try { term.clearTextureAtlas?.(); } catch { /* DOM renderer */ }
+    scheduleFit();
+    reveal();
+  });
+  // Failsafe only: a hidden terminal is worse than an unstyled one. If the
+  // normal path never settles (it should within a frame or two), force a fit
+  // and reveal so the console is never left invisible.
+  setTimeout(() => {
+    if (!document.body.classList.contains('booting')) return;
+    try { fit.fit(); } catch { /* not ready */ }
+    document.body.classList.remove('booting');
+  }, 3000);
 
   function setFontSize(delta) {
     const size = Math.min(28, Math.max(8, term.options.fontSize + delta));
     term.options.fontSize = size;
     localStorage.setItem('cc-font-size', String(size));
-    refit();
+    try { term.clearTextureAtlas?.(); } catch { /* DOM renderer */ }
+    scheduleFit();
   }
 
   /* ---------------- websocket ---------------- */
@@ -308,7 +379,7 @@
       state.reconnectDelay = 1000;
       state.missedPongs = 0;
       hideOverlay();
-      fit.fit();
+      fitToContainer();
       send({ t: 'resize', cols: term.cols, rows: term.rows });
       send({ t: 'select', w: state.currentTab });
       term.focus();
@@ -610,7 +681,7 @@
 
   els.keys.addEventListener('click', () => {
     els.keybar.classList.toggle('hidden');
-    refit();
+    scheduleFit();
   });
 
   els.keybar.addEventListener('click', (e) => {
@@ -637,7 +708,7 @@
     } else {
       document.documentElement.requestFullscreen?.();
     }
-    setTimeout(refit, 300);
+    scheduleFit();
   });
 
   /* ---------------- misc ---------------- */

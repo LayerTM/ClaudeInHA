@@ -110,6 +110,17 @@ RUN cd /opt/claude-console \
     && npm ci --omit=dev \
     && npm cache clean --force
 
+# Bundled terminal font (JetBrains Mono, OFL) — crisp, consistent glyphs across
+# every client, served locally so nothing is fetched at runtime.
+ARG JETBRAINS_MONO_VERSION=5.2.8
+RUN mkdir -p /opt/claude-console/public/fonts \
+    && curl -fsSL --retry 3 --retry-delay 2 \
+        "https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@${JETBRAINS_MONO_VERSION}/files/jetbrains-mono-latin-400-normal.woff2" \
+        -o /opt/claude-console/public/fonts/jetbrains-mono-400.woff2 \
+    && curl -fsSL --retry 3 --retry-delay 2 \
+        "https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@${JETBRAINS_MONO_VERSION}/files/jetbrains-mono-latin-700-normal.woff2" \
+        -o /opt/claude-console/public/fonts/jetbrains-mono-700.woff2
+
 # ha-shot helper dependencies (playwright-core drives the system Chromium)
 COPY ha-tools /opt/ha-tools
 RUN cd /opt/ha-tools \
@@ -128,6 +139,7 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/claude-code/run \
              /usr/local/bin/start-remote \
              /usr/local/bin/update-claude \
              /usr/local/bin/provision-extras \
+             /usr/local/bin/cc-statusline \
              /usr/local/bin/ha-shot \
              /usr/local/bin/ha-check \
              /usr/local/bin/ha-state

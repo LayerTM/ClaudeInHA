@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# cc-statusline — rich status line for the embedded Claude Code TUI.
+#
+# Claude Code streams a Status JSON on stdin and renders our stdout (ANSI
+# honoured) as the bottom status line. We surface, when available:
+#   model · effort · dir (🏠 for /homeassistant) · git branch · context left ·
+#   lines changed · Max plan usage.
+# Schema: https://code.claude.com/docs/en/statusline.md
+# Absent/null fields are skipped, so the line stays clean in every session.
+# ==============================================================================
+set -o pipefail
+
+input="$(cat)"
+
+# One jq pass → one field per line. Reading line-by-line preserves empty fields
+# (a tab `read` would collapse them) and needs no bash 4 mapfile. Each field has
+# a safe fallback for absent/null keys.
+{
+  IFS= read -r model
+  IFS= read -r cur
+  IFS= read -r style
+  IFS= read -r added
+  IFS= read -r removed
+  IFS= read -r ctx_rem
+  IFS= read -r effort
+  IFS= read -r rl5
+  IFS= read -r rl7
+} < <(printf '%s' "${input}" | jq -r '
+  (.model.display_name // "Claude"),
+  (.workspace.current_dir // .cwd // ""),
+  (.output_style.name // ""),
+  (.cost.total_lines_added // 0),
+  (.cost.total_lines_removed // 0),
+  (.context_window.remaining_percentage // ""),
+  (.effort.level // ""),
+  (.rate_limits.five_hour.used_percentage // ""),
+  (.rate_limits.seven_day.used_percentage // "")
+' 2>/dev/null)
+
+[ -n "${model}" ] || model="Claude"
+[ -n "${cur}" ] || cur="${PWD:-/}"
+
+# --- palette (ANSI 256) ---
+R=$'\e[0m'; DIM=$'\e[2m'; B=$'\e[1m'
+C_MODEL=$'\e[38;5;209m'   # terracotta — brand accent
+C_DIR=$'\e[38;5;39m'      # blue
+C_GIT=$'\e[38;5;71m'      # green
+C_ADD=$'\e[38;5;71m'
+C_DEL=$'\e[38;5;167m'
+C_OK=$'\e[38;5;71m'
+C_WARN=$'\e[38;5;179m'
+C_LOW=$'\e[38;5;167m'
+SEP="${DIM} · ${R}"
+
+# --- model (+ effort) ---
+seg="${C_MODEL}${B}✳ ${model}${R}"
+if [ -n "${effort}" ] && [ "${effort}" != "null" ]; then
+  seg="${seg} ${DIM}${effort}${R}"
+fi
+
+# --- directory (🏠 marker for the HA config root) ---
+case "${cur}" in
+  /homeassistant|/homeassistant/*) dir="🏠 homeassistant" ;;
+  "${HOME}")                       dir="~" ;;
+  "")                              dir="/" ;;
+  *)                               dir="$(basename "${cur}")" ;;
+esac
+seg="${seg}${SEP}${C_DIR}${dir}${R}"
+
+# --- git branch + dirty flag ---
+if git -C "${cur}" -c safe.directory='*' rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  branch="$(git -C "${cur}" -c safe.directory='*' symbolic-ref --quiet --short HEAD 2>/dev/null \
+          || git -C "${cur}" -c safe.directory='*' rev-parse --short HEAD 2>/dev/null)"
+  if [ -n "${branch}" ]; then
+    dirty=""
+    if ! git -C "${cur}" -c safe.directory='*' diff --quiet --ignore-submodules 2>/dev/null \
+       || ! git -C "${cur}" -c safe.directory='*' diff --cached --quiet --ignore-submodules 2>/dev/null; then
+      dirty="*"
+    fi
+    seg="${seg}${SEP}${C_GIT}⎇ ${branch}${dirty}${R}"
+  fi
+fi
+
+# --- output style (only when not the default) ---
+if [ -n "${style}" ] && [ "${style}" != "default" ] && [ "${style}" != "null" ]; then
+  seg="${seg}${SEP}${DIM}${style}${R}"
+fi
+
+# --- context window remaining ---
+if [ -n "${ctx_rem}" ] && [ "${ctx_rem}" != "null" ]; then
+  rem="${ctx_rem%.*}"
+  if   [ "${rem}" -ge 50 ] 2>/dev/null; then c="${C_OK}"
+  elif [ "${rem}" -ge 20 ] 2>/dev/null; then c="${C_WARN}"
+  else c="${C_LOW}"; fi
+  seg="${seg}${SEP}${c}◔ ${rem}%${R}${DIM} ctx${R}"
+fi
+
+# --- lines changed this session ---
+if [ "${added:-0}" != "0" ] || [ "${removed:-0}" != "0" ]; then
+  seg="${seg}${SEP}${C_ADD}+${added:-0}${R} ${C_DEL}-${removed:-0}${R}"
+fi
+
+# --- Max plan usage (present for Pro/Max after the first API response) ---
+if [ -n "${rl5}" ] && [ "${rl5}" != "null" ]; then
+  printf -v rl5i '%.0f' "${rl5}" 2>/dev/null || rl5i="${rl5}"
+  seg="${seg}${SEP}${DIM}5h ${rl5i}%${R}"
+fi
+if [ -n "${rl7}" ] && [ "${rl7}" != "null" ]; then
+  printf -v rl7i '%.0f' "${rl7}" 2>/dev/null || rl7i="${rl7}"
+  seg="${seg}${SEP}${DIM}7d ${rl7i}%${R}"
+fi
+
+printf '%s' "${seg}"

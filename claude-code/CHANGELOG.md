@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.2.0] — 2026-07-02
+
+A console-feel release: the terminal now opens instantly at full size and looks
+the part on every device.
+
+### Added
+- **Rich status line in the embedded Claude.** A bundled `cc-statusline` script
+  surfaces model, reasoning effort, working directory (with a 🏠 marker for the
+  HA config root), git branch and dirty state, context-window remaining, lines
+  changed, and Pro/Max plan usage — the same kind of at-a-glance context the
+  desktop Claude Code shows. Seeded into `~/.claude/settings.json` only when no
+  status line is configured, so a custom one is never overwritten.
+- **Bundled JetBrains Mono (OFL).** A crisp, consistent terminal font on every
+  client, served locally (no runtime download). Paired with a refined,
+  brand-warm 16-colour theme, block cursor, styled selection and scrollbar, and
+  `minimumContrastRatio` so dim colours stay legible.
+
+### Fixed
+- **The terminal now fills the panel instantly — no more starting small and
+  growing.** The previous release chased the resize with a ladder of timers,
+  which still flashed the 80x24 default before settling. The terminal is now
+  held hidden until it has been fitted to a real-sized container and the webfont
+  has loaded, then revealed already at full size; a `ResizeObserver` drives
+  every later fit so panel, window and key-bar resizes track in the same frame.
+  No timers, no flash, no growing.
+
 ## [1.1.4] — 2026-07-02
 
 ### Fixed

@@ -151,6 +151,23 @@ done < <(bashio::config 'environment_vars')
 mkdir -p /data/workdir /data/uploads
 mkdir -p /data/home/.claude/skills
 
+# --- Rich status line in the embedded Claude TUI ---
+# Point Claude at our bundled status line script. Seeded only when absent so a
+# user who later customises .statusLine is never overwritten; script upgrades
+# ship transparently because settings.json only stores the command path.
+settings_file=/data/home/.claude/settings.json
+[ -f "${settings_file}" ] || echo '{}' > "${settings_file}"
+if [ -z "$(jq -r '.statusLine // empty' "${settings_file}" 2>/dev/null)" ]; then
+    tmp_settings="$(mktemp)"
+    if jq '.statusLine = {type: "command", command: "/usr/local/bin/cc-statusline", padding: 0}' \
+          "${settings_file}" > "${tmp_settings}" 2>/dev/null; then
+        mv "${tmp_settings}" "${settings_file}"
+        bashio::log.info "Status line configured"
+    else
+        rm -f "${tmp_settings}"
+    fi
+fi
+
 cp /usr/share/claude-ha/CLAUDE.md /data/workdir/CLAUDE.md
 
 custom=$(bashio::config 'custom_instructions')
