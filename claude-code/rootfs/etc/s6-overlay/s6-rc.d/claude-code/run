@@ -149,11 +149,12 @@ bashio::log.info "Initialization complete"
 
 # Set AFTER user environment_vars: these are authoritative and must not be
 # overridable from the config (CLAUDE_CONSOLE_DEV would disable the IP guard).
+# Read straight from options.json — independent of bashio internals.
 export CLAUDE_CONSOLE_PORT=8099
 export CLAUDE_CONSOLE_DEV=0
 export UPLOAD_DIR=/data/uploads
-export UPLOAD_RETENTION_DAYS=$(bashio::config 'upload_retention_days' 14)
-export REMOTE_CONTROL=$(bashio::config 'remote_control' false)
+export UPLOAD_RETENTION_DAYS=$(jq -r '.upload_retention_days // 14' /data/options.json 2>/dev/null || echo 14)
+export REMOTE_CONTROL=$(jq -r '.remote_control // false' /data/options.json 2>/dev/null || echo false)
 
 bashio::log.info "Starting Claude Console on port ${CLAUDE_CONSOLE_PORT}..."
 exec node /opt/claude-console/server/index.js

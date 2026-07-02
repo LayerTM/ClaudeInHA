@@ -1,13 +1,15 @@
-#!/command/with-contenv bashio
+#!/usr/bin/bashio
 # ==============================================================================
 # start-claude: runs inside the "claude" tmux window.
 # Launches Claude Code with configured flags; on exit shows a small menu so
 # the session survives (restart / shell / update) instead of dying.
+# Deliberately s6-independent (no with-contenv): it only needs
+# /data/options.json, so it works identically under s6, tmux respawn,
+# a shell tab, or a bare container.
 # ==============================================================================
 
-# Pin HOME to persistent storage: with-contenv may bring HOME=/root from the
-# container environment, which would send auth tokens and sessions to an
-# ephemeral location.
+# Pin HOME to persistent storage — auth tokens and sessions must never land
+# in the ephemeral /root.
 export HOME=/data/home
 export PATH="/data/home/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
