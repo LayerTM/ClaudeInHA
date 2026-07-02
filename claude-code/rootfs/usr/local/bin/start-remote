@@ -18,7 +18,8 @@ while true; do
     echo "Log in from the Claude tab (run 'claude', then /login), then:"
     echo "  r) retry Remote Control    s) drop to shell"
     echo ""
-    read -r -n 1 -p "> " choice
+    # `|| sleep 3` prevents a busy loop if ever run without a tty (EOF on read).
+    read -r -n 1 -p "> " choice || sleep 3
     echo ""
     case "${choice}" in
         s|S) bash ;;
