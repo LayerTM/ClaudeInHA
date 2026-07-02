@@ -178,7 +178,11 @@
   }));
   term.open(els.terminal);
   try {
-    term.loadAddon(new WebglAddon());
+    const webgl = new WebglAddon();
+    // After an unrestored context loss the canvas freezes; disposing the
+    // addon drops xterm back to the DOM renderer.
+    webgl.onContextLoss(() => webgl.dispose());
+    term.loadAddon(webgl);
   } catch {
     /* WebGL unavailable (old WebView) — DOM renderer is the default fallback */
   }
@@ -216,7 +220,13 @@
   els.terminal.addEventListener('touchend', maybeCopySelection);
 
   term.onData((d) => send({ t: 'in', d }));
-  term.onBinary((d) => send({ t: 'in', d }));
+  // onBinary carries raw bytes that must not round-trip through UTF-8 JSON —
+  // ship them as a binary frame (server writes them latin1-preserving).
+  term.onBinary((d) => {
+    if (state.ws?.readyState === WebSocket.OPEN) {
+      state.ws.send(Uint8Array.from(d, (c) => c.charCodeAt(0) & 255));
+    }
+  });
   term.onResize(({ cols, rows }) => send({ t: 'resize', cols, rows }));
 
   const refit = (() => {
@@ -256,7 +266,26 @@
   }
   function hideOverlay() { els.overlay.classList.add('hidden'); }
 
+  let reconnectTimer = null;
+
+  function scheduleReconnect() {
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, state.reconnectDelay);
+    state.reconnectDelay = Math.min(state.reconnectDelay * 2, 10000);
+  }
+
   function connect() {
+    // Never allow parallel sockets — duplicate output and reconnect storms.
+    if (state.ws && (state.ws.readyState === WebSocket.CONNECTING || state.ws.readyState === WebSocket.OPEN)) {
+      return;
+    }
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
     const ws = new WebSocket(wsUrl());
     ws.binaryType = 'arraybuffer';
     state.ws = ws;
@@ -299,8 +328,7 @@
         const r = await fetch(api('health'), { cache: 'no-store' });
         if (r.status === 401) { location.reload(); return; }
       } catch { /* network down; keep retrying */ }
-      setTimeout(connect, state.reconnectDelay);
-      state.reconnectDelay = Math.min(state.reconnectDelay * 2, 10000);
+      scheduleReconnect();
     };
 
     ws.onerror = () => ws.close();
@@ -379,14 +407,21 @@
     els.trayMenu.classList.add('hidden');
   }
 
-  function toggleMenu(menu) {
+  // Menus are position:fixed (the scrollable toolbar would clip absolute
+  // children) and anchored to their button on open.
+  function toggleMenu(menu, anchor) {
     const wasHidden = menu.classList.contains('hidden');
     closeMenus();
-    if (wasHidden) menu.classList.remove('hidden');
+    if (wasHidden) {
+      const rect = anchor.getBoundingClientRect();
+      menu.style.top = `${rect.bottom + 4}px`;
+      menu.style.right = `${Math.max(4, window.innerWidth - rect.right)}px`;
+      menu.classList.remove('hidden');
+    }
   }
 
-  els.copy.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(els.copyMenu); });
-  els.tray.addEventListener('click', (e) => { e.stopPropagation(); renderTray(); toggleMenu(els.trayMenu); });
+  els.copy.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(els.copyMenu, els.copy); });
+  els.tray.addEventListener('click', (e) => { e.stopPropagation(); renderTray(); toggleMenu(els.trayMenu, els.tray); });
   document.addEventListener('click', closeMenus);
 
   els.copyMenu.addEventListener('click', async (e) => {
@@ -537,7 +572,11 @@
 
   els.updateRespawn.addEventListener('click', async () => {
     try {
-      await fetch(api('claude/respawn'), { method: 'POST' });
+      const r = await fetch(api('claude/respawn'), { method: 'POST' });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || `respawn failed (${r.status})`);
+      }
       els.dlgUpdate.close();
       state.currentTab = 0;
       send({ t: 'select', w: 0 });

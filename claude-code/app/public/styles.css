@@ -115,9 +115,8 @@ body {
 /* ---------- menus ---------- */
 .menu-wrap { position: relative; }
 .menu {
-  position: absolute;
-  top: 110%;
-  right: 0;
+  /* fixed: the scrollable toolbar clips absolutely-positioned children */
+  position: fixed;
   z-index: 30;
   background: var(--bg-raised);
   border: 1px solid var(--border);

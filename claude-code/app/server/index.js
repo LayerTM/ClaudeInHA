@@ -105,7 +105,13 @@ async function main() {
   });
 }
 
-process.on('SIGTERM', () => server.close(() => process.exit(0)));
+process.on('SIGTERM', () => {
+  // Open websockets keep server.close() from ever completing — drop them
+  // first, and hard-exit as a backstop so add-on stop never hangs.
+  terminal.shutdown();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 3000).unref();
+});
 
 main().catch((err) => {
   console.error('Fatal startup error:', err);

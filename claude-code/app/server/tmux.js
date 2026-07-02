@@ -37,9 +37,20 @@ async function hasSession(name) {
   }
 }
 
-async function ensureMain() {
-  if (await hasSession(MAIN)) return;
-  await run(['new-session', '-d', '-s', MAIN, '-n', 'claude', '-c', workdir(), '/usr/local/bin/start-claude']);
+// Serialized: concurrent first connections must not both run new-session.
+let ensureMainInFlight = null;
+function ensureMain() {
+  if (!ensureMainInFlight) {
+    ensureMainInFlight = (async () => {
+      if (await hasSession(MAIN)) return;
+      try {
+        await run(['new-session', '-d', '-s', MAIN, '-n', 'claude', '-c', workdir(), '/usr/local/bin/start-claude']);
+      } catch (err) {
+        if (!/duplicate session/.test(String(err.stderr || ''))) throw err;
+      }
+    })().finally(() => { ensureMainInFlight = null; });
+  }
+  return ensureMainInFlight;
 }
 
 async function listWindows() {
@@ -93,7 +104,20 @@ async function killSession(name) {
 }
 
 async function setDestroyUnattached(session) {
-  await run(['set-option', '-t', session, 'destroy-unattached', 'on']);
+  await run(['set-option', '-t', `=${session}`, 'destroy-unattached', 'on']);
+}
+
+// The grouped session is registered by the pty's tmux client slightly after
+// spawn; retry briefly instead of racing it.
+async function setDestroyUnattachedWithRetry(session, attempts = 10, delayMs = 100) {
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      await setDestroyUnattached(session);
+      return;
+    } catch {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
 }
 
 async function ensureWindow(name, command) {
@@ -121,5 +145,6 @@ module.exports = {
   selectWindow,
   killSession,
   setDestroyUnattached,
+  setDestroyUnattachedWithRetry,
   ensureWindow,
 };

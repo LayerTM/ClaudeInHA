@@ -133,11 +133,12 @@ if [ -d /homeassistant ] && [ -w /homeassistant ] && [ ! -f /homeassistant/CLAUD
 fi
 
 # --- Init commands ---
+# Only the first word is logged — init commands may embed credentials.
 while IFS= read -r cmd; do
     [ -n "${cmd}" ] || continue
-    bashio::log.info "Running init command: ${cmd}"
+    bashio::log.info "Running init command: ${cmd%% *} ..."
     eval "${cmd}" 2>&1 \
-        || bashio::log.warning "Init command failed: ${cmd}"
+        || bashio::log.warning "Init command failed: ${cmd%% *}"
 done < <(bashio::config 'init_commands')
 
 bashio::log.info "Initialization complete"
@@ -146,7 +147,10 @@ bashio::log.info "Initialization complete"
 # Phase 2: Start web console
 # ==============================
 
+# Set AFTER user environment_vars: these are authoritative and must not be
+# overridable from the config (CLAUDE_CONSOLE_DEV would disable the IP guard).
 export CLAUDE_CONSOLE_PORT=8099
+export CLAUDE_CONSOLE_DEV=0
 export UPLOAD_DIR=/data/uploads
 export UPLOAD_RETENTION_DAYS=$(bashio::config 'upload_retention_days' 14)
 export REMOTE_CONTROL=$(bashio::config 'remote_control' false)

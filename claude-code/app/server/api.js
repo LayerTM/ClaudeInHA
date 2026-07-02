@@ -1,6 +1,7 @@
 'use strict';
 
 const { execFile } = require('node:child_process');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
@@ -142,19 +143,23 @@ function createRouter({ uploadDir }) {
       return res.status(400).json({ error: String(err.message) });
     }
 
-    const saved = [];
     const pending = [];
+    const active = new Set();
+    let aborted = false;
 
     busboy.on('file', (field, stream, info) => {
-      const name = `${timestamp()}-${sanitizeFilename(info.filename)}`;
+      // Random suffix: identical filenames in one request (or same-second
+      // requests) must never share a write target.
+      const name = `${timestamp()}-${crypto.randomBytes(3).toString('hex')}-${sanitizeFilename(info.filename)}`;
       const target = path.join(uploadDir, name);
       const write = fs.createWriteStream(target, { mode: 0o644 });
+      active.add({ stream, write, target });
       const done = new Promise((resolve) => {
         let truncated = false;
         stream.on('limit', () => { truncated = true; });
         stream.pipe(write);
         write.on('close', async () => {
-          if (truncated) {
+          if (truncated || aborted) {
             await fsp.unlink(target).catch(() => {});
             resolve(null);
           } else {
@@ -171,15 +176,26 @@ function createRouter({ uploadDir }) {
       pending.push(done);
     });
 
+    // A client that vanishes mid-upload must not leak fds or partial files.
+    req.on('close', async () => {
+      if (req.complete) return;
+      aborted = true;
+      for (const { stream, write, target } of active) {
+        stream.unpipe(write);
+        write.destroy();
+        await fsp.unlink(target).catch(() => {});
+      }
+    });
+
     busboy.on('error', () => {
-      res.status(400).json({ error: 'malformed upload' });
+      if (!res.headersSent) res.status(400).json({ error: 'malformed upload' });
       req.unpipe(busboy);
     });
 
     busboy.on('close', async () => {
       const results = await Promise.all(pending);
-      for (const r of results) if (r) saved.push(r);
-      if (res.headersSent) return;
+      const saved = results.filter(Boolean);
+      if (res.headersSent || aborted) return;
       if (!saved.length) return res.status(400).json({ error: 'no files saved (empty or over size limit)' });
       res.json({ files: saved });
     });
