@@ -1,0 +1,10 @@
+{
+  "name": "ha-tools",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Home Assistant dashboard screenshot helper for the Claude Code add-on",
+  "license": "MIT",
+  "dependencies": {
+    "playwright-core": "1.61.1"
+  }
+}

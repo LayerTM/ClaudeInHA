@@ -8,7 +8,7 @@ Anthropic's [Claude Code](https://code.claude.com/docs) CLI, embedded in Home As
 
 [![Open your Home Assistant instance and show the add-on repository dialog.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FLayerTM%2FClaudeInHA)
 
-![Version](https://img.shields.io/badge/version-1.0.0-D97757)
+![Version](https://img.shields.io/badge/version-1.1.0-D97757)
 ![Architectures](https://img.shields.io/badge/arch-amd64%20%7C%20aarch64-2ea043)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Home Assistant Add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-18BCF2?logo=home-assistant&logoColor=white)
@@ -20,11 +20,13 @@ Anthropic's [Claude Code](https://code.claude.com/docs) CLI, embedded in Home As
 ## Features
 
 - **Real Claude Code CLI** — skills, plugins, MCP servers, and slash commands all work
+- **Zero-prep HA toolkit** — a bundled Home Assistant skill pack (`/ha-automation`, `/ha-debug`, `/ha-screenshot`, …), general plugins (superpowers, frontend-design, …), and the `ha`/`yq`/`hass-cli` tools, all preinstalled and persisted across updates
+- **Browser testing built in** — Chromium is preinstalled; screenshot any dashboard with `ha-shot`, or use the Playwright MCP for interactive checks
 - **Tabs** — the Claude session alongside any number of shell tabs
 - **Clipboard that works everywhere**, including plain-HTTP setups and the mobile companion app
 - **Attachments** — drag & drop files, paste images, or pick from your camera/gallery
 - **One-click CLI updates** without restarting the add-on (auto-update on start included)
-- **Full Home Assistant access** — config files, REST API, and Supervisor API
+- **Full Home Assistant access** — config files, REST API, Supervisor API, and (with an HA token) WebSocket
 - **Session persistence** via tmux — closing the browser never kills Claude
 - **Mobile-friendly** — touch key bar, full-screen kiosk mode, installable as a PWA
 - **Remote Control** (optional) — drive the session from the official Claude mobile app

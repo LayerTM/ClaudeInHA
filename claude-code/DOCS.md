@@ -26,17 +26,47 @@ Runs the full [Claude Code CLI](https://code.claude.com/docs) inside Home Assist
 - **Update Claude** — ⬆ button, or `update-claude` in a shell tab (`update-claude 2.1.150` installs a specific version). Only the Claude session restarts; the add-on keeps running. With **Auto-Update** enabled the CLI also updates at every add-on start.
 - **Mobile** — a key bar (Esc, Tab, arrows, ^C…) appears on touch devices; ⛶ hides the HA chrome for a full-screen terminal.
 
+## Home Assistant tooling (built in)
+
+Everything Claude needs to work with Home Assistant is preinstalled — no
+per-session setup:
+
+| Tool | Use |
+|---|---|
+| `ha` | Supervisor CLI: `ha core check`, `ha core reload`, `ha addons`, `ha backups new --name X` |
+| `ha-check` | Validate the HA configuration (run before any restart) |
+| `ha-state [entity\|domain.]` | Query entity states, e.g. `ha-state light.kitchen`, `ha-state light.` |
+| `ha-shot <path> [out.png] [WxH]` | Screenshot a Lovelace dashboard to PNG, e.g. `ha-shot /lovelace/0 /tmp/d.png 1280x800` (needs **HA Token**) |
+| `yq` | Edit YAML config files |
+| `hass-cli` | Entity/service queries (needs **HA Token**) |
+| Playwright MCP | Browser automation tools; Chromium is preinstalled |
+
+A **Home Assistant skill pack** is bundled: `/ha-config-edit`, `/ha-automation`,
+`/ha-debug`, `/ha-entity`, `/ha-screenshot`, `/ha-backup`, `/ha-addon`,
+`/ha-onboard`. General plugins are bundled too (superpowers, frontend-design,
+skill-creator, security-guidance, context7, code-review, code-simplifier,
+feature-dev, commit-commands, claude-md-management, hookify, document-skills).
+All of it lives in `/data/home/.claude` and **persists across add-on updates**;
+provisioning runs once in the background (see `/data/provision.log`).
+
+Add your own with the `plugins`, `marketplaces`, and `skills_git` options —
+reconciled on every start.
+
 ## Configuration options
 
 | Option | Purpose |
 |---|---|
 | `api_key` / `oauth_token` | Authentication (see above). Stored encrypted by the Supervisor. |
+| `ha_token` | A Home Assistant Long-Lived Access Token (Profile → Security). Enables dashboard screenshots, `hass-cli`, `hass-mcp`, and WebSocket/REST access as you. Persists across updates. Optional. |
 | `bypass_permissions` | Start Claude with `--dangerously-skip-permissions` (fully autonomous). |
 | `auto_update` | Update the CLI at every add-on start. Manual `update-claude` always works. |
 | `model` | Model override, e.g. `claude-sonnet-4-6`. |
 | `custom_instructions` | Text appended to the built-in HA context (CLAUDE.md). |
 | `environment_vars` | Extra env vars, `KEY=VALUE` per entry. |
 | `init_commands` | Shell commands run at startup (install tools, MCP servers). |
+| `plugins` | Extra plugins to install, `name@marketplace` per entry. |
+| `marketplaces` | Extra plugin marketplaces (GitHub `owner/repo`, URL, or path). |
+| `skills_git` | Git repo of your own skills, synced into `~/.claude/skills` each start. |
 | `extra_args` | Extra `claude` CLI arguments, one per entry. |
 | `launch_command` | Full replacement for the default `claude` invocation. |
 | `upload_retention_days` | Auto-delete attached files after N days (0 = keep). |

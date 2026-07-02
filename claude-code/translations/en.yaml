@@ -15,6 +15,14 @@ configuration:
       one year. Paste that token here. This avoids having to paste the
       auth code into the ingress terminal, which is tricky inside the
       HA iframe. Leave empty if you use Anthropic API Key instead.
+  ha_token:
+    name: HA Token (Long-Lived Access Token)
+    description: >-
+      A Home Assistant Long-Lived Access Token. Create one in Home Assistant:
+      Profile → Security → Long-lived access tokens. When set, Claude can take
+      dashboard screenshots (ha-shot), use hass-cli and the hass-mcp tools, and
+      reach Home Assistant over WebSocket/REST as you. Stored encrypted and
+      persists across add-on updates. Leave empty to skip these features.
   bypass_permissions:
     name: Skip Permission Prompts
     description: >-
@@ -53,7 +61,26 @@ configuration:
       Shell commands run during add-on startup before Claude Code launches.
       Useful for installing additional tools or MCP servers.
       Examples: 'npm install -g @anthropic-ai/mcp-server-github'
-      or 'apk add --no-cache ffmpeg'
+      or 'apt-get install -y ffmpeg'
+  plugins:
+    name: Extra Plugins
+    description: >-
+      Additional Claude Code plugins to install on top of the bundled pack,
+      one per entry as 'name@marketplace' (e.g. 'coderabbit@claude-plugins-official').
+      Installed once and kept across updates. The base pack (superpowers,
+      frontend-design, playwright, the HA skills, etc.) is always included.
+  marketplaces:
+    name: Extra Plugin Marketplaces
+    description: >-
+      Additional plugin marketplaces to register, one per entry — a GitHub
+      'owner/repo', a Git URL, or a path. Needed before installing plugins
+      from a marketplace that is not one of the built-in ones.
+  skills_git:
+    name: Personal Skills Git Repo
+    description: >-
+      Optional Git repository of your own skills, synced into
+      ~/.claude/skills on every start. Each top-level folder in the repo
+      must be one skill containing a SKILL.md. Leave empty to skip.
   extra_args:
     name: Extra Claude Arguments
     description: >-

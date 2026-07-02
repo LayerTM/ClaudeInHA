@@ -1,7 +1,7 @@
 name: "Claude Code"
-version: "1.0.0"
+version: "1.1.0"
 slug: claude-code
-description: "Claude Code AI assistant embedded in Home Assistant — web console with tabs, clipboard, file attachments, and complete HA integration"
+description: "Claude Code AI assistant embedded in Home Assistant — web console with tabs, clipboard, file attachments, browser testing, and a bundled HA skill pack"
 url: "https://github.com/LayerTM/ClaudeInHA"
 
 arch:
@@ -41,12 +41,16 @@ map:
 options:
   api_key: ""
   oauth_token: ""
+  ha_token: ""
   bypass_permissions: false
   auto_update: true
   model: ""
   custom_instructions: ""
   environment_vars: []
   init_commands: []
+  plugins: []
+  marketplaces: []
+  skills_git: ""
   extra_args: []
   launch_command: ""
   upload_retention_days: 14
@@ -55,6 +59,7 @@ options:
 schema:
   api_key: "password"
   oauth_token: "password"
+  ha_token: "password"
   bypass_permissions: bool
   auto_update: bool
   model: "str?"
@@ -63,6 +68,11 @@ schema:
     - "str"
   init_commands:
     - "str"
+  plugins:
+    - "str"
+  marketplaces:
+    - "str"
+  skills_git: "str?"
   extra_args:
     - "str"
   launch_command: "str?"

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Validate the Home Assistant configuration. Run this before any restart.
+set -o pipefail
+if command -v ha >/dev/null 2>&1; then
+    export SUPERVISOR_API_TOKEN="${SUPERVISOR_API_TOKEN:-$SUPERVISOR_TOKEN}"
+    ha core check
+else
+    curl -sS -X POST -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        http://supervisor/core/api/config/core/check_config | jq .
+fi
