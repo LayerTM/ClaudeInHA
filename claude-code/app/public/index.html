@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1c1c1e">
+  <title>Claude Code</title>
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Claude Code">
+  <link rel="stylesheet" href="vendor/xterm.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header id="toolbar">
+    <nav id="tabs" aria-label="Sessions"></nav>
+    <button id="tab-add" class="btn" title="New shell tab">+</button>
+    <span class="spacer"></span>
+    <div class="menu-wrap">
+      <button id="btn-copy" class="btn" title="Copy">⧉</button>
+      <div id="menu-copy" class="menu hidden">
+        <button data-copy="selection">Copy selection</button>
+        <button data-copy="visible">Copy visible screen</button>
+        <button data-copy="recent">Copy last 1000 lines</button>
+        <button data-copy="all">Copy full history</button>
+      </div>
+    </div>
+    <div class="menu-wrap">
+      <button id="btn-tray" class="btn" title="Clipboard tray">📥<span id="tray-badge" class="badge hidden"></span></button>
+      <div id="menu-tray" class="menu hidden"><div class="menu-note">Nothing captured yet</div></div>
+    </div>
+    <button id="btn-paste" class="btn" title="Paste">📋</button>
+    <button id="btn-attach" class="btn" title="Attach file or image">📎</button>
+    <button id="btn-update" class="btn" title="Update Claude CLI">⬆</button>
+    <button id="btn-font-dec" class="btn narrow-hide" title="Smaller font">A−</button>
+    <button id="btn-font-inc" class="btn narrow-hide" title="Larger font">A+</button>
+    <button id="btn-keys" class="btn" title="Toggle key bar">⌨</button>
+    <button id="btn-kiosk" class="btn" title="Full screen">⛶</button>
+    <button id="btn-help" class="btn" title="Help">?</button>
+  </header>
+
+  <main id="term-wrap">
+    <div id="terminal"></div>
+    <div id="drop-hint" class="hidden">Drop files to attach</div>
+    <div id="overlay" class="hidden"><div id="overlay-text"></div></div>
+  </main>
+
+  <footer id="keybar" class="hidden">
+    <button data-seq="&#27;">Esc</button>
+    <button data-seq="&#9;">Tab</button>
+    <button data-seq="&#27;[Z">⇧Tab</button>
+    <button data-seq="&#3;">^C</button>
+    <button data-seq="&#27;[A">↑</button>
+    <button data-seq="&#27;[B">↓</button>
+    <button data-seq="&#27;[D">←</button>
+    <button data-seq="&#27;[C">→</button>
+    <button data-seq="/">/</button>
+    <button data-seq="@">@</button>
+  </footer>
+
+  <div id="toast-area"></div>
+
+  <dialog id="dlg-paste">
+    <h3>Paste</h3>
+    <p>Paste into the box below (long-press → Paste on mobile), then press Insert.</p>
+    <textarea id="paste-input" rows="5"></textarea>
+    <div class="dlg-actions">
+      <button id="paste-cancel" class="btn">Cancel</button>
+      <button id="paste-ok" class="btn primary">Insert</button>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-copy">
+    <h3>Copy</h3>
+    <p>Automatic copy is unavailable here — select the text below and copy it manually.</p>
+    <textarea id="copy-output" rows="8" readonly></textarea>
+    <div class="dlg-actions">
+      <button id="copy-close" class="btn primary">Close</button>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-update">
+    <h3>Update Claude Code</h3>
+    <div id="update-body">
+      <p id="update-version"></p>
+      <p>Check for updates and install the newest version? The add-on keeps running; only the Claude session needs a restart afterwards.</p>
+    </div>
+    <pre id="update-output" class="hidden"></pre>
+    <div class="dlg-actions">
+      <button id="update-cancel" class="btn">Close</button>
+      <button id="update-run" class="btn primary">Update</button>
+      <button id="update-respawn" class="btn primary hidden">Restart Claude</button>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-help">
+    <h3>Claude Code console</h3>
+    <div class="help-text">
+      <p><b>Copy:</b> select with <kbd>Shift</kbd>+drag (selection copies automatically), or use the ⧉ menu — it grabs output straight from the terminal history, no selection needed. Copies that cannot reach the system clipboard land in the 📥 tray.</p>
+      <p><b>Paste:</b> <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> / <kbd>Cmd</kbd>+<kbd>V</kbd>, or the 📋 button.</p>
+      <p><b>Attach:</b> drag &amp; drop files anywhere, paste an image from the clipboard, or use 📎. The file is stored and its path is typed into the prompt for Claude to read.</p>
+      <p><b>Tabs:</b> ✳ is Claude; + opens shell tabs. Exiting Claude shows a restart menu instead of killing the session. Wheel / swipe scrolls history.</p>
+      <p><b>Update:</b> ⬆ button, or run <code>update-claude</code> in a shell tab. Only the Claude session restarts — never the add-on.</p>
+      <p id="help-status"></p>
+    </div>
+    <div class="dlg-actions">
+      <button id="help-close" class="btn primary">Close</button>
+    </div>
+  </dialog>
+
+  <input type="file" id="file-input" multiple hidden>
+
+  <script src="vendor/xterm.js" defer></script>
+  <script src="vendor/addon-fit.js" defer></script>
+  <script src="vendor/addon-unicode11.js" defer></script>
+  <script src="vendor/addon-web-links.js" defer></script>
+  <script src="vendor/addon-webgl.js" defer></script>
+  <script src="app.js" defer></script>
+</body>
+</html>

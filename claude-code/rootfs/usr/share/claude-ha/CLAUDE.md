@@ -179,8 +179,8 @@ template:
 ## Installing Additional Tools
 
 ```bash
-# Alpine packages (available immediately)
-apk add --no-cache <package-name>
+# Debian packages (available immediately)
+apt-get update && apt-get install -y <package-name>
 
 # Node.js packages (for MCP servers, scripts)
 npm install -g <package-name>
@@ -226,7 +226,8 @@ claude mcp add my-server -- npx -y @scope/mcp-server
 
 ## Notes
 
-- This container runs Alpine Linux
+- This container runs Debian Linux
 - Internet access is available (needed for Claude API, MCP servers, npm packages)
 - Session persists in tmux — closing the browser tab does not end the session
 - On add-on restart, start a new session (history is preserved in `~/.claude/sessions/`)
+- Files the user attaches through the web console are saved under `/data/uploads/` and their paths are typed into the prompt — read them from there

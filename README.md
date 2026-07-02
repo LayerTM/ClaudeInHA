@@ -1,42 +1,62 @@
+<div align="center">
+
+<img src="images/logo.png" alt="Claude Code for Home Assistant" width="440">
+
 # Claude Code — Home Assistant Add-on
 
-[![Add Repository to HA](https://my.home-assistant.io/badges/supervisor_store.svg)](https://my.home-assistant.io/redirect/supervisor_store/?repository_url=https%3A%2F%2Fgithub.com%2FLayerTM%2FClaudeInHA)
+Anthropic's [Claude Code](https://code.claude.com/docs) CLI, embedded in Home Assistant as a polished web console — right in the sidebar.
 
-This repository provides a [Home Assistant](https://www.home-assistant.io/) add-on that embeds the full [Claude Code CLI](https://docs.anthropic.com/claude-code) into Home Assistant as a web terminal accessible directly from the sidebar.
+[![Open your Home Assistant instance and show the add-on repository dialog.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FLayerTM%2FClaudeInHA)
 
-## What it does
+![Version](https://img.shields.io/badge/version-1.0.0-D97757)
+![Architectures](https://img.shields.io/badge/arch-amd64%20%7C%20aarch64-2ea043)
+![License](https://img.shields.io/badge/license-MIT-blue)
+![Home Assistant Add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-18BCF2?logo=home-assistant&logoColor=white)
 
-- Runs Claude Code CLI in a web terminal inside Home Assistant
-- Claude has direct access to your HA config files, REST API, and Supervisor API
-- Auto-updates Claude Code independently of the add-on (no new add-on release needed)
-- Supports full Claude Code functionality: skills, plugins, MCP servers, internet access
-- Supports `bypassPermissions` mode for fully autonomous operation
-- Session persists via tmux — closing the browser does not kill the session
+<img src="images/screenshot.png" alt="Claude Code console in the Home Assistant sidebar" width="820">
+
+</div>
+
+## Features
+
+- **Real Claude Code CLI** — skills, plugins, MCP servers, and slash commands all work
+- **Tabs** — the Claude session alongside any number of shell tabs
+- **Clipboard that works everywhere**, including plain-HTTP setups and the mobile companion app
+- **Attachments** — drag & drop files, paste images, or pick from your camera/gallery
+- **One-click CLI updates** without restarting the add-on (auto-update on start included)
+- **Full Home Assistant access** — config files, REST API, and Supervisor API
+- **Session persistence** via tmux — closing the browser never kills Claude
+- **Mobile-friendly** — touch key bar, full-screen kiosk mode, installable as a PWA
+- **Remote Control** (optional) — drive the session from the official Claude mobile app
 
 ## Installation
 
-1. Click the badge above, or go to **Settings → Add-ons → Add-on Store → Repositories** and add:
+1. Click the badge above, or add this repository under
+   **Settings → Add-ons → Add-on Store → ⋮ → Repositories**:
    ```
    https://github.com/LayerTM/ClaudeInHA
    ```
-2. Install **Claude Code** from the store
-3. **Either** set your Anthropic API key in the **Configuration** tab, **or** leave it empty and run `claude auth login` in the terminal after starting (for Claude.ai Pro/Max/Teams subscribers)
-4. Start the add-on and open the **Claude Code** sidebar panel
+2. Install **Claude Code** from the store and start it.
+3. Open the **Claude Code** panel in the sidebar.
+
+Authenticate by running `claude` in the console and following the login URL
+(subscription), or set an API key / OAuth token in the configuration. See the
+[documentation](claude-code/DOCS.md) for details.
 
 ## Requirements
 
-- Home Assistant OS or Supervised
-- Anthropic API key ([console.anthropic.com](https://console.anthropic.com)) — or Claude.ai subscription
+- Home Assistant OS or Supervised (`amd64` or `aarch64`)
+- A Claude subscription (Pro/Max/Team) or an Anthropic API key
 
 ## Documentation
 
-Full documentation is available in the add-on's **Documentation** tab inside Home Assistant, or in [DOCS.md](claude-code/DOCS.md).
-
-## Supported Architectures
-
-- `amd64` (x86-64)
-- `aarch64` (ARM64, Raspberry Pi 4/5)
+Full documentation lives in the add-on's **Documentation** tab, or in
+[`claude-code/DOCS.md`](claude-code/DOCS.md).
 
 ## License
 
-MIT
+[MIT](LICENSE) © 2026 LayerTM
+
+Claude and Claude Code are products of Anthropic. This is an independent,
+community-maintained add-on and is not affiliated with or endorsed by
+Anthropic or the Home Assistant project.

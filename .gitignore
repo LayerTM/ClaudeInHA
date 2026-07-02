@@ -12,6 +12,10 @@ secrets.json
 # Local tool directories
 .tldr/
 .tldrignore
+.playwright-mcp/
+
+# Local working notes / session handoffs — never committed
+thoughts/
 
 # macOS
 .DS_Store

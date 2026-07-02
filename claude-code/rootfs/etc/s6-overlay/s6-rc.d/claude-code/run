@@ -1,19 +1,15 @@
 #!/command/with-contenv bashio
 # ==============================================================================
 # claude-code: single longrun service
-# Phase 1: initialization (persistent HOME, API key, env, CLAUDE.md)
-# Phase 2: exec ttyd → tmux → claude
+# Phase 1: initialization (persistent HOME, auth, env, CLAUDE.md)
+# Phase 2: exec Node web console (terminal server on the ingress port)
 # ==============================================================================
-
-# ==============================
-# Phase 1: Initialization
-# ==============================
 
 bashio::log.info "Initializing Claude Code add-on..."
 
 # --- Persistent HOME ---
-# Claude Code binary is installed to /root/.local at build time.
-# Copy to /data/home/.local so updates and config persist across restarts.
+# The Claude binary is installed to /root/.local at build time and copied to
+# /data/home/.local so login state, sessions and updates survive restarts.
 if [ ! -d /data/home/.local ]; then
     bashio::log.info "First run — setting up persistent home directory..."
     mkdir -p /data/home
@@ -26,18 +22,13 @@ export TERM=xterm-256color
 export LANG=C.UTF-8
 export USE_BUILTIN_RIPGREP=0
 
-# Tell Claude Code we're running inside a container sandbox.
-# Without this, --dangerously-skip-permissions is refused when the process
-# runs as root (recent Claude Code versions added this safety check).
-# HA add-ons always run as root inside an isolated Docker container,
-# which is already a sandbox from the host's perspective.
+# Claude refuses --dangerously-skip-permissions under root unless it detects
+# a sandbox; the add-on container is one.
 export IS_SANDBOX=1
 
 # --- Sync Claude binary from image if newer ---
-# When the add-on image is rebuilt with a newer bundled Claude version,
-# the persistent copy in /data/home/.local would otherwise stay on the
-# older version until `claude update` runs. This ensures image upgrades
-# actually deliver the newer binary.
+# After an add-on image rebuild the bundled Claude may be newer than the
+# persistent copy; sync so image upgrades actually deliver the newer binary.
 sync_claude_from_image() {
     local image_bin="/root/.local/bin/claude"
     local persistent_bin="/data/home/.local/bin/claude"
@@ -63,12 +54,10 @@ sync_claude_from_image() {
 
     if [ "${newer}" = "${image_v}" ]; then
         bashio::log.info "Image has newer Claude (${image_v} > ${persistent_v}) — syncing to persistent storage"
+        rm -rf /data/home/.local/share/claude
+        mkdir -p /data/home/.local/share
+        cp -a /root/.local/share/claude /data/home/.local/share/ 2>/dev/null || true
         cp -af "${image_bin}" "${persistent_bin}"
-        # Also refresh any supporting files the installer may have placed alongside.
-        if [ -d /root/.local/share/claude ]; then
-            mkdir -p /data/home/.local/share
-            cp -af /root/.local/share/claude /data/home/.local/share/
-        fi
     else
         bashio::log.info "Persistent Claude (${persistent_v}) is newer than image (${image_v}) — keeping persistent"
     fi
@@ -77,12 +66,9 @@ sync_claude_from_image() {
 sync_claude_from_image
 
 # --- Authentication ---
-# Three ways to authenticate (in order of precedence Claude Code uses):
-#   1. ANTHROPIC_API_KEY       — direct API key from console.anthropic.com
-#   2. CLAUDE_CODE_OAUTH_TOKEN — long-lived OAuth token from `claude setup-token`
-#      (run once on any machine with a browser, valid ~1 year)
-#   3. Interactive `claude auth login` in the terminal (least convenient here
-#      because pasting into the HA ingress iframe can be tricky).
+#   1. ANTHROPIC_API_KEY       — API key from console.anthropic.com
+#   2. CLAUDE_CODE_OAUTH_TOKEN — long-lived token from `claude setup-token`
+#   3. Interactive /login in the terminal (persists in /data/home/.claude)
 api_key=$(bashio::config 'api_key')
 oauth_token=$(bashio::config 'oauth_token')
 
@@ -97,7 +83,7 @@ if bashio::var.has_value "${oauth_token}"; then
 fi
 
 if ! bashio::var.has_value "${api_key}" && ! bashio::var.has_value "${oauth_token}"; then
-    bashio::log.warning "No api_key or oauth_token set — run 'claude' and follow the browser login, or generate a token with 'claude setup-token' on another machine"
+    bashio::log.notice "No api_key or oauth_token set — log in from the Claude tab (run 'claude' and follow the URL) or use a token from 'claude setup-token'"
 fi
 
 # --- Model override ---
@@ -107,7 +93,7 @@ if bashio::var.has_value "${model}"; then
     bashio::log.info "Model override: ${model}"
 fi
 
-# --- Auto-update ---
+# --- Auto-update on startup ---
 if bashio::config.true 'auto_update'; then
     bashio::log.info "Checking for Claude Code updates..."
     /data/home/.local/bin/claude update 2>&1 \
@@ -117,18 +103,21 @@ else
     bashio::log.info "Auto-update disabled"
 fi
 
-# --- User environment variables (KEY=VALUE) ---
-for env_entry in $(bashio::config 'environment_vars'); do
+# --- User environment variables (KEY=VALUE, one per entry) ---
+while IFS= read -r env_entry; do
+    [ -n "${env_entry}" ] || continue
     key="${env_entry%%=*}"
     val="${env_entry#*=}"
-    if [ -n "${key}" ]; then
+    if [ -n "${key}" ] && [ "${key}" != "${env_entry}" ]; then
         export "${key}=${val}"
         bashio::log.info "Custom env: ${key}"
+    else
+        bashio::log.warning "Ignoring malformed environment_vars entry (expected KEY=VALUE): ${env_entry}"
     fi
-done
+done < <(bashio::config 'environment_vars')
 
 # --- Working directory and CLAUDE.md ---
-mkdir -p /data/workdir
+mkdir -p /data/workdir /data/uploads
 mkdir -p /data/home/.claude/skills
 
 cp /usr/share/claude-ha/CLAUDE.md /data/workdir/CLAUDE.md
@@ -139,72 +128,33 @@ if bashio::var.has_value "${custom}"; then
         >> /data/workdir/CLAUDE.md
 fi
 
-# Copy CLAUDE.md to /homeassistant if mounted and not already present
-if [ -d /homeassistant ] && [ -w /homeassistant ]; then
-    if [ ! -f /homeassistant/CLAUDE.md ]; then
-        cp /data/workdir/CLAUDE.md /homeassistant/CLAUDE.md
-    fi
+if [ -d /homeassistant ] && [ -w /homeassistant ] && [ ! -f /homeassistant/CLAUDE.md ]; then
+    cp /data/workdir/CLAUDE.md /homeassistant/CLAUDE.md
 fi
 
 # --- Init commands ---
-for cmd in $(bashio::config 'init_commands'); do
-    bashio::log.info "Running init command: ${cmd}"
+# Only the first word is logged — init commands may embed credentials.
+while IFS= read -r cmd; do
+    [ -n "${cmd}" ] || continue
+    bashio::log.info "Running init command: ${cmd%% *} ..."
     eval "${cmd}" 2>&1 \
-        || bashio::log.warning "Init command failed: ${cmd}"
-done
+        || bashio::log.warning "Init command failed: ${cmd%% *}"
+done < <(bashio::config 'init_commands')
 
 bashio::log.info "Initialization complete"
 
 # ==============================
-# Phase 2: Start ttyd
+# Phase 2: Start web console
 # ==============================
 
-declare ingress_port
-ingress_port=$(bashio::addon.ingress_port)
+# Set AFTER user environment_vars: these are authoritative and must not be
+# overridable from the config (CLAUDE_CONSOLE_DEV would disable the IP guard).
+# Read straight from options.json — independent of bashio internals.
+export CLAUDE_CONSOLE_PORT=8099
+export CLAUDE_CONSOLE_DEV=0
+export UPLOAD_DIR=/data/uploads
+export UPLOAD_RETENTION_DAYS=$(jq -r '.upload_retention_days // 14' /data/options.json 2>/dev/null || echo 14)
+export REMOTE_CONTROL=$(jq -r '.remote_control // false' /data/options.json 2>/dev/null || echo false)
 
-bashio::log.info "Starting ttyd web terminal on port ${ingress_port}..."
-
-# Prefer /homeassistant as working dir
-if [ -d /homeassistant ] && [ -w /homeassistant ]; then
-    cd /homeassistant
-else
-    cd /data/workdir
-fi
-
-# ttyd options:
-#   --writable / --ping-interval / fontSize / disableLeaveAlert — standard.
-#   rendererType=dom — use the xterm.js DOM renderer instead of ttyd
-#     1.7.7's hardcoded WebGL default. With WebGL, xterm.js paints
-#     terminal text to a canvas and window.getSelection() returns only
-#     an accessibility-layer proxy of the visible text, which makes
-#     ttyd's copy-on-select (document.execCommand('copy') on
-#     terminal.onSelectionChange) silently no-op in browsers that
-#     exclude that proxy from real selections — notably the HA Android
-#     app WebView. The DOM renderer emits real text spans, so native
-#     selection, Ctrl+Shift+C and right-click Copy all behave normally.
-#   ignoreBracketedPasteMode=true — tell xterm.js to send pasted text
-#     as raw bytes rather than wrapping it in DECSET 2004 escapes
-#     (\e[200~…\e[201~), regardless of whether the running program
-#     enabled bracketed paste mode. Required because paste at Claude's
-#     interactive prompts otherwise produces no output. Side effect:
-#     bash/zsh lose paste-bracketing (multi-line shell paste runs
-#     line-by-line) and vim loses paste autodetect (use `:set paste`
-#     if needed).
-#   scrollback=10000 — keep 10k lines of history in the web terminal
-#     instead of xterm.js's 1000-line default. Reachable with
-#     Shift+PageUp / Shift+PageDown; tmux's own history-limit (set in
-#     /etc/tmux.conf) is larger still and reachable via Ctrl+b [.
-# Note: Claude's TUI enables mouse tracking (DECSET 1000/1002/1003) so
-# a plain drag inside Claude is forwarded to Claude rather than
-# starting a selection. Hold Shift to override — the welcome banner
-# documents this.
-exec ttyd \
-    --port "${ingress_port}" \
-    --writable \
-    --ping-interval 30 \
-    -t fontSize=14 \
-    -t rendererType=dom \
-    -t disableLeaveAlert=true \
-    -t ignoreBracketedPasteMode=true \
-    -t scrollback=10000 \
-    tmux -u new -A -s claude /usr/local/bin/start-claude
+bashio::log.info "Starting Claude Console on port ${CLAUDE_CONSOLE_PORT}..."
+exec node /opt/claude-console/server/index.js

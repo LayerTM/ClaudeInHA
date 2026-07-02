@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Update Claude Code CLI in persistent storage. Usable from any shell tab and
+# from the web UI's Update button. Optional argument: stable | latest | <version>.
+set -o pipefail
+
+export HOME=/data/home
+export PATH="/data/home/.local/bin:${PATH}"
+
+target="${1:-}"
+
+before=$(claude --version 2>/dev/null | awk '{print $1}')
+
+if [ -n "${target}" ]; then
+    claude install "${target}" --force
+else
+    claude update
+fi
+status=$?
+
+after=$(claude --version 2>/dev/null | awk '{print $1}')
+
+echo ""
+if [ "${before}" = "${after}" ]; then
+    echo "Claude Code: ${after:-unknown} (no change)"
+else
+    echo "Claude Code: ${before:-unknown} -> ${after:-unknown}"
+    echo "Restart the Claude session (not the add-on) to run the new version."
+fi
+exit ${status}
