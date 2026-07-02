@@ -1,0 +1,28 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  addon-linter:
+    name: Add-on linter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint the add-on
+        uses: frenck/action-addon-linter@v2
+        with:
+          path: "./claude-code"
+
+  hadolint:
+    name: Dockerfile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.3.0
+        with:
+          dockerfile: claude-code/Dockerfile
+          ignore: DL3008,DL3013,DL3018,DL3059,SC2015
