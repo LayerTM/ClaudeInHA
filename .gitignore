@@ -17,6 +17,9 @@ secrets.json
 # Local working notes / session handoffs — never committed
 thoughts/
 
+# Private planning doc — never committed
+BACKLOG.md
+
 # macOS
 .DS_Store
 .AppleDouble

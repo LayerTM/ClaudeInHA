@@ -10,9 +10,20 @@ bashio::log.info "Initializing Claude Code add-on..."
 # --- Persistent HOME ---
 # The Claude binary is installed to /root/.local at build time and copied to
 # /data/home/.local so login state, sessions and updates survive restarts.
+mkdir -p /data/home
 if [ ! -d /data/home/.local ]; then
     bashio::log.info "First run — setting up persistent home directory..."
-    mkdir -p /data/home
+    cp -a /root/.local /data/home/.local
+fi
+
+# Guarantee the persistent binary actually RUNS on this image. /data survives
+# add-on updates, so an upgrade that changes the base libc (e.g. the Alpine→
+# Debian move: a musl binary left in /data can't run on glibc → "cannot execute:
+# required file not found") must re-seed the binary from the current image.
+# Preserves ~/.claude (auth/sessions) — only ~/.local (the binary) is replaced.
+if ! /data/home/.local/bin/claude --version >/dev/null 2>&1; then
+    bashio::log.warning "Persistent Claude binary is missing or incompatible with this image — reinstalling from the image (login/sessions are kept)"
+    rm -rf /data/home/.local
     cp -a /root/.local /data/home/.local
 fi
 

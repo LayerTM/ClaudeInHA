@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.2] — 2026-07-02
+
+### Fixed
+- **Blank console after upgrading from 0.2.x.** The 0.2.x images were
+  Alpine-based, so the Claude binary persisted in `/data` was a musl build.
+  `/data` survives add-on updates, and the first-run copy was skipped when
+  `/data/home/.local` already existed — so on the Debian-based 1.x images that
+  musl binary was kept and could not execute (`cannot execute: required file
+  not found`), leaving Claude dead and the terminal blank. The add-on now
+  verifies the persistent binary actually runs and re-installs it from the image
+  when it does not (login and sessions in `~/.claude` are preserved). Fresh
+  installs were unaffected, which is why this slipped through.
+
 ## [1.1.1] — 2026-07-02
 
 ### Changed

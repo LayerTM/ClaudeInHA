@@ -49,7 +49,8 @@ RUN arch="$(dpkg --print-architecture)" \
 # Installed to /root/.local/bin/claude — copied to persistent /data/home at runtime.
 # HOME is set inline for this RUN only (not as ENV) so s6's container_environment
 # does not bake HOME=/root in and override the persistent HOME=/data/home.
-RUN HOME=/root curl -fsSL https://claude.ai/install.sh | bash
+RUN HOME=/root curl -fsSL https://claude.ai/install.sh | bash \
+    && /root/.local/bin/claude --version   # fail the build if the binary can't run on this base
 
 ENV PATH="/root/.local/bin:${PATH}"
 ENV USE_BUILTIN_RIPGREP=0
