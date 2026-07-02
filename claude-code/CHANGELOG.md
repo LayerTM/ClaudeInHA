@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.1] — 2026-07-02
+
+### Changed
+- **Graceful fallback for autonomous mode.** `bypass_permissions` relies on the
+  undocumented `IS_SANDBOX` escape hatch to run `--dangerously-skip-permissions`
+  as root. If a future Claude Code version stops honoring it, the add-on now
+  detects that at startup (a credential-free pre-flight) and launches Claude
+  *without* the flag plus a clear notice — instead of the Claude tab erroring.
+  When the flag is accepted (the normal case) nothing changes.
+
 ## [1.1.0] — 2026-07-02
 
 Turns the add-on into a zero-prep AI workstation for Home Assistant: the tools

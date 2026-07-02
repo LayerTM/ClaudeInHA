@@ -20,10 +20,35 @@ else
     cd /data/workdir
 fi
 
+# Does this Claude version still accept --dangerously-skip-permissions under our
+# (root) user? It normally does because the add-on exports IS_SANDBOX=1, but that
+# is an undocumented escape hatch a future CLI could drop. Pre-flight it with a
+# credential-free HOME (so no API call happens) and detect the root guard.
+skip_permissions_supported() {
+    local out
+    out=$(env -u ANTHROPIC_API_KEY -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_AUTH_TOKEN \
+            HOME=/tmp/cc-skipcheck timeout 25 \
+            claude --dangerously-skip-permissions -p . 2>&1 </dev/null || true)
+    rm -rf /tmp/cc-skipcheck 2>/dev/null
+    ! grep -qi 'root/sudo' <<<"${out}"
+}
+
 build_default_args() {
     claude_args=()
     if bashio::config.true 'bypass_permissions'; then
-        claude_args+=(--dangerously-skip-permissions)
+        if skip_permissions_supported; then
+            claude_args+=(--dangerously-skip-permissions)
+        else
+            bashio::log.warning "Skip-permissions is enabled but this Claude version rejects it under root — launching WITHOUT it (Claude will ask for confirmations)."
+            cat << 'EOF'
+
+  ⚠  "Skip Permission Prompts" is on, but this Claude Code version no longer
+     allows it under the add-on's root user. Claude will ask for confirmation
+     as usual. To restore autonomous mode, update the add-on, or pin a version
+     that supports it from a shell tab:  update-claude <version>
+
+EOF
+        fi
     fi
     while IFS= read -r arg; do
         [ -n "${arg}" ] && claude_args+=("${arg}")
