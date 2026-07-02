@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.2.1] — 2026-07-02
+
+### Fixed
+- **Terminal occasionally clipped to 80 columns (content filling only the left
+  side of the panel).** The console's initial resize could reach the server
+  before the pty had finished spawning and was dropped, leaving the pty — and
+  so the tmux window — stuck at its 80x24 spawn size while the client rendered
+  full-width. Early resize and input are now buffered and applied once the pty
+  is ready, and the pty spawns at the client's real size. Complements 1.2.0's
+  instant client-side fit so the terminal is full-width end to end, every open.
+
 ## [1.2.0] — 2026-07-02
 
 A console-feel release: the terminal now opens instantly at full size and looks

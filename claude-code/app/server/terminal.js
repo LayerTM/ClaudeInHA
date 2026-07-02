@@ -43,6 +43,12 @@ function attach(ws) {
   let term = null;
   let alive = true;
   let drainTimer = null;
+  // The pty spawns asynchronously (start() awaits tmux). Messages that arrive
+  // before it exists must be buffered, not dropped — a dropped initial resize
+  // left the pty (and so the tmux window) stuck at the 80x24 spawn size while
+  // the client rendered full-width, clipping the terminal to 80 columns.
+  let pendingResize = null;
+  const pendingInput = [];
 
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
@@ -54,8 +60,10 @@ function attach(ws) {
 
     term = pty.spawn('tmux', ['new-session', '-A', '-t', tmux.MAIN, '-s', view], {
       name: 'xterm-256color',
-      cols: 80,
-      rows: 24,
+      // Spawn at the client's real size when it already told us (during the
+      // await above), so the tmux window is correct from birth.
+      cols: pendingResize ? pendingResize.cols : 80,
+      rows: pendingResize ? pendingResize.rows : 24,
       cwd: tmux.workdir(),
       env: process.env,
     });
@@ -66,6 +74,15 @@ function attach(ws) {
       tmux.killSession(view);
       return;
     }
+
+    // Apply anything that arrived while the pty was still spawning.
+    if (pendingResize) {
+      try { term.resize(pendingResize.cols, pendingResize.rows); } catch { /* exited */ }
+    }
+    for (const d of pendingInput) {
+      try { term.write(d); } catch { /* exited */ }
+    }
+    pendingInput.length = 0;
 
     // Grouped view sessions die with their client so they never accumulate.
     // The session may not be registered yet when the first attempt runs.
@@ -101,11 +118,12 @@ function attach(ws) {
   };
 
   ws.on('message', (raw, isBinary) => {
-    if (!term) return;
     if (isBinary) {
       // Raw bytes from xterm's onBinary path — must not round-trip through
       // UTF-8. latin1 preserves each byte in node-pty's string write.
-      try { term.write(raw.toString('latin1')); } catch { /* exited */ }
+      const data = raw.toString('latin1');
+      if (term) { try { term.write(data); } catch { /* exited */ } }
+      else pendingInput.push(data);
       return;
     }
     let msg;
@@ -117,16 +135,22 @@ function attach(ws) {
     try {
       switch (msg.t) {
         case 'in':
-          if (typeof msg.d === 'string') term.write(msg.d);
+          if (typeof msg.d === 'string') {
+            if (term) term.write(msg.d);
+            else pendingInput.push(msg.d);
+          }
           break;
         case 'resize':
           if (Number.isInteger(msg.cols) && Number.isInteger(msg.rows)
               && msg.cols > 1 && msg.rows > 1 && msg.cols <= 1000 && msg.rows <= 1000) {
-            term.resize(msg.cols, msg.rows);
+            // Remember the latest size even before the pty exists, so start()
+            // can spawn/resize to it instead of dropping it.
+            pendingResize = { cols: msg.cols, rows: msg.rows };
+            if (term) term.resize(msg.cols, msg.rows);
           }
           break;
         case 'select':
-          if (Number.isInteger(msg.w) && msg.w >= 0) {
+          if (term && Number.isInteger(msg.w) && msg.w >= 0) {
             tmux.selectWindow(view, msg.w).catch(() => {});
           }
           break;
@@ -137,8 +161,8 @@ function attach(ws) {
           break;
       }
     } catch {
-      // pty died between the null check and the write/resize — the onExit
-      // handler is about to close this socket; never let it kill the server.
+      // pty died mid-handling — the onExit handler is about to close this
+      // socket; never let it kill the server.
     }
   });
 
