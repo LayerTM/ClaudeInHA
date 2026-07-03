@@ -243,7 +243,7 @@ claude mcp add my-server -- npx -y @scope/mcp-server
 
 **Visually verifying dashboards/UI:** use `ha-shot` (fast, static) or the Playwright MCP `browser_navigate` → `http://homeassistant:8123<path>` + `browser_take_screenshot` (interactive). Always **read the resulting PNG** — a screenshot you don't look at proves nothing.
 
-**HA Token:** if the add-on's *HA Token* option is set, `HA_TOKEN` / `HA_URL` (`http://homeassistant:8123`) / `HASS_TOKEN` / `HASS_SERVER` are exported, enabling `ha-shot`, `hass-cli`, and the `hass-mcp` MCP server. Without it, use the Supervisor-proxied API with `$SUPERVISOR_TOKEN` (above) for states/services — that always works.
+**HA Token:** if the add-on's *HA Token* option is set, `HA_TOKEN` / `HA_URL` (`http://homeassistant:8123`) / `HASS_TOKEN` / `HASS_SERVER` are exported, enabling `ha-shot`, `hass-cli`, and the `hass-mcp` MCP server. When `HA_TOKEN` is present it **is** the token the user configured — use it directly; do not create, cache, or trust ad-hoc token files (e.g. a hand-saved `.llat`), which go stale. Without it, use the Supervisor-proxied API with `$SUPERVISOR_TOKEN` (above) for states/services — that always works.
 
 ---
 

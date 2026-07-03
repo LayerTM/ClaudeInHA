@@ -228,6 +228,16 @@ test('artifacts: token + mcp files are 0600 and audit log is written', () => {
   assert.equal(tokenMode, 0o600);
   const mcpFile = path.join(TMP, 'claude-prompt', 'ha-mcp.json');
   assert.equal(fs.statSync(mcpFile).mode & 0o777, 0o600);
+  const mcp = JSON.parse(fs.readFileSync(mcpFile, 'utf8'));
   assert.ok(fs.readFileSync(mcpFile, 'utf8').includes(HA_LLAT));
+  // Regression guard: the MCP endpoint must be HA's Model Context Protocol
+  // Server path `/api/mcp` (Streamable HTTP). A wrong path (e.g. the never-valid
+  // `/mcp_server/mcp`) 404s, the `ha` server never connects, and the chat goes
+  // blind — see v1.7.2. Assert the exact contract HA exposes.
+  assert.equal(mcp.mcpServers.ha.type, 'http');
+  assert.ok(
+    mcp.mcpServers.ha.url.endsWith('/api/mcp'),
+    `MCP url must target /api/mcp, got ${mcp.mcpServers.ha.url}`,
+  );
   assert.ok(fs.existsSync(path.join(TMP, 'claude-audit.log')));
 });

@@ -22,7 +22,7 @@ const OPTIONS_FILE = process.env.CLAUDE_PROMPT_OPTIONS || '/data/options.json';
 const CLAUDE_BIN = process.env.CLAUDE_PROMPT_BIN || '/data/home/.local/bin/claude';
 const USAGE_BIN = process.env.CLAUDE_PROMPT_USAGE_BIN || '/usr/local/bin/ha-usage';
 const HA_MCP_URL = process.env.CLAUDE_PROMPT_HA_MCP_URL
-  || 'http://homeassistant:8123/mcp_server/mcp';
+  || 'http://homeassistant:8123/api/mcp';
 const DISCOVERY_SERVICE = 'claude_ha';
 
 function log(msg) {

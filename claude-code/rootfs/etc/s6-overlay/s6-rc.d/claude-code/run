@@ -252,7 +252,7 @@ export CLAUDE_PROMPT_DATA=/data
 export CLAUDE_PROMPT_OPTIONS=/data/options.json
 export CLAUDE_PROMPT_BIN=/data/home/.local/bin/claude
 export CLAUDE_PROMPT_USAGE_BIN=/usr/local/bin/ha-usage
-export CLAUDE_PROMPT_HA_MCP_URL="http://homeassistant:8123/mcp_server/mcp"
+export CLAUDE_PROMPT_HA_MCP_URL="http://homeassistant:8123/api/mcp"
 export ADDON_VERSION="$(bashio::addon.version 2>/dev/null || echo unknown)"
 
 # --- Proactive monitoring (opt-in via monitoring_interval_hours > 0) ---

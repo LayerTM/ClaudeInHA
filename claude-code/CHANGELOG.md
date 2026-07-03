@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.7.2] — 2026-07-03
+
+### Fixed
+- **Chat (the `claude_ha` integration) could not read Home Assistant.** The
+  prompt server pointed its Home Assistant MCP connection at a non-existent
+  endpoint (`/mcp_server/mcp`, which returns 404), so the `ha` MCP server never
+  connected and every chat ran blind — no entity states, no live context — even
+  with an HA token configured. Corrected to Home Assistant's real Model Context
+  Protocol Server endpoint, `/api/mcp` (Streamable HTTP), and added a regression
+  test that asserts it. For chat to see your home you still need the **Model
+  Context Protocol Server** integration enabled in Home Assistant (Settings →
+  Devices & services → Add integration → *Model Context Protocol Server*) with
+  entities exposed to Assist.
+
+### Changed
+- **Console: prefer the configured `HA_TOKEN`.** Clarified the built-in guidance
+  so the console assistant always uses the token from the *HA Token* option and
+  never relies on stale hand-saved token files.
+
 ## [1.7.1] — 2026-07-03
 
 ### Changed
