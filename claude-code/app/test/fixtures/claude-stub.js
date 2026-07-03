@@ -55,8 +55,10 @@ function run(prompt) {
 function finish(prompt, wantsProposal) {
   emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'mcp__ha__GetLiveContext', input: {} }] } });
 
-  const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJhIjoxfQ.sig-here-abcdef';
-  const apiKey = 'sk-ant-api03-deadbeefdeadbeefdeadbeef';
+  // Secret-SHAPED but fake: the redactor matches them by shape, while the
+  // 'EXAMPLE' marker tells the repo secret-scanner they are intentional fakes.
+  const jwt = 'eyJEXAMPLEheaderPart.eyJEXAMPLEbodyPart.EXAMPLEsignature';
+  const apiKey = 'sk-ant-api03-EXAMPLEdeadbeefdeadbeef01';
   let proposal = null;
   if (wantsProposal && prompt.includes('PROPOSE')) {
     proposal = prompt.includes('BADINTENT')

@@ -23,7 +23,7 @@ process.env.CLAUDE_PROMPT_DEV = '1'; // skip Supervisor discovery
 process.env.CLAUDE_PROMPT_DATA = TMP;
 process.env.CLAUDE_PROMPT_OPTIONS = path.join(TMP, 'options.json');
 process.env.CLAUDE_PROMPT_BIN = path.join(__dirname, 'fixtures', 'claude-stub.js');
-process.env.ANTHROPIC_API_KEY = 'sk-ant-test-parent-000000000000';
+process.env.ANTHROPIC_API_KEY = 'sk-ant-api03-EXAMPLEparent00000000';
 fs.writeFileSync(process.env.CLAUDE_PROMPT_OPTIONS, JSON.stringify({
   prompt_api: true, api_token: '', prompt_ha_token: HA_LLAT,
   ha_token: '', api_key: '', oauth_token: '', model: '',
@@ -41,7 +41,8 @@ test('ipAllowed: loopback and Supervisor subnet only', () => {
   for (const ip of ['127.0.0.1', '::1', '::ffff:127.0.0.1', '172.30.32.1', '172.30.33.254', '::ffff:172.30.32.5']) {
     assert.equal(security.ipAllowed(ip), true, `${ip} should be allowed`);
   }
-  for (const ip of ['172.30.34.1', '172.31.32.1', '10.0.0.5', '192.168.1.10', '8.8.8.8', '172.30.32.256', 'garbage', '', undefined]) {
+  // Documentation-range (TEST-NET) + public IPs — all outside 172.30.32.0/23.
+  for (const ip of ['172.30.34.1', '172.31.32.1', '203.0.113.5', '198.51.100.10', '8.8.8.8', '172.30.32.256', 'garbage', '', undefined]) {
     assert.equal(security.ipAllowed(ip), false, `${ip} should be denied`);
   }
 });
@@ -79,15 +80,15 @@ test('validateProposal: drops non-conforming model output', () => {
 });
 
 test('redactDeep: redacts secrets in nested strings', () => {
-  const redact = security.buildRedactor(['my-exact-secret-value']);
+  const redact = security.buildRedactor(['dummy-exact-secret-value']);
   const out = security.redactDeep({
-    a: 'key sk-ant-api03-deadbeefdeadbeef here',
-    b: ['token eyJhbGciOiJIUzI1NiJ9.eyJhIjoxfQ.sig-abcdef', { c: 'my-exact-secret-value' }],
+    a: 'key sk-ant-api03-EXAMPLEdeadbeefdeadbeef here',
+    b: ['token eyJEXAMPLEheaderPart.eyJEXAMPLEbodyPart.EXAMPLEsignature', { c: 'dummy-exact-secret-value' }],
   }, redact);
   const blob = JSON.stringify(out);
-  assert.ok(!blob.includes('sk-ant-api03'), 'api key redacted');
-  assert.ok(!blob.includes('eyJhbGci'), 'jwt redacted');
-  assert.ok(!blob.includes('my-exact-secret-value'), 'exact secret redacted');
+  assert.ok(!blob.includes('EXAMPLEdeadbeef'), 'api key redacted');
+  assert.ok(!blob.includes('eyJEXAMPLE'), 'jwt redacted');
+  assert.ok(!blob.includes('dummy-exact-secret-value'), 'exact secret redacted');
   assert.ok(blob.includes('[REDACTED]'));
 });
 
@@ -175,8 +176,8 @@ test('read: happy path with deep redaction, proposal, tools_used', async () => {
   const { status, json } = await post({ prompt: 'PROPOSE please', conversation_id: 'conv-1' }, { 'X-Claude-Caller': 'user.alpha' });
   assert.equal(status, 200);
   const blob = JSON.stringify(json);
-  assert.ok(!blob.includes('sk-ant-api03'), 'no api key leaks');
-  assert.ok(!blob.includes('eyJhbGci'), 'no jwt leaks (incl. proposal.data)');
+  assert.ok(!blob.includes('EXAMPLEdeadbeef'), 'no api key leaks');
+  assert.ok(!blob.includes('eyJEXAMPLE'), 'no jwt leaks (incl. proposal.data)');
   assert.ok(json.text.includes('[REDACTED]'));
   assert.equal(json.proposal.intents[0].intent, 'HassTurnOff');
   assert.deepEqual(json.tools_used, ['mcp__ha__GetLiveContext']);
