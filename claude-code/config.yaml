@@ -10,12 +10,9 @@ arch:
 
 init: false
 timeout: 300
-
-# Supervisor restarts the add-on if the console's ingress port stops accepting
-# connections (i.e. the Node server died). The port is bound on all interfaces
-# while the console runs, so a healthy add-on always answers — this only trips
-# on an actual crash.
-watchdog: "tcp://[HOST]:8099"
+# Self-healing uses the Docker HEALTHCHECK in the Dockerfile (the config-level
+# `watchdog:` key is obsolete). The Supervisor restarts the add-on when the
+# console's /api/health stops responding.
 
 ingress: true
 ingress_entry: /
