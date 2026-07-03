@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.1] — 2026-07-03
+
+### Security
+- **Hardened the opt-in proactive monitor.** It now fetches the HA error log
+  itself and hands it to Claude as untrusted *data* to analyse — with no tools,
+  no Home Assistant credentials in Claude's environment, and no permission
+  bypass — so a prompt injection hidden in log output cannot trigger any action.
+  (The monitor is off by default.)
+
 ## [1.4.0] — 2026-07-03
 
 Safety, awareness, and more Home Assistant know-how.
