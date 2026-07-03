@@ -1,0 +1,146 @@
+configuration:
+  api_key:
+    name: Klucz API Anthropic
+    description: >-
+      Twój klucz API Anthropic z console.anthropic.com (zaczyna się od sk-ant-).
+      Użyj go, jeśli płacisz za API bezpośrednio. Zostaw puste, jeśli masz
+      subskrypcję Pro/Max/Team — wtedy wypełnij 'OAuth Token' albo zaloguj się
+      interaktywnie przez 'claude auth login'.
+  oauth_token:
+    name: Token OAuth (subskrypcja Pro/Max/Team)
+    description: >-
+      Długoterminowy token OAuth do logowania na podstawie subskrypcji.
+      Uruchom 'claude setup-token' na dowolnym komputerze ze zwykłą przeglądarką
+      (laptop, desktop itp.) — polecenie wypisze token ważny około roku.
+      Wklej go tutaj. Dzięki temu nie musisz wklejać kodu autoryzacji do
+      terminala ingress, co jest niewygodne wewnątrz ramki iframe HA. Zostaw
+      puste, jeśli używasz klucza API Anthropic.
+  ha_token:
+    name: Token HA (Long-Lived Access Token)
+    description: >-
+      Długoterminowy token dostępu Home Assistant. Utwórz go w Home Assistant:
+      Profil → Bezpieczeństwo → Długoterminowe tokeny dostępu. Gdy ustawiony,
+      Claude może robić zrzuty pulpitów (ha-shot), korzystać z hass-cli i
+      narzędzi hass-mcp oraz łączyć się z Home Assistant przez WebSocket/REST
+      jako Ty. Przechowywany zaszyfrowany i zachowywany między aktualizacjami
+      dodatku. Zostaw puste, aby pominąć te funkcje.
+  bypass_permissions:
+    name: Pomijaj prośby o uprawnienia
+    description: >-
+      Gdy włączone, Claude Code NIE będzie prosić o potwierdzenie przed
+      uruchamianiem poleceń powłoki, edycją plików czy innymi działaniami.
+      Włącz tylko, jeśli w pełni ufasz decyzjom Claude.
+      Odpowiada fladze --dangerously-skip-permissions.
+      Dodatek automatycznie ustawia IS_SANDBOX=1, aby ta flaga działała mimo
+      że kontener działa jako root.
+  auto_update:
+    name: Automatyczna aktualizacja Claude Code
+    description: >-
+      Gdy włączone, Claude Code sprawdza i instaluje aktualizacje przy każdym
+      starcie dodatku. Wyłącz, jeśli chcesz przypiąć konkretną wersję.
+      Aktualizować ręcznie zawsze można poleceniem 'claude update' w terminalu.
+  model:
+    name: Nadpisanie modelu
+    description: >-
+      Nadpisz domyślny model Claude. Przykłady: claude-opus-4-6,
+      claude-sonnet-4-6. Zostaw puste, aby użyć domyślnego modelu Claude Code.
+  custom_instructions:
+    name: Własne instrukcje
+    description: >-
+      Dodatkowe instrukcje dołączane do wbudowanego kontekstu Home Assistant
+      (CLAUDE.md). Użyj, aby dodać swoje preferencje, standardy kodu lub
+      kontekst projektu.
+  environment_vars:
+    name: Dodatkowe zmienne środowiskowe
+    description: >-
+      Dodatkowe zmienne środowiskowe przekazywane do Claude Code.
+      Format: KEY=VALUE — jeden wpis na linię.
+      Przykład: MY_VAR=hello lub NODE_OPTIONS=--max-old-space-size=4096
+  init_commands:
+    name: Polecenia inicjalizacyjne
+    description: >-
+      Polecenia powłoki uruchamiane podczas startu dodatku przed uruchomieniem
+      Claude Code. Przydatne do instalowania dodatkowych narzędzi lub serwerów
+      MCP. Przykłady: 'npm install -g @anthropic-ai/mcp-server-github'
+      lub 'apt-get install -y ffmpeg'
+  plugins:
+    name: Dodatkowe wtyczki
+    description: >-
+      Dodatkowe wtyczki Claude Code ponad wbudowany zestaw, jeden wpis w formacie
+      'name@marketplace' (np. 'coderabbit@claude-plugins-official').
+      Instalowane raz i zachowywane między aktualizacjami. Bazowy zestaw
+      (superpowers, frontend-design, playwright, skille HA itd.) jest zawsze
+      dołączony.
+  marketplaces:
+    name: Dodatkowe marketplace'y wtyczek
+    description: >-
+      Dodatkowe marketplace'y wtyczek do zarejestrowania, jeden na wpis — GitHub
+      'owner/repo', URL Git lub ścieżka. Potrzebne przed instalacją wtyczek z
+      marketplace'u, którego nie ma wśród wbudowanych.
+  skills_git:
+    name: Repozytorium Git własnych skilli
+    description: >-
+      Opcjonalne repozytorium Git z Twoimi własnymi skillami, synchronizowane do
+      ~/.claude/skills przy każdym starcie. Każdy folder najwyższego poziomu w
+      repo musi być jednym skillem z plikiem SKILL.md. Zostaw puste, aby pominąć.
+  extra_args:
+    name: Dodatkowe argumenty Claude
+    description: >-
+      Dodatkowe argumenty wiersza poleceń do domyślnego wywołania 'claude'.
+      Jeden argument na wpis (nie łącz kilku flag w jednej linii).
+      Przykłady: --resume, --model, claude-sonnet-4-6, --verbose
+  launch_command:
+    name: Własne polecenie uruchamiające
+    description: >-
+      Pełne polecenie do uruchomienia zamiast domyślnego wywołania 'claude'.
+      Gdy ustawione, całkowicie zastępuje domyślne uruchamianie — bypass_permissions
+      i extra_args są ignorowane. Użyj do zaawansowanych scenariuszy, jak
+      opakowanie claude innym narzędziem lub uruchomienie innego binarium.
+      Przykład: claude --resume --dangerously-skip-permissions
+      Zostaw puste, aby zachować domyślne zachowanie uruchamiania.
+  upload_retention_days:
+    name: Przechowywanie przesłanych plików (dni)
+    description: >-
+      Pliki dołączone przez konsolę webową są przechowywane w /data/uploads.
+      Pliki starsze niż podana liczba dni są usuwane automatycznie.
+      Ustaw 0, aby przechowywać przesłane pliki na zawsze.
+  remote_control:
+    name: Zdalne sterowanie (aplikacja mobilna Claude)
+    description: >-
+      Uruchamia 'claude remote-control' w dodatkowej karcie, aby oficjalna
+      aplikacja mobilna Claude / claude.ai mogła sterować sesją tej maszyny.
+      Wymaga pełnego '/login' w terminalu (subskrypcja Pro/Max/Team) — token
+      OAuth z 'claude setup-token' ani klucz API nie wystarczą.
+  monitoring_interval_hours:
+    name: Proaktywne monitorowanie (godziny)
+    description: >-
+      Gdy większe niż 0, Claude okresowo (co N godzin) przegląda dziennik błędów
+      i konfigurację HA i wysyła powiadomienie tylko, jeśli znajdzie coś wartego
+      uwagi. Wymaga zalogowania Claude i zużywa limit planu przy każdym
+      sprawdzeniu. Ustaw 0, aby wyłączyć (domyślnie). Aby otrzymywać sprawdzenia
+      na telefon, ustaw też HA_NOTIFY_SERVICE w zmiennych środowiskowych.
+  prompt_api:
+    name: Prompt API (integracja claude_ha)
+    description: >-
+      Udostępnia bezpieczne prompt API na wewnętrznym porcie 8126 dla
+      towarzyszącej integracji 'Claude' (claude_ha) — rozmowa z Claude przez
+      Assist, usługę claude.ask i sensor stanu. Port jest dostępny tylko
+      wewnątrz wewnętrznej sieci Home Assistant, każde żądanie wymaga tokenu
+      bearer, a każdy prompt działa w odizolowanej sesji Claude tylko do
+      odczytu. Wyłącz, jeśli nie używasz integracji.
+  api_token:
+    name: Token Prompt API (opcjonalny)
+    description: >-
+      Token bearer, który integracja claude_ha musi przedstawić prompt API.
+      Zostaw puste (zalecane): dodatek sam wygeneruje silny token i przekaże go
+      integracji przez Supervisor discovery — bez ręcznej konfiguracji. Ustaw
+      tylko, jeśli chcesz stały, znany token jako ręczną opcję zapasową.
+  prompt_ha_token:
+    name: Token HA dla Prompt API (opcjonalny, ograniczony użytkownik)
+    description: >-
+      Długoterminowy token dostępu Home Assistant używany WYŁĄCZNIE przez sesje
+      prompt API do odczytu stanu Home Assistant przez integrację Model Context
+      Protocol Server. Najlepsza praktyka: utwórz dedykowanego użytkownika Home
+      Assistant bez uprawnień administratora i wklej jego token tutaj. Zostaw
+      puste, aby użyć 'Token HA'. Tak czy inaczej Claude widzi tylko encje
+      udostępnione dla Assist.

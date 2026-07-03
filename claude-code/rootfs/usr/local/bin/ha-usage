@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""Summarise Claude usage for this add-on.
+
+Tokens come from the Claude Code session transcripts under
+``$HOME/.claude/projects`` (every interactive and headless run is recorded
+there with a per-message ``usage`` block). Dollar figures come from the
+prompt-API calls the add-on already records in ``/data/claude-audit.log``.
+
+Usage:
+    ha-usage [DAYS]      # recent window for the per-model breakdown (default 7)
+"""
+
+from __future__ import annotations
+
+import glob
+import json
+import os
+import re
+import sys
+from collections import defaultdict
+from datetime import datetime, timezone
+
+HOME = os.environ.get("HOME", "/data/home")
+PROJECTS = os.path.join(HOME, ".claude", "projects")
+AUDIT_LOG = "/data/claude-audit.log"
+
+TOKEN_KEYS = (
+    "input_tokens",
+    "output_tokens",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+)
+
+
+def _fmt(n: int) -> str:
+    return f"{n:,}"
+
+
+def _today() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def collect_tokens():
+    """day -> {token_key: total}, and (day, model) -> {token_key: total}, msg counts."""
+    by_day: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    by_day_model: dict[tuple[str, str], dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    msgs_by_day: dict[str, int] = defaultdict(int)
+
+    for path in glob.glob(os.path.join(PROJECTS, "*", "*.jsonl")):
+        try:
+            fh = open(path, encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        with fh:
+            for line in fh:
+                line = line.strip()
+                if not line or '"usage"' not in line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except ValueError:
+                    continue
+                msg = ev.get("message")
+                if not isinstance(msg, dict):
+                    continue
+                usage = msg.get("usage")
+                if not isinstance(usage, dict) or "output_tokens" not in usage:
+                    continue
+                ts = ev.get("timestamp") or ""
+                day = ts[:10] if len(ts) >= 10 else "unknown"
+                model = msg.get("model") or "unknown"
+                msgs_by_day[day] += 1
+                for k in TOKEN_KEYS:
+                    v = usage.get(k) or 0
+                    if isinstance(v, int):
+                        by_day[day][k] += v
+                        by_day_model[(day, model)][k] += v
+    return by_day, by_day_model, msgs_by_day
+
+
+def window_days(n: int) -> list[str]:
+    today = datetime.now(timezone.utc).date()
+    return [(today.fromordinal(today.toordinal() - i)).isoformat() for i in range(n)]
+
+
+def sum_over(by_day, days) -> dict[str, int]:
+    total: dict[str, int] = defaultdict(int)
+    for d in days:
+        for k, v in by_day.get(d, {}).items():
+            total[k] += v
+    return total
+
+
+def line_for(label: str, totals: dict[str, int]) -> str:
+    return (
+        f"  {label:<16} "
+        f"{_fmt(totals.get('input_tokens', 0)):>14} in  "
+        f"{_fmt(totals.get('output_tokens', 0)):>12} out  "
+        f"{_fmt(totals.get('cache_read_input_tokens', 0)):>14} cache-read  "
+        f"{_fmt(totals.get('cache_creation_input_tokens', 0)):>12} cache-write"
+    )
+
+
+def audit_costs():
+    """Return (today_cost, total_cost, has_data) from the prompt-API audit log."""
+    if not os.path.exists(AUDIT_LOG):
+        return 0.0, 0.0, False
+    today = _today()
+    today_cost = total_cost = 0.0
+    seen = False
+    rx = re.compile(r"cost=\$([0-9]+\.[0-9]+)")
+    try:
+        for line in open(AUDIT_LOG, encoding="utf-8", errors="ignore"):
+            m = rx.search(line)
+            if not m:
+                continue
+            seen = True
+            amt = float(m.group(1))
+            total_cost += amt
+            if line[:10] == today:
+                today_cost += amt
+    except OSError:
+        return 0.0, 0.0, False
+    return today_cost, total_cost, seen
+
+
+def main(argv: list[str]) -> int:
+    try:
+        days = max(1, int(argv[1])) if len(argv) > 1 else 7
+    except ValueError:
+        days = 7
+
+    by_day, by_day_model, msgs_by_day = collect_tokens()
+    today = _today()
+
+    print(f"Claude usage — {PROJECTS}\n")
+
+    if not by_day:
+        print("  No session transcripts yet — run Claude in the console first.")
+    else:
+        recent = window_days(days)
+        all_days = list(by_day.keys())
+        print("Tokens")
+        print(line_for(f"Today", sum_over(by_day, [today])))
+        print(line_for(f"Last {days} days", sum_over(by_day, recent)))
+        print(line_for("All time", sum_over(by_day, all_days)))
+
+        # Per-model breakdown over the recent window.
+        model_totals: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        for (d, model), tots in by_day_model.items():
+            if d in recent:
+                for k, v in tots.items():
+                    model_totals[model][k] += v
+        # Drop models with no real activity in the window (e.g. synthetic entries).
+        model_totals = {
+            m: t for m, t in model_totals.items()
+            if t.get("output_tokens", 0) or t.get("input_tokens", 0)
+        }
+        if model_totals:
+            print(f"\nBy model (last {days} days)")
+            for model in sorted(model_totals, key=lambda m: -model_totals[m].get("output_tokens", 0)):
+                print(line_for(model[:16], model_totals[model]))
+
+        today_msgs = msgs_by_day.get(today, 0)
+        recent_msgs = sum(msgs_by_day.get(d, 0) for d in recent)
+        all_msgs = sum(msgs_by_day.values())
+        print(f"\nAssistant messages: today {today_msgs:,} · {days}d {recent_msgs:,} · all {all_msgs:,}")
+
+    today_cost, total_cost, seen = audit_costs()
+    if seen:
+        print("\nPrompt-API cost (claude_ha integration, from ha-audit)")
+        print(f"  Today: ${today_cost:.4f}   Total: ${total_cost:.4f}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

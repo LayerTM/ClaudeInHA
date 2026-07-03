@@ -1,5 +1,5 @@
 name: "Claude Code"
-version: "1.5.0"
+version: "1.6.0"
 slug: claude-code
 description: "Claude Code AI assistant embedded in Home Assistant — web console with tabs, clipboard, file attachments, browser testing, and a bundled HA skill pack"
 url: "https://github.com/LayerTM/ClaudeInHA"
@@ -10,6 +10,12 @@ arch:
 
 init: false
 timeout: 300
+
+# Supervisor restarts the add-on if the console's ingress port stops accepting
+# connections (i.e. the Node server died). The port is bound on all interfaces
+# while the console runs, so a healthy add-on always answers — this only trips
+# on an actual crash.
+watchdog: "tcp://[HOST]:8099"
 
 ingress: true
 ingress_entry: /

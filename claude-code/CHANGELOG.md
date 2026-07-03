@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.6.0] — 2026-07-03
+
+Reliability, localization, and usage visibility.
+
+### Added
+- **Self-healing.** The Supervisor now watches the console and restarts the
+  add-on automatically if the web server ever stops responding, and the add-on
+  reports a health status you can see in its info page (Docker `HEALTHCHECK`).
+- **`ha-usage`.** A new command that summarizes your Claude token usage —
+  today, the last N days, and all-time, broken down per model — plus the
+  prompt-API dollar cost from the audit log. Handy for keeping an eye on plan
+  or API spend.
+- **Ukrainian and Polish translations** of the configuration screen — the
+  add-on options now show in your Home Assistant language (українська, polski)
+  alongside English.
+
 ## [1.5.0] — 2026-07-03
 
 Opens the add-on to the companion **Claude** (`claude_ha`) Home Assistant

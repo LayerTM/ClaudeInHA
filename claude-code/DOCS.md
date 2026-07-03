@@ -37,6 +37,7 @@ per-session setup:
 | `ha-check` | Validate the HA configuration (run before any restart) |
 | `ha-state [entity\|domain.]` | Query entity states, e.g. `ha-state light.kitchen`, `ha-state light.` |
 | `ha-shot <path> [out.png] [WxH]` | Screenshot a Lovelace dashboard to PNG, e.g. `ha-shot /lovelace/0 /tmp/d.png 1280x800` (needs **HA Token**) |
+| `ha-usage [days]` | Summarize Claude token usage (today / N days / all-time, per model) and prompt-API cost |
 | `yq` | Edit YAML config files |
 | `hass-cli` | Entity/service queries (needs **HA Token**) |
 | Playwright MCP | Browser automation tools; Chromium is preinstalled |
