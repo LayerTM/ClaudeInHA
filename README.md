@@ -8,12 +8,18 @@ Anthropic's [Claude Code](https://code.claude.com/docs) CLI, embedded in Home As
 
 [![Open your Home Assistant instance and show the add-on repository dialog.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FLayerTM%2FClaudeInHA)
 
+[![Version](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2FLayerTM%2FClaudeInHA%2Fmain%2Fclaude-code%2Fconfig.yaml&query=%24.version&prefix=v&label=version&color=D97757)](claude-code/CHANGELOG.md)
+[![Project Stage](https://img.shields.io/badge/stage-experimental-E5A00D)](https://developers.home-assistant.io/docs/add-ons/configuration#add-on-config)
+[![License](https://img.shields.io/github/license/LayerTM/ClaudeInHA?color=blue)](LICENSE)
+[![Home Assistant Add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-18BCF2?logo=home-assistant&logoColor=white)](https://www.home-assistant.io/)
+
+[![amd64](https://img.shields.io/badge/amd64-supported-2ea043)](claude-code/config.yaml)
+[![aarch64](https://img.shields.io/badge/aarch64-supported-2ea043)](claude-code/config.yaml)
+&nbsp;
 [![lint](https://github.com/LayerTM/ClaudeInHA/actions/workflows/lint.yml/badge.svg)](https://github.com/LayerTM/ClaudeInHA/actions/workflows/lint.yml)
 [![secret-scan](https://github.com/LayerTM/ClaudeInHA/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/LayerTM/ClaudeInHA/actions/workflows/secret-scan.yml)
-![Version](https://img.shields.io/badge/version-1.1.0-D97757)
-![Architectures](https://img.shields.io/badge/arch-amd64%20%7C%20aarch64-2ea043)
-![License](https://img.shields.io/badge/license-MIT-blue)
-![Home Assistant Add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-18BCF2?logo=home-assistant&logoColor=white)
+[![Last commit](https://img.shields.io/github/last-commit/LayerTM/ClaudeInHA?color=41BDF5)](https://github.com/LayerTM/ClaudeInHA/commits/main)
+[![Stars](https://img.shields.io/github/stars/LayerTM/ClaudeInHA?color=41BDF5&logo=github&logoColor=white)](https://github.com/LayerTM/ClaudeInHA/stargazers)
 
 <img src="images/screenshot.png" alt="Claude Code console in the Home Assistant sidebar" width="820">
 
