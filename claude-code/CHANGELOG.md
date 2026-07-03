@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.1] — 2026-07-03
+
+### Added
+- **ImageMagick and Pillow bundled.** The console now ships `magick`
+  (ImageMagick) and Python `Pillow` out of the box, so Claude can crop, resize
+  and convert images — e.g. trimming a dashboard screenshot before reading it —
+  with no per-session setup. Fills a gap hit in real use where only a
+  hand-installed Pillow was available.
+
 ## [1.3.0] — 2026-07-02
 
 Makes the console feel like a real desktop terminal — snappy, crisp, and with

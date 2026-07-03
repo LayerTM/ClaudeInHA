@@ -59,16 +59,19 @@ ENV USE_BUILTIN_RIPGREP=0
 # detects a sandbox. HA add-ons run as root in an isolated container.
 ENV IS_SANDBOX=1
 
-# --- Browser for dashboard screenshots + Playwright MCP ---
+# --- Browser + image tooling for dashboard screenshots ---
 # System Chromium (apt resolves all its runtime deps; works amd64 + arm64) plus
 # CJK/emoji/base fonts so dashboards don't render tofu boxes. Both the ha-shot
 # helper and Playwright MCP point at /usr/bin/chromium (no bundled download).
+# ImageMagick gives Claude a native CLI (`magick`) for cropping/resizing those
+# screenshots (Pillow, below, covers the Python side).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         chromium \
         fonts-noto-cjk \
         fonts-noto-color-emoji \
         fonts-liberation \
+        imagemagick \
     && rm -rf /var/lib/apt/lists/*
 ENV CHROME_BIN=/usr/bin/chromium
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
@@ -89,11 +92,15 @@ RUN arch="$(dpkg --print-architecture)" \
 
 # home-assistant-cli (hass-cli) + hass-mcp (registered as an MCP server when
 # the HA Token is set): entity/service queries against the Core API.
+# Pillow: Python imaging for ad-hoc crops/resizes of dashboard screenshots
+# (ImageMagick's `magick` covers the CLI side).
 ARG HASS_CLI_VERSION=1.0.0
 ARG HASS_MCP_VERSION=0.5.0
+ARG PILLOW_VERSION=12.3.0
 RUN pip install --no-cache-dir --break-system-packages \
         "homeassistant-cli==${HASS_CLI_VERSION}" \
-        "hass-mcp==${HASS_MCP_VERSION}"
+        "hass-mcp==${HASS_MCP_VERSION}" \
+        "Pillow==${PILLOW_VERSION}"
 
 # --- Playwright MCP (baked, pinned) ---
 # Uses the system Chromium via --executable-path at runtime; no browser download.

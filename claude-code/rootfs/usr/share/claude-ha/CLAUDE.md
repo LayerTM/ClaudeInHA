@@ -236,6 +236,7 @@ claude mcp add my-server -- npx -y @scope/mcp-server
 | `yq` | Edit YAML config files programmatically (2-space output, HA-safe) |
 | `hass-cli` | Entity/service queries via the Core API (works when the HA Token is set) |
 | Playwright MCP | Browser automation tools (`browser_navigate`, `browser_take_screenshot`, `browser_snapshot`); Chromium is preinstalled |
+| `magick` (ImageMagick) + Python `PIL` (Pillow) | Crop/resize/convert images — no setup needed. CLI crop: `magick in.png -crop WxH+X+Y +repage out.png`. Handy for trimming dashboard screenshots before reading them |
 
 **Visually verifying dashboards/UI:** use `ha-shot` (fast, static) or the Playwright MCP `browser_navigate` → `http://homeassistant:8123<path>` + `browser_take_screenshot` (interactive). Always **read the resulting PNG** — a screenshot you don't look at proves nothing.
 
