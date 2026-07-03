@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.2] — 2026-07-03
+
+### Fixed
+- **Safety backups now actually work.** The add-on lacked the Supervisor
+  permission to create backups, so the backup-before-risky-change net (1.4.0)
+  and `ha-backup` failed with 403. The add-on now requests the `manager` role,
+  which also lets Claude manage add-ons via the Supervisor API. (Caught by
+  live-testing on a real Home Assistant.)
+
 ## [1.4.1] — 2026-07-03
 
 ### Security

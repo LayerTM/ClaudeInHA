@@ -1,5 +1,5 @@
 name: "Claude Code"
-version: "1.4.1"
+version: "1.4.2"
 slug: claude-code
 description: "Claude Code AI assistant embedded in Home Assistant — web console with tabs, clipboard, file attachments, browser testing, and a bundled HA skill pack"
 url: "https://github.com/LayerTM/ClaudeInHA"
@@ -19,6 +19,9 @@ panel_title: "Claude Code"
 
 hassio_api: true
 homeassistant_api: true
+# manager: needed so Claude can create safety backups (POST /backups) before
+# risky changes and manage add-ons via the Supervisor API.
+hassio_role: manager
 
 map:
   - type: homeassistant_config
