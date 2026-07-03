@@ -16,6 +16,7 @@ Anthropic's [Claude Code](https://code.claude.com/docs) CLI, embedded in Home As
 [![amd64](https://img.shields.io/badge/amd64-supported-2ea043)](claude-code/config.yaml)
 [![aarch64](https://img.shields.io/badge/aarch64-supported-2ea043)](claude-code/config.yaml)
 &nbsp;
+[![tests](https://github.com/LayerTM/ClaudeInHA/actions/workflows/tests.yml/badge.svg)](https://github.com/LayerTM/ClaudeInHA/actions/workflows/tests.yml)
 [![lint](https://github.com/LayerTM/ClaudeInHA/actions/workflows/lint.yml/badge.svg)](https://github.com/LayerTM/ClaudeInHA/actions/workflows/lint.yml)
 [![secret-scan](https://github.com/LayerTM/ClaudeInHA/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/LayerTM/ClaudeInHA/actions/workflows/secret-scan.yml)
 [![Last commit](https://img.shields.io/github/last-commit/LayerTM/ClaudeInHA?color=41BDF5)](https://github.com/LayerTM/ClaudeInHA/commits/main)

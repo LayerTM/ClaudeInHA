@@ -317,4 +317,4 @@ function createPromptApp({
   return app;
 }
 
-module.exports = { createPromptApp };
+module.exports = { createPromptApp, createRateLimiter, Bucket };

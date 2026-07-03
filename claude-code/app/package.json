@@ -9,7 +9,8 @@
   },
   "main": "server/index.js",
   "scripts": {
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "test": "node --test \"test/**/*.test.js\""
   },
   "dependencies": {
     "@xterm/addon-fit": "0.11.0",
