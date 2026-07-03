@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.5.0] — 2026-07-03
+
+Opens the add-on to the companion **Claude** (`claude_ha`) Home Assistant
+integration — so you can talk to Claude from Assist and automations, not just
+the console.
+
+### Added
+- **Secure Prompt API** for the `claude_ha` integration — a new,
+  bearer-authenticated endpoint on an internal-only port (8126, never published
+  to the host). It is built for running Claude on **untrusted** chat/automation
+  input, so it is far more locked down than the console: every prompt runs a
+  fresh, stateless, read-only Claude with deny-by-default tools (shell, file and
+  web tools removed), **no Supervisor or Home Assistant credentials in the child
+  environment**, Home Assistant access only through the Model Context Protocol
+  Server integration (limited to Assist-exposed entities), and a two-phase
+  model where a state change is proposed and only performed after explicit
+  confirmation. Requests are rate-limited, concurrency-capped, time-bounded,
+  output-capped, secret-redacted, and audited (`ha-audit`).
+- **Zero-config pairing.** The add-on generates the API token and advertises
+  itself (host, port, token) to the integration through Supervisor discovery —
+  nothing to copy by hand.
+- New options: `prompt_api` (on by default), `api_token` (optional fixed token),
+  `prompt_ha_token` (optional dedicated HA token for a least-privilege user).
+
+The interactive console (ingress) is unchanged; the Prompt API is a separate
+listener with its own authentication.
+
 ## [1.4.2] — 2026-07-03
 
 ### Fixed

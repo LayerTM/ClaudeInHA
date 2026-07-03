@@ -40,3 +40,6 @@ dist/
 
 # Logs
 *.log
+
+# internal notes for the claude-ha integration bridge — not shipped
+.integration-bridge/

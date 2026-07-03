@@ -71,6 +71,10 @@ reconciled on every start.
 | `launch_command` | Full replacement for the default `claude` invocation. |
 | `upload_retention_days` | Auto-delete attached files after N days (0 = keep). |
 | `remote_control` | Adds a tab running `claude remote-control`: drive this session from the Claude mobile app / claude.ai. Requires a full `/login` (subscription); `oauth_token` and API keys are not sufficient. |
+| `monitoring_interval_hours` | Opt-in proactive monitoring: every N hours Claude reviews the error log and config and notifies you only if it finds something (0 = off). |
+| `prompt_api` | Serve the secure Prompt API for the companion **Claude** (`claude_ha`) integration (on by default). See *The companion integration* below. |
+| `api_token` | Optional fixed bearer token for the Prompt API. Leave empty — the add-on generates one and hands it to the integration via discovery. |
+| `prompt_ha_token` | Optional HA token used only by Prompt-API sessions to read state through the MCP Server integration. Best practice: a dedicated non-admin user's token. Falls back to `ha_token`. |
 
 ## Claude in Home Assistant
 
@@ -84,6 +88,43 @@ curl -sS -H "Authorization: Bearer $SUPERVISOR_TOKEN" \
 The bundled `CLAUDE.md` teaches Claude the HA API, config patterns, and safety rules (validate config before restart, prefer reloads, and so on).
 
 MCP servers, skills, and plugins work exactly as in the desktop CLI: `.mcp.json` in `/homeassistant`, skills under `/data/home/.claude/skills/`, `claude plugin install <name>`.
+
+## The companion integration (Prompt API)
+
+A separate Home Assistant integration, **Claude** (`claude_ha`), lets you talk to
+Claude from **Assist** (text and voice) and from a `claude.ask` service in
+automations — without opening the console. It talks to this add-on over a
+dedicated, locked-down HTTP endpoint called the **Prompt API**.
+
+The Prompt API is designed for running Claude on **untrusted input** (whatever a
+chat message or automation sends) with limited Home Assistant access, so it is
+deliberately much more restricted than the interactive console:
+
+- **Separate internal port (8126), never published to the host.** It is reachable
+  only from Home Assistant's internal network; requests from anywhere else are
+  refused.
+- **Bearer token on every request** (constant-time checked). The add-on generates
+  the token and shares it with the integration automatically through Supervisor
+  discovery — you configure nothing.
+- **Each prompt runs a fresh, stateless, read-only Claude** with deny-by-default
+  permissions: shell, file, and web tools are removed entirely, and the child
+  process gets **none** of your Supervisor or Home Assistant credentials in its
+  environment. Home Assistant access, when enabled, is only through the
+  **Model Context Protocol Server** integration, so Claude can see and touch
+  **only the entities you have exposed to Assist**.
+- **Actions require confirmation, and the confirmed action is executed from the
+  validated request only.** A read request that would change state returns a
+  *proposal* rather than acting; the integration asks you to confirm; only then
+  is a second, tightly-scoped call allowed to perform exactly that action — and
+  that call is driven solely by the validated intent, never by the original
+  free-form message, so untrusted text never reaches the state-changing path.
+- Rate-limited, concurrency-capped, time-bounded, output-capped, and
+  secret-redacted; every call is written to the audit log (`ha-audit`).
+
+To use it, install the `claude_ha` integration (it will detect this add-on
+automatically) and, for live HA context, install Home Assistant's *Model Context
+Protocol Server* integration and set `prompt_ha_token`. To turn the endpoint off
+entirely, set `prompt_api` to false.
 
 ## Persistence
 

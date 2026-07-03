@@ -8,6 +8,7 @@ const { WebSocketServer } = require('ws');
 const tmux = require('./tmux');
 const { createRouter } = require('./api');
 const terminal = require('./terminal');
+const promptServer = require('./prompt');
 
 const PORT = Number(process.env.CLAUDE_CONSOLE_PORT || 8099);
 const UPLOAD_DIR = process.env.UPLOAD_DIR || '/data/uploads';
@@ -77,6 +78,8 @@ server.on('upgrade', (req, socket, head) => {
   wss.handleUpgrade(req, socket, head, (ws) => terminal.attach(ws));
 });
 
+let promptShutdown = null;
+
 async function cleanupUploads() {
   if (!(RETENTION_DAYS > 0)) return;
   const cutoff = Date.now() - RETENTION_DAYS * 24 * 3600 * 1000;
@@ -116,12 +119,22 @@ async function main() {
   server.listen(PORT, () => {
     console.log(`Claude Console listening on :${PORT}`);
   });
+
+  // Companion prompt API for the claude_ha integration (separate listener,
+  // own bearer-token auth model — see server/prompt/). A failure here must
+  // never take the console down.
+  try {
+    promptShutdown = await promptServer.start();
+  } catch (err) {
+    console.error('prompt server failed to start (console unaffected):', err.message);
+  }
 }
 
 process.on('SIGTERM', () => {
   // Open websockets keep server.close() from ever completing — drop them
   // first, and hard-exit as a backstop so add-on stop never hangs.
   terminal.shutdown();
+  if (promptShutdown) promptShutdown();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();
 });

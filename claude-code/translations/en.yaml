@@ -117,3 +117,29 @@ configuration:
       something worth flagging. Requires Claude to be logged in and spends plan
       usage on each check. Set 0 to disable (default). To receive checks on your
       phone, also set HA_NOTIFY_SERVICE in Environment Variables.
+  prompt_api:
+    name: Prompt API (claude_ha integration)
+    description: >-
+      Serves the secure prompt API on the internal port 8126 for the companion
+      'Claude' (claude_ha) Home Assistant integration — chat with Claude via
+      Assist, the claude.ask service, and a status sensor. The port is only
+      reachable inside Home Assistant's internal network, every request needs
+      the bearer token, and each prompt runs in a locked-down, read-only Claude
+      session. Disable if you do not use the integration.
+  api_token:
+    name: Prompt API Token (optional)
+    description: >-
+      Bearer token the claude_ha integration must present to the prompt API.
+      Leave empty (recommended): the add-on generates a strong token
+      automatically and hands it to the integration through Supervisor
+      discovery — no manual setup needed. Set it only if you want a fixed,
+      known token as a manual fallback.
+  prompt_ha_token:
+    name: Prompt API HA Token (optional, restricted user)
+    description: >-
+      Home Assistant Long-Lived Access Token used ONLY by prompt-API Claude
+      sessions to read Home Assistant state through the Model Context Protocol
+      Server integration. Best practice: create a dedicated non-admin Home
+      Assistant user and paste that user's token here. Leave empty to fall back
+      to 'HA Token'. Either way, Claude can only see entities exposed to
+      Assist.

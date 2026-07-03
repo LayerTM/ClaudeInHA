@@ -1,5 +1,5 @@
 name: "Claude Code"
-version: "1.4.2"
+version: "1.5.0"
 slug: claude-code
 description: "Claude Code AI assistant embedded in Home Assistant — web console with tabs, clipboard, file attachments, browser testing, and a bundled HA skill pack"
 url: "https://github.com/LayerTM/ClaudeInHA"
@@ -22,6 +22,11 @@ homeassistant_api: true
 # manager: needed so Claude can create safety backups (POST /backups) before
 # risky changes and manage add-ons via the Supervisor API.
 hassio_role: manager
+
+# Announces the prompt API (host/port/token) to the Supervisor so the
+# companion claude_ha integration configures itself with zero user input.
+discovery:
+  - claude_ha
 
 map:
   - type: homeassistant_config
@@ -53,6 +58,9 @@ options:
   upload_retention_days: 14
   remote_control: false
   monitoring_interval_hours: 0
+  prompt_api: true
+  api_token: ""
+  prompt_ha_token: ""
 
 schema:
   api_key: "password"
@@ -77,5 +85,8 @@ schema:
   upload_retention_days: "int(0,365)?"
   remote_control: bool
   monitoring_interval_hours: "int(0,168)?"
+  prompt_api: bool
+  api_token: "password"
+  prompt_ha_token: "password"
 
 stage: experimental
