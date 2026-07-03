@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.7.3] — 2026-07-03
+
+### Fixed
+- **Chat answered "None" on the first real run.** With the MCP endpoint fixed in
+  1.7.2 the Home Assistant `ha` server now connects (verified live), but the read
+  tool (`GetLiveContext`) sometimes gets malformed tool-call JSON from the model
+  and only recovers after several retries. The prompt server's 8-turn ceiling cut
+  that recovery off mid-flight, so the run errored ("claude reported an error")
+  and the chat showed nothing. Raised the per-run turn ceiling to 20 (the 120-second
+  wall-clock timeout remains the real runaway bound) and steer the model toward a
+  single `GetLiveContext` call with strictly-valid-JSON arguments — so chats now
+  answer on the first try, faster and cheaper.
+
 ## [1.7.2] — 2026-07-03
 
 ### Fixed
