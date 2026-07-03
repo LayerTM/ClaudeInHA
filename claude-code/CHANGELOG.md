@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.4.0] — 2026-07-03
+
+Safety, awareness, and more Home Assistant know-how.
+
+### Added
+- **Backup before risky changes.** Before a Home Assistant Core restart/stop/
+  update, a destructive shell op in the config tree, or an edit to a config
+  file, the add-on makes a focused HA-Core backup automatically — debounced, and
+  it prunes its own old auto-backups so they never pile up. `ha-backup` is also
+  there to call directly.
+- **Action audit log.** Every service call, config edit, restart and backup
+  Claude makes is recorded; review it any time with `ha-audit`.
+- **Notifications.** `ha-notify "…"` pings you in Home Assistant (the bell by
+  default) when a long task finishes; set `HA_NOTIFY_SERVICE=notify.mobile_app_<device>`
+  in Environment Variables to push to a phone, which also enables needs-input pushes.
+- **Proactive monitoring (opt-in).** Set `monitoring_interval_hours` > 0 and
+  Claude periodically reviews the error log and configuration, notifying you only
+  when it finds something worth flagging. Off by default (it spends plan usage).
+- **Four more HA skills** — `/ha-energy` (consumption & cost), `/ha-recorder-query`
+  (sensor history trends), `/ha-lovelace-card` (design a card with a live
+  screenshot preview), `/ha-blueprint` (import and use blueprints).
+
 ## [1.3.1] — 2026-07-03
 
 ### Added

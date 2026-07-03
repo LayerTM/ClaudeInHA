@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Claude Code Notification hook — when Claude is waiting for your input or
+# permission, push it to your phone. No-op unless HA_NOTIFY_SERVICE is set to a
+# mobile notify service (so it never spams the HA bell for every prompt).
+set -o pipefail
+[ -n "${HA_NOTIFY_SERVICE:-}" ] || exit 0
+input="$(cat)"
+msg="$(printf '%s' "${input}" | jq -r '.message // "Claude Code needs your attention"' 2>/dev/null)"
+ha-notify "${msg}" "Claude Code" >/dev/null 2>&1 || true
+exit 0

@@ -152,9 +152,16 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/claude-code/run \
              /usr/local/bin/start-remote \
              /usr/local/bin/update-claude \
              /usr/local/bin/provision-extras \
+             /usr/local/bin/cc-monitor \
+             /usr/local/bin/cc-hook-backup \
+             /usr/local/bin/cc-hook-audit \
+             /usr/local/bin/cc-hook-notify \
              /usr/local/bin/ha-shot \
              /usr/local/bin/ha-check \
-             /usr/local/bin/ha-state
+             /usr/local/bin/ha-state \
+             /usr/local/bin/ha-notify \
+             /usr/local/bin/ha-backup \
+             /usr/local/bin/ha-audit
 
 LABEL \
     io.hass.name="Claude Code" \

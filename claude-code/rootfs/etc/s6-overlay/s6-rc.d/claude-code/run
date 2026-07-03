@@ -179,6 +179,23 @@ if [ -z "${cur_sl_cmd}" ] || [ "${cur_sl_cmd}" = "/usr/local/bin/cc-statusline" 
     fi
 fi
 
+# --- Safety hooks: backup-before-risky-change, action audit log, needs-input push ---
+# Seeded only when the user has no hooks of their own, so a custom hooks config
+# is never overwritten. cc-hook-notify is a no-op unless HA_NOTIFY_SERVICE is set.
+if [ "$(jq -r '(.hooks // {}) | length' "${settings_file}" 2>/dev/null)" = "0" ]; then
+    tmp_settings="$(mktemp)"
+    if jq '.hooks = {
+            PreToolUse:  [{matcher: "Bash|Edit|Write|MultiEdit", hooks: [{type: "command", command: "/usr/local/bin/cc-hook-backup"}]}],
+            PostToolUse: [{matcher: "Bash|Edit|Write|MultiEdit", hooks: [{type: "command", command: "/usr/local/bin/cc-hook-audit"}]}],
+            Notification: [{hooks: [{type: "command", command: "/usr/local/bin/cc-hook-notify"}]}]
+        }' "${settings_file}" > "${tmp_settings}" 2>/dev/null; then
+        mv "${tmp_settings}" "${settings_file}"
+        bashio::log.info "Safety hooks configured (backup / audit / notify)"
+    else
+        rm -f "${tmp_settings}"
+    fi
+fi
+
 cp /usr/share/claude-ha/CLAUDE.md /data/workdir/CLAUDE.md
 
 custom=$(bashio::config 'custom_instructions')
@@ -225,6 +242,16 @@ export CLAUDE_CONSOLE_DEV=0
 export UPLOAD_DIR=/data/uploads
 export UPLOAD_RETENTION_DAYS=$(jq -r '.upload_retention_days // 14' /data/options.json 2>/dev/null || echo 14)
 export REMOTE_CONTROL=$(jq -r '.remote_control // false' /data/options.json 2>/dev/null || echo false)
+
+# --- Proactive monitoring (opt-in via monitoring_interval_hours > 0) ---
+# Periodically asks Claude to review the HA error log/config and pushes a short
+# summary via ha-notify only if it finds something. Spends plan usage — off by
+# default. Inherits SUPERVISOR_TOKEN / HA_NOTIFY_SERVICE / HOME from this scope.
+monitor_hours=$(jq -r '.monitoring_interval_hours // 0' /data/options.json 2>/dev/null || echo 0)
+if [ "${monitor_hours}" -gt 0 ] 2>/dev/null; then
+    bashio::log.info "Proactive monitoring enabled (every ${monitor_hours}h)"
+    CLAUDE_MONITOR_HOURS="${monitor_hours}" nohup /usr/local/bin/cc-monitor >/data/monitor.log 2>&1 &
+fi
 
 bashio::log.info "Starting Claude Console on port ${CLAUDE_CONSOLE_PORT}..."
 exec node /opt/claude-console/server/index.js

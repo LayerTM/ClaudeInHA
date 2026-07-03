@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Create a focused Home Assistant backup (a restore point before risky changes).
+#   ha-backup ["name"]
+# Partial Supervisor backup of Home Assistant Core (configuration + core data)
+# only — not add-ons — so it is quicker and smaller than a full backup. Restore
+# it from Settings → System → Backups, or `ha backups restore <slug> --homeassistant`.
+set -o pipefail
+
+name="${1:-claude-$(date +%Y%m%d-%H%M%S)}"
+AUTH="Authorization: Bearer ${SUPERVISOR_TOKEN}"
+body="$(jq -nc --arg n "${name}" '{name: $n, homeassistant: true}')"
+
+resp="$(curl -sS -X POST -H "${AUTH}" -H "Content-Type: application/json" \
+    -d "${body}" http://supervisor/backups/new/partial 2>/dev/null)"
+
+if [ "$(printf '%s' "${resp}" | jq -r '.result // "error"' 2>/dev/null)" = "ok" ]; then
+    slug="$(printf '%s' "${resp}" | jq -r '.data.slug // "?"')"
+    echo "backup created: ${name} (${slug})"
+else
+    echo "backup FAILED: $(printf '%s' "${resp}" | head -c 300)" >&2
+    exit 1
+fi

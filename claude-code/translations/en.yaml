@@ -109,3 +109,11 @@ configuration:
       mobile app / claude.ai can drive this machine's session. Requires a
       full '/login' inside the terminal (Pro/Max/Team subscription) — an
       OAuth token from 'claude setup-token' or an API key is not enough.
+  monitoring_interval_hours:
+    name: Proactive Monitoring (hours)
+    description: >-
+      When greater than 0, Claude periodically (every N hours) reviews the HA
+      error log and configuration and sends a notification only if it finds
+      something worth flagging. Requires Claude to be logged in and spends plan
+      usage on each check. Set 0 to disable (default). To receive checks on your
+      phone, also set HA_NOTIFY_SERVICE in Environment Variables.

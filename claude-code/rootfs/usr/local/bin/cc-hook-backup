@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Claude Code PreToolUse hook — safety net. Before a risky Home Assistant change
+# (a Core restart/stop/update, a destructive shell op in the config tree, or an
+# edit to a config file) make a focused HA-Core backup first. Always ALLOWS the
+# tool (exit 0); debounced so it makes at most one backup per window, and prunes
+# its own old auto-backups so they never pile up.
+set -o pipefail
+
+input="$(cat)"
+tool="$(printf '%s' "${input}" | jq -r '.tool_name // ""' 2>/dev/null)"
+risky=0
+
+case "${tool}" in
+    Bash)
+        cmd="$(printf '%s' "${input}" | jq -r '.tool_input.command // ""' 2>/dev/null)"
+        case "${cmd}" in
+            *"ha core restart"*|*"ha core stop"*|*"ha core update"*|*"ha core rebuild"*) risky=1 ;;
+            *"homeassistant/restart"*|*"homeassistant/stop"*) risky=1 ;;
+        esac
+        if [ "${risky}" = 0 ] && printf '%s' "${cmd}" \
+             | grep -qE '\b(rm|rmdir|truncate|shred)\b[^|]*(/homeassistant|/config)/'; then
+            risky=1
+        fi
+        ;;
+    Edit|Write|MultiEdit)
+        fp="$(printf '%s' "${input}" | jq -r '.tool_input.file_path // ""' 2>/dev/null)"
+        case "${fp}" in /homeassistant/*|/config/*) risky=1 ;; esac
+        ;;
+esac
+[ "${risky}" = 1 ] || exit 0
+
+# Debounce (default 10 min) — at most one auto-backup per window.
+DEBOUNCE="${CLAUDE_BACKUP_DEBOUNCE_SEC:-600}"
+marker=/data/.claude-last-backup
+now="$(date +%s)"; last=0
+[ -f "${marker}" ] && last="$(cat "${marker}" 2>/dev/null || echo 0)"
+[ $(( now - last )) -ge "${DEBOUNCE}" ] 2>/dev/null || exit 0
+echo "${now}" > "${marker}"
+
+name="claude-auto-$(date +%Y%m%d-%H%M%S)"
+if out="$(timeout 150 ha-backup "${name}" 2>&1)"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S')  backup: ${out}" >> /data/claude-audit.log
+    ha-notify "Safety backup before a risky change — ${out}" "Claude · backup" >/dev/null 2>&1 || true
+    # Keep only the newest 3 auto-backups.
+    stale="$(curl -sS -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" http://supervisor/backups 2>/dev/null \
+        | jq -r '(.data.backups // []) | map(select(.name | startswith("claude-auto-"))) | sort_by(.date) | reverse | .[3:] | .[].slug' 2>/dev/null)"
+    for s in ${stale}; do
+        curl -sS -X DELETE -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" "http://supervisor/backups/${s}" >/dev/null 2>&1 || true
+    done
+else
+    echo "$(date '+%Y-%m-%d %H:%M:%S')  backup FAILED: ${out}" >> /data/claude-audit.log
+fi
+exit 0

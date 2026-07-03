@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Show the audit log of HA-affecting actions Claude has taken — service calls,
+# config-file edits, Core restarts/reloads, and safety backups.
+#   ha-audit [N]     → last N lines (default 50)
+n="${1:-50}"
+f=/data/claude-audit.log
+if [ -f "${f}" ]; then
+    tail -n "${n}" "${f}"
+else
+    echo "(nothing logged yet — ${f})"
+fi

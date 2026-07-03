@@ -237,10 +237,27 @@ claude mcp add my-server -- npx -y @scope/mcp-server
 | `hass-cli` | Entity/service queries via the Core API (works when the HA Token is set) |
 | Playwright MCP | Browser automation tools (`browser_navigate`, `browser_take_screenshot`, `browser_snapshot`); Chromium is preinstalled |
 | `magick` (ImageMagick) + Python `PIL` (Pillow) | Crop/resize/convert images — no setup needed. CLI crop: `magick in.png -crop WxH+X+Y +repage out.png`. Handy for trimming dashboard screenshots before reading them |
+| `ha-notify "msg" ["title"]` | Notify the user in HA (bell by default; a phone if `HA_NOTIFY_SERVICE` is set). **Use it to ping the user when a long autonomous task finishes.** |
+| `ha-backup ["name"]` | Make a focused HA-Core backup (a restore point). Runs automatically before risky changes (see below), but call it yourself before anything you're unsure about. |
+| `ha-audit [N]` | Show the log of HA-affecting actions taken (service calls, config edits, restarts, backups) |
 
 **Visually verifying dashboards/UI:** use `ha-shot` (fast, static) or the Playwright MCP `browser_navigate` → `http://homeassistant:8123<path>` + `browser_take_screenshot` (interactive). Always **read the resulting PNG** — a screenshot you don't look at proves nothing.
 
 **HA Token:** if the add-on's *HA Token* option is set, `HA_TOKEN` / `HA_URL` (`http://homeassistant:8123`) / `HASS_TOKEN` / `HASS_SERVER` are exported, enabling `ha-shot`, `hass-cli`, and the `hass-mcp` MCP server. Without it, use the Supervisor-proxied API with `$SUPERVISOR_TOKEN` (above) for states/services — that always works.
+
+---
+
+## Safety net (automatic — you don't have to trigger it)
+
+- **Backup before risky changes.** Before a Core restart/stop/update or an edit
+  to a config file, a focused HA-Core backup is made automatically (debounced;
+  old auto-backups are pruned). You can still run `ha-backup` yourself anytime.
+- **Audit log.** Every service call, config edit, restart and backup you make is
+  recorded — the user can review it with `ha-audit`.
+- **Notify on finish.** When you complete a long or unattended task, run
+  `ha-notify "…"` so the user knows. Set `HA_NOTIFY_SERVICE=notify.mobile_app_<device>`
+  (via the add-on's Environment Variables) to push to a phone; otherwise it shows
+  in the HA notification bell.
 
 ---
 

@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Claude Code PostToolUse hook — audit log. Record the HA-affecting actions
+# Claude takes (service calls, config-file edits, Core restarts/reloads,
+# backups) to /data/claude-audit.log. View with `ha-audit`.
+set -o pipefail
+
+input="$(cat)"
+tool="$(printf '%s' "${input}" | jq -r '.tool_name // ""' 2>/dev/null)"
+ts="$(date '+%Y-%m-%d %H:%M:%S')"
+line=""
+
+case "${tool}" in
+    Bash)
+        cmd="$(printf '%s' "${input}" | jq -r '.tool_input.command // ""' 2>/dev/null)"
+        if printf '%s' "${cmd}" | grep -qE 'core/api/services/[a-z_]+/[a-z_]+|ha core (restart|stop|start|update|reload|rebuild)|ha backups|\bha-backup\b'; then
+            line="${ts}  cmd: $(printf '%s' "${cmd}" | tr '\n' ' ' | head -c 300)"
+        fi
+        ;;
+    Edit|Write|MultiEdit)
+        fp="$(printf '%s' "${input}" | jq -r '.tool_input.file_path // ""' 2>/dev/null)"
+        case "${fp}" in /homeassistant/*|/config/*) line="${ts}  ${tool}: ${fp}" ;; esac
+        ;;
+esac
+
+[ -n "${line}" ] && echo "${line}" >> /data/claude-audit.log
+exit 0

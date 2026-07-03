@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Send a Home Assistant notification.
+#   ha-notify "message" ["title"]
+# Shows in the HA notification bell (persistent_notification) by default — no
+# setup needed. Set HA_NOTIFY_SERVICE=notify.mobile_app_<device> to push to a
+# phone instead. Use this to ping the user when a long task finishes.
+set -o pipefail
+
+msg="${1:-}"
+title="${2:-Claude Code}"
+[ -n "${msg}" ] || { echo "usage: ha-notify <message> [title]" >&2; exit 2; }
+
+API="http://supervisor/core/api"
+AUTH="Authorization: Bearer ${SUPERVISOR_TOKEN}"
+
+if [ -n "${HA_NOTIFY_SERVICE:-}" ] && [[ "${HA_NOTIFY_SERVICE}" == *.* ]]; then
+    domain="${HA_NOTIFY_SERVICE%%.*}"
+    service="${HA_NOTIFY_SERVICE#*.}"
+    body="$(jq -nc --arg m "${msg}" --arg t "${title}" '{message: $m, title: $t}')"
+    curl -sS -X POST -H "${AUTH}" -H "Content-Type: application/json" \
+        -d "${body}" "${API}/services/${domain}/${service}" >/dev/null \
+        && echo "notified via ${HA_NOTIFY_SERVICE}"
+else
+    body="$(jq -nc --arg m "${msg}" --arg t "${title}" \
+        '{message: $m, title: $t, notification_id: ("claude-" + (now | floor | tostring))}')"
+    curl -sS -X POST -H "${AUTH}" -H "Content-Type: application/json" \
+        -d "${body}" "${API}/services/persistent_notification/create" >/dev/null \
+        && echo "notified (HA bell)"
+fi
