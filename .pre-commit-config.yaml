@@ -1,0 +1,30 @@
+# Local quality gates for contributors. Install with:
+#   uvx pre-commit install     (or: pip install pre-commit && pre-commit install)
+# Mirrors the checks the CI workflows enforce (lint, secret-scan, tests).
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # s6-rc service-definition files (type, marker files) are content-sensitive
+      # infrastructure — s6-rc-compile can reject an unexpected trailing newline,
+      # so never let the whitespace fixers touch that tree.
+      - id: trailing-whitespace
+        exclude: '^claude-code/rootfs/etc/s6-overlay/'
+      - id: end-of-file-fixer
+        exclude: '^claude-code/rootfs/etc/s6-overlay/'
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: mixed-line-ending
+        args: [--fix=lf]
+        exclude: '^claude-code/rootfs/etc/s6-overlay/'
+
+  - repo: local
+    hooks:
+      - id: secret-scan
+        name: secret-scan (no secrets or personal data)
+        entry: python3 .github/scripts/secret_scan.py .
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -1,0 +1,59 @@
+name: release
+
+# Keeps GitHub Releases in lock-step with the add-on version. Whenever
+# claude-code/config.yaml changes on main, this cuts a Release (and tag) for
+# the new version if one does not already exist — so the version badge (read
+# from config.yaml) and the Releases page can never drift apart.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - claude-code/config.yaml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version from config.yaml
+        id: v
+        run: |
+          version="$(grep -oE '^version:[[:space:]]*"?[0-9]+\.[0-9]+\.[0-9]+' claude-code/config.yaml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          if [ -z "${version}" ]; then
+            echo "Could not parse version from config.yaml" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+          SHA: ${{ github.sha }}
+        run: |
+          tag="v${VERSION}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "Release ${tag} already exists — nothing to do."
+            exit 0
+          fi
+          # Extract this version's section from the changelog for the notes.
+          awk -v ver="${VERSION}" '
+            $0 ~ "^## \\[" ver "\\]" { grab = 1; next }
+            grab && /^## \[/ { exit }
+            grab { print }
+          ' claude-code/CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            printf 'Release %s\n' "${tag}" > notes.md
+          fi
+          gh release create "${tag}" \
+            --title "${tag}" \
+            --notes-file notes.md \
+            --target "${SHA}"
+          echo "Created release ${tag}."

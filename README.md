@@ -19,6 +19,7 @@ Anthropic's [Claude Code](https://code.claude.com/docs) CLI, embedded in Home As
 [![tests](https://github.com/LayerTM/ClaudeInHA/actions/workflows/tests.yml/badge.svg)](https://github.com/LayerTM/ClaudeInHA/actions/workflows/tests.yml)
 [![lint](https://github.com/LayerTM/ClaudeInHA/actions/workflows/lint.yml/badge.svg)](https://github.com/LayerTM/ClaudeInHA/actions/workflows/lint.yml)
 [![secret-scan](https://github.com/LayerTM/ClaudeInHA/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/LayerTM/ClaudeInHA/actions/workflows/secret-scan.yml)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](.pre-commit-config.yaml)
 [![Last commit](https://img.shields.io/github/last-commit/LayerTM/ClaudeInHA?color=41BDF5)](https://github.com/LayerTM/ClaudeInHA/commits/main)
 [![Stars](https://img.shields.io/github/stars/LayerTM/ClaudeInHA?color=41BDF5&logo=github&logoColor=white)](https://github.com/LayerTM/ClaudeInHA/stargazers)
 
