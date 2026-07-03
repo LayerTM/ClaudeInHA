@@ -13,8 +13,10 @@ configuration:
       Uruchom 'claude setup-token' na dowolnym komputerze ze zwykłą przeglądarką
       (laptop, desktop itp.) — polecenie wypisze token ważny około roku.
       Wklej go tutaj. Dzięki temu nie musisz wklejać kodu autoryzacji do
-      terminala ingress, co jest niewygodne wewnątrz ramki iframe HA. Zostaw
-      puste, jeśli używasz klucza API Anthropic.
+      terminala ingress, co jest niewygodne wewnątrz ramki iframe HA. Uwaga: gdy
+      ten token jest ustawiony, nagłówek konsoli pokazuje „Claude API" — to tylko
+      oznacza logowanie tokenem; rozliczenie i tak idzie z Twojej subskrypcji, a
+      nie z płatnego API. Zostaw puste, jeśli używasz klucza API Anthropic.
   ha_token:
     name: Token HA (Long-Lived Access Token)
     description: >-

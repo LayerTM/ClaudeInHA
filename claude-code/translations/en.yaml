@@ -14,7 +14,10 @@ configuration:
       (your laptop, desktop, etc.) — it prints a token valid for about
       one year. Paste that token here. This avoids having to paste the
       auth code into the ingress terminal, which is tricky inside the
-      HA iframe. Leave empty if you use Anthropic API Key instead.
+      HA iframe. Note: with this token set, the console header shows
+      'Claude API' — that only reflects token-based login; you are still
+      billed against your subscription, not the pay-per-use API. Leave
+      empty if you use Anthropic API Key instead.
   ha_token:
     name: HA Token (Long-Lived Access Token)
     description: >-

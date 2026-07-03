@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.7.1] — 2026-07-03
+
+### Changed
+- **Clarified the OAuth Token option.** When a subscription OAuth token (from
+  `claude setup-token`) is set, the console header shows "Claude API" — this only
+  reflects token-based login and still bills against your subscription, not the
+  pay-per-use API. Added a note to the field description (EN/UK/PL) so it no
+  longer looks like a billing switch.
+
 ## [1.7.0] — 2026-07-03
 
 ### Added
