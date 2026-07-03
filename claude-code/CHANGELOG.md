@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.7.4] — 2026-07-03
+
+### Fixed
+- **Chat still answered "None" for anything beyond a trivial question.** Root cause,
+  found by reproducing the exact call against live Home Assistant: the model kept
+  calling the `GetLiveContext` tool with a malformed, unquoted-JSON filter
+  (`{"domain": sensor}`) and never self-corrected, looping on the identical bad call
+  until it exhausted the turn budget — so the run errored and the chat showed
+  nothing. Trivial questions happened to answer in two turns; anything needing more
+  (e.g. "which room is warmest?") looped. Fixed by instructing the read session to
+  call `GetLiveContext` exactly once with an empty arguments object `{}` (all of its
+  filters are optional) and answer from the full result. Verified live: the same
+  query now succeeds in 3 turns with the correct answer, instead of erroring after 20.
+  (The 1.7.3 turn-limit raise remains as a safety ceiling, but this prompt constraint
+  is the real fix.)
+
 ## [1.7.3] — 2026-07-03
 
 ### Fixed
