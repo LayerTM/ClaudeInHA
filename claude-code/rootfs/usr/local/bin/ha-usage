@@ -124,11 +124,64 @@ def audit_costs():
     return today_cost, total_cost, seen
 
 
+def _short(t: dict[str, int]) -> dict[str, int]:
+    """Map the transcript's long usage keys to the stable short contract keys."""
+    return {
+        "input": t.get("input_tokens", 0),
+        "output": t.get("output_tokens", 0),
+        "cache_read": t.get("cache_read_input_tokens", 0),
+        "cache_write": t.get("cache_creation_input_tokens", 0),
+    }
+
+
+def build_report(days: int) -> dict:
+    """Structured usage report — the shape the prompt API's /api/usage returns."""
+    by_day, by_day_model, msgs_by_day = collect_tokens()
+    today = _today()
+    recent = window_days(days)
+    all_days = list(by_day.keys())
+
+    model_totals: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for (d, model), tots in by_day_model.items():
+        if d in recent:
+            for k, v in tots.items():
+                model_totals[model][k] += v
+    model_totals = {
+        m: t for m, t in model_totals.items()
+        if t.get("output_tokens", 0) or t.get("input_tokens", 0)
+    }
+
+    today_cost, total_cost, _ = audit_costs()
+    return {
+        "projects": PROJECTS,
+        "window_days": days,
+        "tokens": {
+            "today": _short(sum_over(by_day, [today])),
+            "recent": _short(sum_over(by_day, recent)),
+            "all_time": _short(sum_over(by_day, all_days)),
+        },
+        "by_model_recent": {m: _short(t) for m, t in model_totals.items()},
+        "messages": {
+            "today": msgs_by_day.get(today, 0),
+            "recent": sum(msgs_by_day.get(d, 0) for d in recent),
+            "all_time": sum(msgs_by_day.values()),
+        },
+        "prompt_api_cost_usd": {"today": round(today_cost, 4), "total": round(total_cost, 4)},
+    }
+
+
 def main(argv: list[str]) -> int:
-    try:
-        days = max(1, int(argv[1])) if len(argv) > 1 else 7
-    except ValueError:
-        days = 7
+    args = argv[1:]
+    as_json = "--json" in args
+    nums = [a for a in args if a.isdigit()]
+    days = max(1, int(nums[0])) if nums else 7
+
+    # Machine-readable mode for the prompt API's /api/usage endpoint.
+    if as_json:
+        report = build_report(days)
+        report["generated_at"] = datetime.now(timezone.utc).isoformat()
+        print(json.dumps(report))
+        return 0
 
     by_day, by_day_model, msgs_by_day = collect_tokens()
     today = _today()

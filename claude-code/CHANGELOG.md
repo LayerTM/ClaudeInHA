@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.7.0] — 2026-07-03
+
+### Added
+- **Usage endpoint for the `claude_ha` integration.** The prompt API now serves
+  `GET /api/usage` (same bearer auth) with Claude token totals (today / recent /
+  all-time, per model) and the prompt-API dollar cost — the same data as
+  `ha-usage`, as JSON, cached a few minutes. Lets the companion integration
+  expose a usage sensor in Home Assistant. `ha-usage --json` produces the same
+  report on the command line.
+
 ## [1.6.0] — 2026-07-03
 
 Reliability, localization, and usage visibility.

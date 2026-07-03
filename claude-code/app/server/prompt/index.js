@@ -20,6 +20,7 @@ const DEV = process.env.CLAUDE_PROMPT_DEV === '1';
 const DATA_DIR = process.env.CLAUDE_PROMPT_DATA || '/data';
 const OPTIONS_FILE = process.env.CLAUDE_PROMPT_OPTIONS || '/data/options.json';
 const CLAUDE_BIN = process.env.CLAUDE_PROMPT_BIN || '/data/home/.local/bin/claude';
+const USAGE_BIN = process.env.CLAUDE_PROMPT_USAGE_BIN || '/usr/local/bin/ha-usage';
 const HA_MCP_URL = process.env.CLAUDE_PROMPT_HA_MCP_URL
   || 'http://homeassistant:8123/mcp_server/mcp';
 const DISCOVERY_SERVICE = 'claude_ha';
@@ -172,6 +173,7 @@ async function start() {
   const app = createPromptApp({
     token,
     claudeBin: CLAUDE_BIN,
+    usageBin: USAGE_BIN,
     mcpConfigPath,
     model: optionString(options, 'model'),
     workDir,

@@ -89,7 +89,7 @@ function createRateLimiter() {
 }
 
 function createPromptApp({
-  token, claudeBin, mcpConfigPath, model, workDir, addonVersion, redact, audit,
+  token, claudeBin, usageBin, mcpConfigPath, model, workDir, addonVersion, redact, audit,
 }) {
   const app = express();
   app.disable('x-powered-by');
@@ -118,6 +118,36 @@ function createPromptApp({
       });
     });
     return versionInFlight;
+  }
+
+  // Cached usage report from `ha-usage --json`. Parsing the CLI transcripts is
+  // heavy, so cache for a few minutes and share one in-flight run across callers
+  // (the coordinator sensor should poll no more than every few minutes).
+  let usageCache = { value: null, stamp: 0 };
+  let usageInFlight = null;
+  function usageReport() {
+    if (usageCache.value && Date.now() - usageCache.stamp < 3 * 60 * 1000) {
+      return Promise.resolve(usageCache.value);
+    }
+    if (usageInFlight) return usageInFlight;
+    usageInFlight = new Promise((resolve) => {
+      execFile(usageBin, ['--json'], {
+        timeout: 30000,
+        maxBuffer: 8 * 1024 * 1024,
+        env: { PATH: process.env.PATH, HOME: process.env.HOME },
+      }, (err, stdout) => {
+        usageInFlight = null;
+        if (err) { resolve(null); return; }
+        try {
+          const parsed = JSON.parse(String(stdout));
+          usageCache = { value: parsed, stamp: Date.now() };
+          resolve(parsed);
+        } catch {
+          resolve(null);
+        }
+      });
+    });
+    return usageInFlight;
   }
 
   // 1. IP guard — the internal Supervisor network plus loopback only.
@@ -155,6 +185,14 @@ function createPromptApp({
       model: model || '',
       ha_mcp: Boolean(mcpConfigPath),
     });
+  });
+
+  // Token usage + prompt-API cost, for the integration's usage sensor.
+  app.get('/api/usage', async (req, res) => {
+    const report = await usageReport();
+    if (!report) return res.status(503).json({ error: 'usage unavailable' });
+    // Usage is numbers + model names, but redact defensively for consistency.
+    res.json(redactDeep(report, redact));
   });
 
   const rateLimit = createRateLimiter();

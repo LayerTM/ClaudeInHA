@@ -23,6 +23,7 @@ process.env.CLAUDE_PROMPT_DEV = '1'; // skip Supervisor discovery
 process.env.CLAUDE_PROMPT_DATA = TMP;
 process.env.CLAUDE_PROMPT_OPTIONS = path.join(TMP, 'options.json');
 process.env.CLAUDE_PROMPT_BIN = path.join(__dirname, 'fixtures', 'claude-stub.js');
+process.env.CLAUDE_PROMPT_USAGE_BIN = path.join(__dirname, 'fixtures', 'usage-stub.js');
 process.env.ANTHROPIC_API_KEY = 'sk-ant-api03-EXAMPLEparent00000000';
 fs.writeFileSync(process.env.CLAUDE_PROMPT_OPTIONS, JSON.stringify({
   prompt_api: true, api_token: '', prompt_ha_token: HA_LLAT,
@@ -141,6 +142,19 @@ test('status: authed shape', async () => {
   assert.equal(body.claude_version, '9.9.9');
   assert.equal(body.ha_mcp, true);
   assert.equal(body.ready, true);
+});
+
+test('usage: authed report from ha-usage --json', async () => {
+  const noTok = await fetch(`${BASE}/api/usage`);
+  assert.equal(noTok.status, 401);
+  const res = await fetch(`${BASE}/api/usage`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.tokens.today.output, 2);
+  assert.equal(body.tokens.all_time.cache_read, 11);
+  assert.equal(body.by_model_recent['claude-opus-4-8'].input, 5);
+  assert.equal(body.messages.all_time, 3);
+  assert.equal(body.prompt_api_cost_usd.total, 3.45);
 });
 
 test('schema + caps: 400 / 413', async () => {
