@@ -25,7 +25,7 @@ const BODY_KEYS = new Set([
 
 // When streaming, hold back this many trailing chars of the redacted text before
 // emitting, so a secret split across fragments is redacted before any of it ships.
-// The final `result` event always carries the fully-redacted authoritative text.
+// The terminal `done` line always carries the fully-redacted authoritative text.
 const STREAM_SAFETY_WINDOW = 96;
 
 // Camera vision: only a well-formed `camera.<object_id>` may be snapshotted, the
@@ -148,9 +148,34 @@ function createBudget(limitUsd, now = () => new Date()) {
   };
 }
 
+// Downscale a snapshot to ~1024px on the long edge and re-encode JPEG, so a
+// multi-megapixel camera frame does not blow up Claude's vision token cost.
+// Best-effort via the bundled ImageMagick; on ANY failure (magick missing, a
+// non-image, a timeout) the original file is used unchanged — vision still
+// works, just costlier. Output stays 0600.
+async function resizeSnapshot(srcFile, workDir, execImpl = execFile) {
+  const out = path.join(workDir, `snap-${crypto.randomBytes(9).toString('hex')}.jpg`);
+  try {
+    await new Promise((resolve, reject) => {
+      // `1024x1024>` = shrink to fit only if larger; never upscale. execImpl
+      // passes args literally (no shell), so the `>` is a plain argument.
+      execImpl('magick', [srcFile, '-resize', '1024x1024>', '-quality', '85', out],
+        { timeout: 15000 }, (err) => (err ? reject(err) : resolve()));
+    });
+    if ((await fsp.stat(out)).size === 0) throw new Error('empty output');
+    await fsp.chmod(out, 0o600);
+    await fsp.rm(srcFile, { force: true });
+    return out;
+  } catch {
+    await fsp.rm(out, { force: true }).catch(() => {});
+    return srcFile;
+  }
+}
+
 // Fetch a camera's current snapshot with the (restricted) HA token and write it
-// to a 0600 temp file in workDir. Returns the file path, or null on any failure
-// (no image → the model just answers without vision). Bounded by SNAPSHOT_CAP_BYTES.
+// to a 0600 temp file in workDir, downscaled for a sane vision token cost.
+// Returns the file path, or null on any failure (no image → the model just
+// answers without vision). Bounded by SNAPSHOT_CAP_BYTES.
 async function fetchSnapshot(entity, haToken, workDir, fetchImpl = fetch) {
   if (!haToken || !CAMERA_ENTITY_RE.test(entity)) return null;
   let resp;
@@ -171,7 +196,7 @@ async function fetchSnapshot(entity, haToken, workDir, fetchImpl = fetch) {
   } catch {
     return null;
   }
-  return file;
+  return resizeSnapshot(file, workDir);
 }
 
 function createPromptApp({
@@ -439,18 +464,19 @@ function createPromptApp({
       // failed fetch simply yields no image and the model answers without vision.
       const imagePath = imageEntity ? await fetchSnapshot(imageEntity, haToken, workDir) : null;
 
-      // For streaming, open the SSE response now and emit REDACTED text deltas as
-      // the answer generates. A safety window holds back the trailing chars so a
-      // secret split across fragments is redacted before any of it ships; the
-      // final `result` event is authoritative. If no deltas arrive (older CLI /
-      // no streamable text), the client simply gets the final event — no breakage.
+      // For streaming, open an NDJSON response now and emit REDACTED text deltas
+      // as the answer generates — one JSON object per line, which the companion
+      // integration consumes with a plain aiohttp line reader. A safety window
+      // holds back the trailing chars so a secret split across fragments is
+      // redacted before any of it ships; the terminal `done` line is
+      // authoritative. If no deltas arrive (older CLI / no streamable text), the
+      // client simply gets the final `done` line — no breakage.
       let emittedLen = 0;
       let onText;
       if (streaming) {
         res.writeHead(200, {
-          'Content-Type': 'text/event-stream',
+          'Content-Type': 'application/x-ndjson',
           'Cache-Control': 'no-cache, no-transform',
-          Connection: 'keep-alive',
           'X-Accel-Buffering': 'no',
         });
         onText = (fullText) => {
@@ -459,7 +485,7 @@ function createPromptApp({
           if (safeLen > emittedLen) {
             const chunk = redacted.slice(emittedLen, safeLen);
             emittedLen = safeLen;
-            try { res.write(`data: ${JSON.stringify({ delta: chunk })}\n\n`); } catch { /* client gone */ }
+            try { res.write(`${JSON.stringify({ type: 'delta', text: chunk })}\n`); } catch { /* client gone */ }
           }
         };
       }
@@ -495,10 +521,10 @@ function createPromptApp({
       const base = `caller=${caller}${conversationId ? ` conv=${conversationId}` : ''}`
         + `${imageEntity ? ` img=${imageEntity}${imagePath ? '' : '(fetch-failed)'}` : ''} ${detail}`;
 
-      // Under streaming the SSE headers are already sent, so errors go out as an
-      // SSE `error` event and close, rather than an HTTP status.
+      // Under streaming the NDJSON headers are already sent, so a failure goes
+      // out as a terminal `error` line and closes, rather than an HTTP status.
       const failStream = (err) => {
-        try { res.write(`event: error\ndata: ${JSON.stringify({ error: err })}\n\n`); } catch { /* gone */ }
+        try { res.write(`${JSON.stringify({ type: 'error', error: err })}\n`); } catch { /* gone */ }
         try { res.end(); } catch { /* gone */ }
       };
       if (outcome.status === 'timeout') {
@@ -549,13 +575,14 @@ function createPromptApp({
         truncated: outcome.truncated,
       };
       if (streaming) {
-        // Flush any tail the safety window held back, then send the authoritative
-        // final payload (full redacted text + proposal) as a `result` event. The
-        // client treats `result` as truth and the incremental deltas as preview.
+        // Flush any tail the safety window held back, then one terminal `done`
+        // line carrying the authoritative payload (full redacted text + proposal).
+        // The deltas already reconstruct `text`; it is repeated in `done` for
+        // resilience, and the client treats `done` as truth.
         if (text.length > emittedLen) {
-          res.write(`data: ${JSON.stringify({ delta: text.slice(emittedLen) })}\n\n`);
+          res.write(`${JSON.stringify({ type: 'delta', text: text.slice(emittedLen) })}\n`);
         }
-        res.write(`event: result\ndata: ${JSON.stringify(responseBody)}\n\n`);
+        res.write(`${JSON.stringify({ type: 'done', ...responseBody })}\n`);
         return res.end();
       }
       res.json(responseBody);
@@ -582,5 +609,5 @@ function createPromptApp({
 }
 
 module.exports = {
-  createPromptApp, createRateLimiter, createBudget, fetchSnapshot, Bucket,
+  createPromptApp, createRateLimiter, createBudget, fetchSnapshot, resizeSnapshot, Bucket,
 };

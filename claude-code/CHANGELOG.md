@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.17.0] — 2026-07-04
+
+### Changed
+- **Streaming chat is now NDJSON** (`application/x-ndjson`) instead of SSE, to
+  match the companion integration's consumer (a plain line reader feeding Home
+  Assistant's streaming chat log). One JSON object per line: `{"type":"delta",
+  "text":"…"}` chunks as the reply generates, then exactly one `{"type":"done",
+  "text":…,"proposal":…,"tools_used":…,"truncated":…}`, or `{"type":"error",
+  "error":"…"}` on a mid-stream failure. Same guarantees as before: every chunk
+  is redacted, a rolling safety window prevents a secret split across chunks from
+  leaking, and `done` carries the authoritative payload. Pre-run rejections
+  (`400/401/429/503`, and the budget message as `200`) remain plain JSON, so a
+  client distinguishes them by `Content-Type`. (The 1.16.0 SSE shape had no
+  consumers yet, so this is a clean pre-adoption switch.)
+
+### Added
+- **Camera snapshots are downscaled before Claude sees them.** A snapshot is
+  now resized to at most ~1024px on the long edge and re-encoded JPEG (via the
+  bundled ImageMagick) before the scoped `Read`, so a multi-megapixel camera
+  frame no longer blows up vision token cost. Best-effort: if the tool is
+  unavailable the original image is used unchanged. The 0600 temp file is still
+  deleted immediately after the call.
+
 ## [1.16.0] — 2026-07-04
 
 ### Added

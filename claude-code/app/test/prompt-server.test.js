@@ -35,7 +35,9 @@ fs.writeFileSync(process.env.CLAUDE_PROMPT_OPTIONS, JSON.stringify({
 }));
 
 const security = require('../server/prompt/security');
-const { createRateLimiter, createBudget, fetchSnapshot } = require('../server/prompt/server');
+const {
+  createRateLimiter, createBudget, fetchSnapshot, resizeSnapshot,
+} = require('../server/prompt/server');
 const { createHistoryStore } = require('../server/prompt/history');
 const promptServer = require('../server/prompt');
 
@@ -136,6 +138,27 @@ test('fetchSnapshot: validates entity/token/status and writes a 0600 temp file',
   assert.ok(file && file.endsWith('.jpg'), 'writes a .jpg snapshot');
   assert.equal(fs.statSync(file).mode & 0o777, 0o600, 'snapshot is 0600');
   assert.equal(fs.readFileSync(file, 'utf8'), 'imgbytes');
+});
+
+test('resizeSnapshot: downscales via the tool, stays 0600, falls back on failure', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-resize-'));
+  // success: a stubbed `magick` that writes the output path (last arg) it is given
+  const src = path.join(dir, 'src.jpg');
+  fs.writeFileSync(src, 'RAWIMAGE', { mode: 0o600 });
+  const okExec = (bin, args, opts, cb) => { fs.writeFileSync(args[args.length - 1], 'SMALLER'); cb(null, '', ''); };
+  const out = await resizeSnapshot(src, dir, okExec);
+  assert.notEqual(out, src, 'returns the resized file, not the original');
+  assert.ok(out.endsWith('.jpg'));
+  assert.equal(fs.readFileSync(out, 'utf8'), 'SMALLER');
+  assert.equal(fs.statSync(out).mode & 0o777, 0o600, 'resized snapshot is 0600');
+  assert.equal(fs.existsSync(src), false, 'original removed after a successful resize');
+  // failure: exec errors (e.g. magick missing / not an image) → original returned unchanged
+  const src2 = path.join(dir, 'src2.jpg');
+  fs.writeFileSync(src2, 'RAWIMAGE2', { mode: 0o600 });
+  const badExec = (bin, args, opts, cb) => cb(new Error('magick not found'));
+  const out2 = await resizeSnapshot(src2, dir, badExec);
+  assert.equal(out2, src2, 'falls back to the original on failure');
+  assert.equal(fs.readFileSync(out2, 'utf8'), 'RAWIMAGE2');
 });
 
 test('history store: records turns, caps length, expires by TTL, isolates ids', () => {
@@ -292,24 +315,15 @@ test('read: camera vision — image_entity validation', async () => {
   assert.equal((await post({ prompt: 'x', image_entity: 'camera.Front' })).status, 400); // uppercase
 });
 
-// POST and parse a Server-Sent-Events response into {event, data} records.
-async function postSSE(body, headers = {}) {
+// POST and parse an NDJSON (application/x-ndjson) response into its per-line
+// JSON objects (one {type:...} record per line).
+async function postNDJSON(body, headers = {}) {
   const res = await fetch(`${BASE}/api/prompt`, {
     method: 'POST', headers: { ...auth(), ...headers },
     body: JSON.stringify(body),
   });
   const raw = await res.text();
-  const events = raw.split('\n\n').filter((b) => b.trim()).map((block) => {
-    let event = 'message';
-    const dataLines = [];
-    for (const line of block.split('\n')) {
-      if (line.startsWith('event:')) event = line.slice(6).trim();
-      else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
-    }
-    let data = null;
-    try { data = JSON.parse(dataLines.join('\n')); } catch { /* non-JSON */ }
-    return { event, data };
-  });
+  const events = raw.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
   return { status: res.status, contentType: res.headers.get('content-type') || '', events };
 }
 
@@ -320,32 +334,33 @@ test('stream: rejected unless a read-mode boolean', async () => {
   assert.equal((await post({ prompt: 'hi', stream: false }, c)).status, 200); // explicit false is a normal JSON read
 });
 
-test('stream: SSE deltas then an authoritative result event, redacted throughout', async () => {
-  const { status, contentType, events } = await postSSE(
+test('stream: NDJSON deltas then an authoritative done line, redacted throughout', async () => {
+  const { status, contentType, events } = await postNDJSON(
     { prompt: 'PROPOSE LONGSTREAM please', stream: true, conversation_id: 'stream-1' },
     { 'X-Claude-Caller': 'user.stream' },
   );
   assert.equal(status, 200);
-  assert.ok(/text\/event-stream/.test(contentType), `SSE content-type, got ${contentType}`);
+  assert.ok(/application\/x-ndjson/.test(contentType), `NDJSON content-type, got ${contentType}`);
 
-  const deltas = events.filter((e) => e.event === 'message' && e.data && typeof e.data.delta === 'string');
-  const results = events.filter((e) => e.event === 'result');
-  assert.equal(results.length, 1, 'exactly one authoritative result event');
+  const deltas = events.filter((e) => e.type === 'delta');
+  const dones = events.filter((e) => e.type === 'done');
+  assert.equal(dones.length, 1, 'exactly one terminal done line');
+  assert.equal(events.at(-1).type, 'done', 'done is the last line');
 
-  const result = results[0].data;
-  assert.ok(result.text.includes('[REDACTED]'), 'final text is redacted');
-  assert.equal(result.proposal.intents[0].intent, 'HassTurnOff');
-  assert.deepEqual(result.tools_used, ['mcp__ha__GetLiveContext']);
+  const done = dones[0];
+  assert.ok(done.text.includes('[REDACTED]'), 'final text is redacted');
+  assert.equal(done.proposal.intents[0].intent, 'HassTurnOff');
+  assert.deepEqual(done.tools_used, ['mcp__ha__GetLiveContext']);
 
-  // No secret — even a half-formed one — may appear in ANY delta or the result.
+  // No secret — even a half-formed one — may appear in ANY delta or the done line.
   const wire = JSON.stringify(events);
   assert.ok(!wire.includes('EXAMPLEdeadbeef'), 'no api key anywhere on the wire');
   assert.ok(!wire.includes('eyJEXAMPLE'), 'no jwt anywhere on the wire');
 
   // Genuine mid-generation streaming: several deltas, and they reconstruct
-  // exactly the final text (deltas are the streamed prefix of result.text).
+  // exactly the final text (deltas are the streamed prefix of done.text).
   assert.ok(deltas.length >= 2, `expected multiple incremental deltas, got ${deltas.length}`);
-  assert.equal(deltas.map((d) => d.data.delta).join(''), result.text, 'deltas reconstruct the final text');
+  assert.equal(deltas.map((d) => d.text).join(''), done.text, 'deltas reconstruct the final text');
 });
 
 test('write confirmation: auto/confirmed and the critical-domain backstop', async () => {
