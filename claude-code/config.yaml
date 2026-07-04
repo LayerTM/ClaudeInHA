@@ -1,5 +1,5 @@
 name: "Claude Code"
-version: "1.9.1"
+version: "1.10.0"
 slug: claude-code
 description: "Claude Code AI assistant embedded in Home Assistant — web console with tabs, clipboard, file attachments, browser testing, and a bundled HA skill pack"
 url: "https://github.com/LayerTM/ClaudeInHA"
@@ -92,4 +92,4 @@ schema:
   api_token: "password"
   prompt_ha_token: "password"
 
-stage: experimental
+stage: stable

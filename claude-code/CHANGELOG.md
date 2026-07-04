@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.10.0] — 2026-07-04
+
+### Changed
+- **Promoted to stable** (`stage: stable`). The companion chat — via the `claude_ha`
+  Home Assistant integration — is now verified end-to-end on real Home Assistant:
+  ask about your home in Assist (any device), it holds multi-turn context, and it
+  can act — safe everyday actions (lights, media, fans, scenes) run immediately,
+  while consequential ones (locks, covers, alarms, network/router/access-point or
+  device-configuration controls, firmware updates, …) are held for a one-tap
+  confirmation. Criticality is judged per entity from live metadata, not by a blunt
+  per-domain rule. The console, safety net, image tools and skills that shipped in
+  the 1.x line remain unchanged.
+
 ## [1.9.1] — 2026-07-04
 
 ### Fixed
