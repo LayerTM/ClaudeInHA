@@ -179,6 +179,8 @@ async function start() {
     // to the console's model override, then the Claude default.
     model: optionString(options, 'chat_model') || optionString(options, 'model'),
     dailyBudgetUsd: Number(options.chat_daily_budget_usd) || 0,
+    // Same HA token the MCP config uses — for fetching camera snapshots (vision).
+    haToken,
     workDir,
     addonVersion: process.env.ADDON_VERSION || 'unknown',
     redact,

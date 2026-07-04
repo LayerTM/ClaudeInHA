@@ -31,7 +31,7 @@ fs.writeFileSync(process.env.CLAUDE_PROMPT_OPTIONS, JSON.stringify({
 }));
 
 const security = require('../server/prompt/security');
-const { createRateLimiter, createBudget } = require('../server/prompt/server');
+const { createRateLimiter, createBudget, fetchSnapshot } = require('../server/prompt/server');
 const { createHistoryStore } = require('../server/prompt/history');
 const promptServer = require('../server/prompt');
 
@@ -120,6 +120,18 @@ test('createBudget: daily USD cap enforced, resets by day, 0 = unlimited', () =>
   const unlimited = createBudget(0);
   unlimited.add(999);
   assert.equal(unlimited.exceeded(), false, 'zero limit is unlimited');
+});
+
+test('fetchSnapshot: validates entity/token/status and writes a 0600 temp file', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-snap-'));
+  const okFetch = async () => new Response(Buffer.from('imgbytes'), { status: 200 });
+  assert.equal(await fetchSnapshot('light.x', 'tok', dir, okFetch), null, 'non-camera rejected');
+  assert.equal(await fetchSnapshot('camera.x', '', dir, okFetch), null, 'missing token rejected');
+  assert.equal(await fetchSnapshot('camera.x', 'tok', dir, async () => new Response('x', { status: 404 })), null, 'bad status rejected');
+  const file = await fetchSnapshot('camera.front_door', 'tok', dir, okFetch);
+  assert.ok(file && file.endsWith('.jpg'), 'writes a .jpg snapshot');
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600, 'snapshot is 0600');
+  assert.equal(fs.readFileSync(file, 'utf8'), 'imgbytes');
 });
 
 test('history store: records turns, caps length, expires by TTL, isolates ids', () => {
@@ -266,6 +278,14 @@ test('read: conversation memory feeds prior turns into the next prompt', async (
   // a different conversation id starts fresh
   const other = await post({ prompt: 'hello there', conversation_id: 'mem-2' }, c);
   assert.ok(other.json.text.includes('history=false'), 'separate conversation is isolated');
+});
+
+test('read: camera vision — image_entity validation', async () => {
+  // image_entity is read-only and must be a well-formed camera entity.
+  assert.equal((await post({ mode: 'write', image_entity: 'camera.front', intents: [{ intent: 'HassTurnOff', targets: ['switch.x'] }] })).status, 400);
+  assert.equal((await post({ prompt: 'x', image_entity: 'light.kitchen' })).status, 400);
+  assert.equal((await post({ prompt: 'x', image_entity: '../evil' })).status, 400);
+  assert.equal((await post({ prompt: 'x', image_entity: 'camera.Front' })).status, 400); // uppercase
 });
 
 test('write confirmation: auto/confirmed and the critical-domain backstop', async () => {

@@ -42,7 +42,7 @@ const HISTORY_BLOCK_CAP = 24 * 1024;
 // version does not know only produce a warning, so over-listing is safe.
 // This list is defense-in-depth: the enforcement layer is `dontAsk`, which
 // auto-denies EVERY tool not in the per-request allowlist.
-const DISALLOWED_TOOLS = [
+const DISALLOWED_TOOLS_ARR = [
   'Bash', 'Read', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'NotebookRead',
   'Grep', 'Glob', 'LS', 'WebFetch', 'WebSearch', 'Task', 'Agent', 'TodoWrite',
   'Skill', 'KillShell', 'BashOutput', 'Workflow', 'ToolSearch', 'SendMessage',
@@ -51,7 +51,13 @@ const DISALLOWED_TOOLS = [
   'RemoteTrigger', 'ScheduleWakeup', 'DesignSync', 'EnterWorktree',
   'ExitWorktree', 'EnterPlanMode', 'ExitPlanMode', 'AskUserQuestion',
   'Artifact', 'ListMcpResourcesTool', 'ReadMcpResourceTool',
-].join(',');
+];
+const DISALLOWED_TOOLS = DISALLOWED_TOOLS_ARR.join(',');
+// Camera vision (read + a fetched snapshot): the allowlist gets a PATH-SCOPED
+// Read of exactly that one snapshot file. A blanket `Read` deny here would
+// override it, so drop `Read` from the deny list in that mode only — the scoped
+// allow rule (plus `dontAsk` denying every unlisted path) is the actual gate.
+const DISALLOWED_TOOLS_VISION = DISALLOWED_TOOLS_ARR.filter((t) => t !== 'Read').join(',');
 
 const READ_SCHEMA = JSON.stringify({
   type: 'object',
@@ -214,15 +220,19 @@ function shutdown() {
  * Never rejects.
  */
 function runClaude({
-  bin, prompt, mode, intents, mcpConfigPath, model, cwd, signal, history,
+  bin, prompt, mode, intents, mcpConfigPath, model, cwd, signal, history, imagePath,
 }) {
   return new Promise((resolve) => {
     const read = mode !== 'write';
-    const allowedTools = mcpConfigPath
-      ? (read
-        ? ['mcp__ha__GetLiveContext']
-        : [...new Set(intents.map((i) => `mcp__ha__${i.intent}`))])
-      : [];
+    const vision = read && Boolean(imagePath);
+    let allowedTools;
+    if (!read) {
+      allowedTools = mcpConfigPath ? [...new Set(intents.map((i) => `mcp__ha__${i.intent}`))] : [];
+    } else {
+      allowedTools = [];
+      if (mcpConfigPath) allowedTools.push('mcp__ha__GetLiveContext');
+      if (imagePath) allowedTools.push(`Read(${imagePath})`);
+    }
 
     const args = [
       '-p',
@@ -230,7 +240,7 @@ function runClaude({
       '--verbose',
       '--permission-mode', 'dontAsk',
       '--allowed-tools', allowedTools.join(','),
-      '--disallowed-tools', DISALLOWED_TOOLS,
+      '--disallowed-tools', vision ? DISALLOWED_TOOLS_VISION : DISALLOWED_TOOLS,
       '--json-schema', read ? READ_SCHEMA : WRITE_SCHEMA,
       '--append-system-prompt', read ? READ_SYSTEM_PROMPT : WRITE_SYSTEM_PROMPT,
       // Accepted (though no longer documented) by CLI 2.1.200; bounds agentic
@@ -297,7 +307,10 @@ function runClaude({
 
     // Read mode: the untrusted prompt goes in as data. Write mode: the prompt
     // is NEVER used — the model sees only server-validated intents.
-    const stdinContent = read ? (formatHistory(history) + prompt) : buildWriteDirective(intents);
+    const imgNote = vision
+      ? `A current camera snapshot has been saved to ${imagePath}. Use the Read tool to VIEW that image, then answer using what you actually see in it (combine with GetLiveContext for state if useful). Do not guess about the image — look at it.\n\n`
+      : '';
+    const stdinContent = read ? (imgNote + formatHistory(history) + prompt) : buildWriteDirective(intents);
     child.stdin.on('error', () => { /* child died before reading stdin */ });
     child.stdin.end(stdinContent, 'utf8');
 

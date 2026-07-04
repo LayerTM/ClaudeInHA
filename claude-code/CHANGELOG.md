@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.15.0] — 2026-07-04
+
+### Added
+- **Camera vision in chat (add-on side).** `POST /api/prompt` (read mode) now
+  accepts an optional `image_entity` (a `camera.*` entity). When set, the add-on
+  fetches that camera's current snapshot and lets Claude actually SEE it — so
+  "is someone at the door?" or "is the garage closed?" can be answered visually.
+  Security: the snapshot is fetched with the restricted chat HA token, written to
+  a `0600` temp file that is deleted immediately after the call, and Claude is
+  granted a path-scoped `Read` of only that one file (no broader filesystem
+  access). `claude -p` has no native image input, so this scoped-Read is the
+  supported path. The companion integration must only pass cameras the user has
+  exposed to Assist, and add the "which camera / is this a visual question"
+  resolution — that half comes next.
+
 ## [1.14.0] — 2026-07-04
 
 ### Added

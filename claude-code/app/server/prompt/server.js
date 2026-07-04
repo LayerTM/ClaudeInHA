@@ -6,6 +6,9 @@
 
 const { execFile } = require('node:child_process');
 const fs = require('node:fs');
+const fsp = require('node:fs/promises');
+const path = require('node:path');
+const crypto = require('node:crypto');
 const express = require('express');
 const {
   ipAllowed, tokenMatches, sanitizePrompt, sanitizeId,
@@ -16,7 +19,14 @@ const { createHistoryStore } = require('./history');
 
 const MAX_PROMPT_BYTES = 8 * 1024;
 const MAX_CONCURRENT_RUNS = 2;
-const BODY_KEYS = new Set(['prompt', 'mode', 'conversation_id', 'intents', 'confirmation']);
+const BODY_KEYS = new Set([
+  'prompt', 'mode', 'conversation_id', 'intents', 'confirmation', 'image_entity',
+]);
+
+// Camera vision: only a well-formed `camera.<object_id>` may be snapshotted, the
+// image is capped, and the integration must only pass cameras exposed to Assist.
+const CAMERA_ENTITY_RE = /^camera\.[a-z0-9_]{1,120}$/;
+const SNAPSHOT_CAP_BYTES = 8 * 1024 * 1024;
 
 // Boundary backstop for unconfirmed (`confirmation:"auto"`) writes. The
 // integration does the fine-grained, metadata-aware risk classification (it has
@@ -130,8 +140,34 @@ function createBudget(limitUsd, now = () => new Date()) {
   };
 }
 
+// Fetch a camera's current snapshot with the (restricted) HA token and write it
+// to a 0600 temp file in workDir. Returns the file path, or null on any failure
+// (no image → the model just answers without vision). Bounded by SNAPSHOT_CAP_BYTES.
+async function fetchSnapshot(entity, haToken, workDir, fetchImpl = fetch) {
+  if (!haToken || !CAMERA_ENTITY_RE.test(entity)) return null;
+  let resp;
+  try {
+    resp = await fetchImpl(`http://homeassistant:8123/api/camera_proxy/${entity}`, {
+      headers: { Authorization: `Bearer ${haToken}` },
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch {
+    return null;
+  }
+  if (!resp.ok) return null;
+  const buf = Buffer.from(await resp.arrayBuffer());
+  if (buf.length === 0 || buf.length > SNAPSHOT_CAP_BYTES) return null;
+  const file = path.join(workDir, `snap-${crypto.randomBytes(9).toString('hex')}.jpg`);
+  try {
+    await fsp.writeFile(file, buf, { mode: 0o600 });
+  } catch {
+    return null;
+  }
+  return file;
+}
+
 function createPromptApp({
-  token, claudeBin, usageBin, mcpConfigPath, model, dailyBudgetUsd = 0,
+  token, claudeBin, usageBin, mcpConfigPath, model, dailyBudgetUsd = 0, haToken,
   workDir, addonVersion, redact, audit,
 }) {
   const app = express();
@@ -291,6 +327,20 @@ function createPromptApp({
       }
       const conversationId = sanitizeId(body.conversation_id, 128);
 
+      // Camera vision: an optional camera entity to snapshot and let Claude SEE.
+      // Read-only, strict entity format; the integration must only pass cameras
+      // the user has exposed to Assist (that is the outer boundary).
+      let imageEntity = null;
+      if (body.image_entity !== undefined) {
+        if (mode !== 'read') {
+          return res.status(400).json({ error: 'image_entity is only valid with mode "read"' });
+        }
+        if (typeof body.image_entity !== 'string' || !CAMERA_ENTITY_RE.test(body.image_entity)) {
+          return res.status(400).json({ error: 'image_entity must be a camera.<id> entity' });
+        }
+        imageEntity = body.image_entity;
+      }
+
       // Unconfirmed (auto) vs user-confirmed writes. Default "confirmed"
       // preserves the pre-1.8 contract: absent === the integration already got
       // the user's explicit yes. "auto" is the opt-in low-risk fast path.
@@ -368,6 +418,10 @@ function createPromptApp({
         if (!res.writableEnded) abort.abort();
       });
 
+      // Fetch the requested camera snapshot (if any) before running Claude; a
+      // failed fetch simply yields no image and the model answers without vision.
+      const imagePath = imageEntity ? await fetchSnapshot(imageEntity, haToken, workDir) : null;
+
       let outcome;
       try {
         // 6. Run Claude (stateless, scrubbed, deny-by-default).
@@ -382,9 +436,12 @@ function createPromptApp({
           signal: abort.signal,
           history: (mode === 'read' && conversationId)
             ? conversations.recent(conversationId) : undefined,
+          imagePath,
         });
       } finally {
         activeRuns -= 1;
+        // Always delete the snapshot — it lived only for this one call.
+        if (imagePath) fsp.rm(imagePath, { force: true }).catch(() => {});
       }
 
       const seconds = ((Date.now() - started) / 1000).toFixed(1);
@@ -392,7 +449,8 @@ function createPromptApp({
       const detail = mode === 'write'
         ? `intents=${intents.map((i) => `${i.intent}(${i.targets.join('+')})`).join(',')}`
         : `len=${Buffer.byteLength(prompt, 'utf8')} sha=${sha12(prompt)}`;
-      const base = `caller=${caller}${conversationId ? ` conv=${conversationId}` : ''} ${detail}`;
+      const base = `caller=${caller}${conversationId ? ` conv=${conversationId}` : ''}`
+        + `${imageEntity ? ` img=${imageEntity}${imagePath ? '' : '(fetch-failed)'}` : ''} ${detail}`;
 
       if (outcome.status === 'timeout') {
         audit(`prompt[${mode}] ${base} status=504 dur=${seconds}s`);
@@ -462,5 +520,5 @@ function createPromptApp({
 }
 
 module.exports = {
-  createPromptApp, createRateLimiter, createBudget, Bucket,
+  createPromptApp, createRateLimiter, createBudget, fetchSnapshot, Bucket,
 };
