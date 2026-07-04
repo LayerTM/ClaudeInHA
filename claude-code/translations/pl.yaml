@@ -121,6 +121,16 @@ configuration:
       uwagi. Wymaga zalogowania Claude i zużywa limit planu przy każdym
       sprawdzeniu. Ustaw 0, aby wyłączyć (domyślnie). Aby otrzymywać sprawdzenia
       na telefon, ustaw też HA_NOTIFY_SERVICE w zmiennych środowiskowych.
+  daily_digest_time:
+    name: Godzina porannego podsumowania (HH:MM)
+    description: >-
+      Gdy ustawiono godzinę np. 08:00 (strefa czasowa dodatku), Claude raz dziennie
+      wysyła krótkie, przyjazne poranne podsumowanie — dzisiejsza pogoda plus
+      delikatne zwrócenie uwagi na to, co warte uwagi (światła zostawione na noc,
+      otwarte drzwi, niski poziom baterii). Wymaga zalogowania Claude i zużywa
+      trochę limitu planu raz dziennie. Zostaw puste, aby wyłączyć. Aby otrzymywać
+      na telefon, ustaw też HA_NOTIFY_SERVICE w zmiennych środowiskowych (inaczej
+      pojawi się w powiadomieniach HA).
   prompt_api:
     name: Prompt API (integracja claude_ha)
     description: >-

@@ -265,5 +265,14 @@ if [ "${monitor_hours}" -gt 0 ] 2>/dev/null; then
     CLAUDE_MONITOR_HOURS="${monitor_hours}" nohup /usr/local/bin/cc-monitor >/data/monitor.log 2>&1 &
 fi
 
+# --- Morning digest (opt-in via daily_digest_time = "HH:MM") ---
+# Once a day, Claude sends a short friendly briefing (weather + heads-ups) via
+# ha-notify. Same injection-safe posture as the monitor. Spends plan usage once/day.
+digest_time=$(jq -r '.daily_digest_time // ""' /data/options.json 2>/dev/null || echo "")
+if [ -n "${digest_time}" ]; then
+    bashio::log.info "Morning digest enabled (${digest_time})"
+    CLAUDE_DIGEST_TIME="${digest_time}" nohup /usr/local/bin/cc-digest >/data/digest.log 2>&1 &
+fi
+
 bashio::log.info "Starting Claude Console on port ${CLAUDE_CONSOLE_PORT}..."
 exec node /opt/claude-console/server/index.js

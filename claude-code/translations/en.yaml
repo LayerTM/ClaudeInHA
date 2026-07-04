@@ -120,6 +120,16 @@ configuration:
       something worth flagging. Requires Claude to be logged in and spends plan
       usage on each check. Set 0 to disable (default). To receive checks on your
       phone, also set HA_NOTIFY_SERVICE in Environment Variables.
+  daily_digest_time:
+    name: Morning Digest Time (HH:MM)
+    description: >-
+      When set to a time like 08:00 (add-on timezone), Claude sends one short,
+      friendly morning briefing a day — today's weather plus a gentle heads-up
+      about anything worth noting (lights left on overnight, a door left open, low
+      batteries). Requires Claude to be logged in and spends a little plan usage
+      once a day. Leave empty to disable. To receive it on your phone, also set
+      HA_NOTIFY_SERVICE in Environment Variables (otherwise it shows in the HA
+      notification bell).
   prompt_api:
     name: Prompt API (claude_ha integration)
     description: >-

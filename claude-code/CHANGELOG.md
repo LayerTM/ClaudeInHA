@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.12.0] — 2026-07-04
+
+### Added
+- **Morning digest.** A new *Morning Digest Time* (`daily_digest_time`, e.g.
+  `08:00`) option: once a day Claude sends one short, friendly briefing — today's
+  weather plus a gentle heads-up about anything worth noting (lights left on
+  overnight, a door left open, low batteries) — via `ha-notify` (HA bell, or your
+  phone if `HA_NOTIFY_SERVICE` is set). Same injection-safe posture as the
+  proactive monitor: the home snapshot is untrusted data and Claude runs with no
+  tools and no Home Assistant credentials. Leave empty to disable.
+
 ## [1.11.0] — 2026-07-04
 
 ### Added
