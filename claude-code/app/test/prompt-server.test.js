@@ -178,6 +178,15 @@ test('status: authed shape', async () => {
   assert.equal(body.claude_version, '9.9.9');
   assert.equal(body.ha_mcp, true);
   assert.equal(body.ready, true);
+  // ha_mcp_connected is null until the first read has run.
+  assert.ok(body.ha_mcp_connected === null || typeof body.ha_mcp_connected === 'boolean');
+});
+
+test('status: ha_mcp_connected reflects the last read run', async () => {
+  await post({ prompt: 'hello there', conversation_id: 'mcpcheck' }, { 'X-Claude-Caller': 'user.mcp' });
+  const res = await fetch(`${BASE}/api/status`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+  const body = await res.json();
+  assert.equal(body.ha_mcp_connected, true); // the stub reports the `ha` MCP server connected
 });
 
 test('usage: authed report from ha-usage --json', async () => {

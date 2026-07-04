@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.14.0] — 2026-07-04
+
+### Added
+- **`/api/status` now reports `ha_mcp_connected`** — whether the most recent chat
+  read actually reached the Home Assistant MCP server, not just whether it is
+  configured. This lets the companion integration's health check tell "configured
+  but not connecting" (e.g. the *Model Context Protocol Server* integration isn't
+  installed, or nothing is exposed to Assist) apart from a healthy chat, and point
+  the user at the exact fix.
+
 ## [1.13.0] — 2026-07-04
 
 ### Added

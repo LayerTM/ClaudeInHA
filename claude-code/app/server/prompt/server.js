@@ -143,6 +143,12 @@ function createPromptApp({
   const conversations = createHistoryStore();
   // Optional daily spend cap for the chat.
   const budget = createBudget(dailyBudgetUsd);
+  // Whether the most recent read actually CONNECTED to the HA MCP server (vs.
+  // merely being configured). null until the first read. Surfaced in /api/status
+  // so the integration's health check can tell "configured but not connecting"
+  // (e.g. the Model Context Protocol Server integration is missing) apart from
+  // "connected". Distinct from ha_mcp, which only says a config file exists.
+  let lastMcpConnected = null;
 
   // Cached `claude --version` (refreshed lazily, at most every 5 minutes).
   // A single in-flight refresh is shared by all concurrent callers, so a burst
@@ -232,6 +238,7 @@ function createPromptApp({
       claude_version: version || '',
       model: model || '',
       ha_mcp: Boolean(mcpConfigPath),
+      ha_mcp_connected: mcpConfigPath ? lastMcpConnected : false,
     });
   });
 
@@ -400,6 +407,8 @@ function createPromptApp({
       // Count every run's cost toward the daily cap (read and write), even though
       // the cap is only enforced on the read path.
       budget.add(outcome.costUsd);
+      // Remember whether the read path reached the HA MCP server (for /api/status).
+      if (mode === 'read') lastMcpConnected = !outcome.mcpFailed;
 
       // 7. Output: redact secrets from EVERY model-shaped field before it
       // leaves the add-on — text, the whole proposal (summary + each intent's
