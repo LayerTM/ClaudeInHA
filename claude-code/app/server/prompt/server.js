@@ -20,8 +20,13 @@ const { createHistoryStore } = require('./history');
 const MAX_PROMPT_BYTES = 8 * 1024;
 const MAX_CONCURRENT_RUNS = 2;
 const BODY_KEYS = new Set([
-  'prompt', 'mode', 'conversation_id', 'intents', 'confirmation', 'image_entity',
+  'prompt', 'mode', 'conversation_id', 'intents', 'confirmation', 'image_entity', 'stream',
 ]);
+
+// When streaming, hold back this many trailing chars of the redacted text before
+// emitting, so a secret split across fragments is redacted before any of it ships.
+// The final `result` event always carries the fully-redacted authoritative text.
+const STREAM_SAFETY_WINDOW = 96;
 
 // Camera vision: only a well-formed `camera.<object_id>` may be snapshotted, the
 // image is capped, and the integration must only pass cameras exposed to Assist.
@@ -76,8 +81,11 @@ function createRateLimiter() {
   // (MAX_CONCURRENT_RUNS) is the hard DoS control. Keep these loose enough for
   // interactive Assist use: global ~30/min (burst 20), per-caller ~12/min
   // (burst 6). A caller over its own budget is rejected before the global
-  // bucket is touched, so it cannot starve other callers.
-  const globalBucket = new Bucket(20, 0.5);
+  // bucket is touched, so it cannot starve other callers. The global burst is
+  // env-tunable (CLAUDE_PROMPT_RATE_BURST) for busy installs and deterministic
+  // tests; the default preserves the production behavior.
+  const globalBurst = Math.max(1, Number(process.env.CLAUDE_PROMPT_RATE_BURST) || 20);
+  const globalBucket = new Bucket(globalBurst, 0.5);
   const perCaller = new Map(); // caller -> {bucket, lastUsed} (insertion ~ LRU)
 
   setInterval(() => {
@@ -341,6 +349,15 @@ function createPromptApp({
         imageEntity = body.image_entity;
       }
 
+      // Optional SSE streaming of the answer text (read only).
+      if (body.stream !== undefined && typeof body.stream !== 'boolean') {
+        return res.status(400).json({ error: 'stream must be a boolean' });
+      }
+      if (body.stream === true && mode !== 'read') {
+        return res.status(400).json({ error: 'stream is only valid with mode "read"' });
+      }
+      const streaming = body.stream === true;
+
       // Unconfirmed (auto) vs user-confirmed writes. Default "confirmed"
       // preserves the pre-1.8 contract: absent === the integration already got
       // the user's explicit yes. "auto" is the opt-in low-risk fast path.
@@ -422,6 +439,31 @@ function createPromptApp({
       // failed fetch simply yields no image and the model answers without vision.
       const imagePath = imageEntity ? await fetchSnapshot(imageEntity, haToken, workDir) : null;
 
+      // For streaming, open the SSE response now and emit REDACTED text deltas as
+      // the answer generates. A safety window holds back the trailing chars so a
+      // secret split across fragments is redacted before any of it ships; the
+      // final `result` event is authoritative. If no deltas arrive (older CLI /
+      // no streamable text), the client simply gets the final event — no breakage.
+      let emittedLen = 0;
+      let onText;
+      if (streaming) {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        });
+        onText = (fullText) => {
+          const redacted = redact(fullText);
+          const safeLen = Math.max(0, redacted.length - STREAM_SAFETY_WINDOW);
+          if (safeLen > emittedLen) {
+            const chunk = redacted.slice(emittedLen, safeLen);
+            emittedLen = safeLen;
+            try { res.write(`data: ${JSON.stringify({ delta: chunk })}\n\n`); } catch { /* client gone */ }
+          }
+        };
+      }
+
       let outcome;
       try {
         // 6. Run Claude (stateless, scrubbed, deny-by-default).
@@ -437,6 +479,7 @@ function createPromptApp({
           history: (mode === 'read' && conversationId)
             ? conversations.recent(conversationId) : undefined,
           imagePath,
+          onText,
         });
       } finally {
         activeRuns -= 1;
@@ -452,13 +495,21 @@ function createPromptApp({
       const base = `caller=${caller}${conversationId ? ` conv=${conversationId}` : ''}`
         + `${imageEntity ? ` img=${imageEntity}${imagePath ? '' : '(fetch-failed)'}` : ''} ${detail}`;
 
+      // Under streaming the SSE headers are already sent, so errors go out as an
+      // SSE `error` event and close, rather than an HTTP status.
+      const failStream = (err) => {
+        try { res.write(`event: error\ndata: ${JSON.stringify({ error: err })}\n\n`); } catch { /* gone */ }
+        try { res.end(); } catch { /* gone */ }
+      };
       if (outcome.status === 'timeout') {
         audit(`prompt[${mode}] ${base} status=504 dur=${seconds}s`);
+        if (streaming) return failStream('timeout');
         return res.status(504).json({ error: 'timeout' });
       }
       if (outcome.status !== 'ok') {
         audit(`prompt[${mode}] ${base} status=500 dur=${seconds}s`);
         console.error(`[prompt] run failed (${caller}): ${redact(outcome.message || 'unknown')}`);
+        if (streaming) return failStream('internal error');
         return res.status(500).json({ error: 'internal error' });
       }
 
@@ -491,12 +542,23 @@ function createPromptApp({
         console.error('[prompt] HA MCP server did not connect — check the HA token and that the Model Context Protocol Server integration is installed');
       }
 
-      res.json({
+      const responseBody = {
         text,
         proposal,
         tools_used: toolsUsed,
         truncated: outcome.truncated,
-      });
+      };
+      if (streaming) {
+        // Flush any tail the safety window held back, then send the authoritative
+        // final payload (full redacted text + proposal) as a `result` event. The
+        // client treats `result` as truth and the incremental deltas as preview.
+        if (text.length > emittedLen) {
+          res.write(`data: ${JSON.stringify({ delta: text.slice(emittedLen) })}\n\n`);
+        }
+        res.write(`event: result\ndata: ${JSON.stringify(responseBody)}\n\n`);
+        return res.end();
+      }
+      res.json(responseBody);
     },
   );
 

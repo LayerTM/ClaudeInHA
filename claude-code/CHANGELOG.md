@@ -1,6 +1,20 @@
 # Changelog
 
-## [1.15.0] — 2026-07-04
+## [1.16.0] — 2026-07-04
+
+### Added
+- **Streaming chat replies (add-on side).** `POST /api/prompt` (read mode) now
+  accepts `"stream": true` and answers as Server-Sent Events — the reply text
+  arrives in `data: {"delta": "…"}` chunks as Claude writes it, followed by one
+  authoritative `event: result` carrying the full redacted text, proposal and
+  tools used. So the chat can show words appearing live instead of a spinner, and
+  the companion integration still gets the exact same final payload it does today.
+  Security is unchanged: every chunk is redacted before it leaves the add-on, and
+  a rolling safety window holds back the trailing characters so a secret split
+  across chunks can never slip out mid-stream. Degrades gracefully — if the CLI
+  emits no partial events, the client simply receives the final `result`. Errors
+  and timeouts surface as an `event: error`. Streaming is read-only; write mode is
+  unchanged.
 
 ### Added
 - **Camera vision in chat (add-on side).** `POST /api/prompt` (read mode) now

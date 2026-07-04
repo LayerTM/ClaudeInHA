@@ -20,6 +20,10 @@ const HA_LLAT = 'test-ha-llat-abcdefghijklmnop';
 
 process.env.CLAUDE_PROMPT_PORT = String(PORT);
 process.env.CLAUDE_PROMPT_DEV = '1'; // skip Supervisor discovery
+// The suite fires many requests back-to-back through one long-lived server; give
+// the global rate limiter ample burst so throttling never masks other assertions.
+// The rate limiter's real behavior is covered by the createRateLimiter unit test.
+process.env.CLAUDE_PROMPT_RATE_BURST = '500';
 process.env.CLAUDE_PROMPT_DATA = TMP;
 process.env.CLAUDE_PROMPT_OPTIONS = path.join(TMP, 'options.json');
 process.env.CLAUDE_PROMPT_BIN = path.join(__dirname, 'fixtures', 'claude-stub.js');
@@ -286,6 +290,62 @@ test('read: camera vision — image_entity validation', async () => {
   assert.equal((await post({ prompt: 'x', image_entity: 'light.kitchen' })).status, 400);
   assert.equal((await post({ prompt: 'x', image_entity: '../evil' })).status, 400);
   assert.equal((await post({ prompt: 'x', image_entity: 'camera.Front' })).status, 400); // uppercase
+});
+
+// POST and parse a Server-Sent-Events response into {event, data} records.
+async function postSSE(body, headers = {}) {
+  const res = await fetch(`${BASE}/api/prompt`, {
+    method: 'POST', headers: { ...auth(), ...headers },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  const events = raw.split('\n\n').filter((b) => b.trim()).map((block) => {
+    let event = 'message';
+    const dataLines = [];
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event:')) event = line.slice(6).trim();
+      else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+    }
+    let data = null;
+    try { data = JSON.parse(dataLines.join('\n')); } catch { /* non-JSON */ }
+    return { event, data };
+  });
+  return { status: res.status, contentType: res.headers.get('content-type') || '', events };
+}
+
+test('stream: rejected unless a read-mode boolean', async () => {
+  const c = { 'X-Claude-Caller': 'user.streamval' }; // fresh per-caller bucket
+  assert.equal((await post({ prompt: 'hi', stream: 'yes' }, c)).status, 400); // non-boolean
+  assert.equal((await post({ mode: 'write', stream: true, intents: [{ intent: 'HassTurnOff', targets: ['switch.x'] }] }, c)).status, 400); // not on write
+  assert.equal((await post({ prompt: 'hi', stream: false }, c)).status, 200); // explicit false is a normal JSON read
+});
+
+test('stream: SSE deltas then an authoritative result event, redacted throughout', async () => {
+  const { status, contentType, events } = await postSSE(
+    { prompt: 'PROPOSE LONGSTREAM please', stream: true, conversation_id: 'stream-1' },
+    { 'X-Claude-Caller': 'user.stream' },
+  );
+  assert.equal(status, 200);
+  assert.ok(/text\/event-stream/.test(contentType), `SSE content-type, got ${contentType}`);
+
+  const deltas = events.filter((e) => e.event === 'message' && e.data && typeof e.data.delta === 'string');
+  const results = events.filter((e) => e.event === 'result');
+  assert.equal(results.length, 1, 'exactly one authoritative result event');
+
+  const result = results[0].data;
+  assert.ok(result.text.includes('[REDACTED]'), 'final text is redacted');
+  assert.equal(result.proposal.intents[0].intent, 'HassTurnOff');
+  assert.deepEqual(result.tools_used, ['mcp__ha__GetLiveContext']);
+
+  // No secret — even a half-formed one — may appear in ANY delta or the result.
+  const wire = JSON.stringify(events);
+  assert.ok(!wire.includes('EXAMPLEdeadbeef'), 'no api key anywhere on the wire');
+  assert.ok(!wire.includes('eyJEXAMPLE'), 'no jwt anywhere on the wire');
+
+  // Genuine mid-generation streaming: several deltas, and they reconstruct
+  // exactly the final text (deltas are the streamed prefix of result.text).
+  assert.ok(deltas.length >= 2, `expected multiple incremental deltas, got ${deltas.length}`);
+  assert.equal(deltas.map((d) => d.data.delta).join(''), result.text, 'deltas reconstruct the final text');
 });
 
 test('write confirmation: auto/confirmed and the critical-domain backstop', async () => {

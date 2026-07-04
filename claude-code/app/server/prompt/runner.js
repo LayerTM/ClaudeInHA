@@ -171,6 +171,41 @@ function formatHistory(history) {
     kept.join('\n')}\n\n---\nCurrent message:\n`;
 }
 
+// Best-effort: pull the GROWING value of the top-level "text" field out of a
+// partial StructuredOutput tool-input JSON string (built up from input_json_delta
+// fragments). Handles JSON string escapes and stops cleanly at an incomplete
+// escape (waits for the next fragment). Returns '' before "text" appears — so it
+// naturally ignores other tools whose input has no "text" (e.g. GetLiveContext).
+function growingText(buf) {
+  const m = buf.match(/"text"\s*:\s*"/);
+  if (!m) return '';
+  let i = m.index + m[0].length;
+  let out = '';
+  const esc = {
+    n: '\n', t: '\t', r: '\r', '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f',
+  };
+  while (i < buf.length) {
+    const c = buf[i];
+    if (c === '\\') {
+      const n = buf[i + 1];
+      if (n === undefined) break; // dangling escape — wait for the next fragment
+      if (n === 'u') {
+        if (i + 6 > buf.length) break; // incomplete \uXXXX
+        out += String.fromCharCode(parseInt(buf.slice(i + 2, i + 6), 16));
+        i += 6;
+      } else {
+        out += esc[n] !== undefined ? esc[n] : n;
+        i += 2;
+      }
+      continue;
+    }
+    if (c === '"') break; // closing quote — end of the text value
+    out += c;
+    i += 1;
+  }
+  return out;
+}
+
 // Child env allowlist. Deliberately absent: SUPERVISOR_TOKEN,
 // SUPERVISOR_API_TOKEN, HA_TOKEN, HASS_TOKEN, HASS_SERVER, HA_URL,
 // HA_NOTIFY_SERVICE and any user-configured environment_vars.
@@ -220,7 +255,7 @@ function shutdown() {
  * Never rejects.
  */
 function runClaude({
-  bin, prompt, mode, intents, mcpConfigPath, model, cwd, signal, history, imagePath,
+  bin, prompt, mode, intents, mcpConfigPath, model, cwd, signal, history, imagePath, onText,
 }) {
   return new Promise((resolve) => {
     const read = mode !== 'write';
@@ -250,6 +285,11 @@ function runClaude({
     ];
     if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
     if (model) args.push('--model', model);
+    // Only ask the CLI for fine-grained partial-message events when a streaming
+    // consumer is attached. Without this flag stream-json emits whole messages
+    // only, so onText would never fire. Requires -p + stream-json + --verbose
+    // (all set above); introduced in CLI 1.0.109, present in our bundled 2.x.
+    if (onText) args.push('--include-partial-messages');
 
     let child;
     try {
@@ -314,7 +354,25 @@ function runClaude({
     child.stdin.on('error', () => { /* child died before reading stdin */ });
     child.stdin.end(stdinContent, 'utf8');
 
+    // Streaming (onText): accumulate the StructuredOutput tool-input JSON from
+    // input_json_delta fragments and surface the growing `text` field. Degrades
+    // gracefully — if these events never arrive, onText simply never fires and the
+    // caller still gets the authoritative final text from the `result` event.
+    let toolInputBuf = '';
+    let lastText = '';
     const handleEvent = (ev) => {
+      if (onText) {
+        // Claude Code wraps raw Anthropic stream events under type 'stream_event'.
+        const e = ev.type === 'stream_event' && ev.event ? ev.event : ev;
+        if (e && e.type === 'content_block_start') {
+          toolInputBuf = '';
+        } else if (e && e.type === 'content_block_delta' && e.delta
+            && e.delta.type === 'input_json_delta' && typeof e.delta.partial_json === 'string') {
+          toolInputBuf += e.delta.partial_json;
+          const t = growingText(toolInputBuf);
+          if (t.length > lastText.length) { lastText = t; onText(t); }
+        }
+      }
       if (ev.type === 'system' && ev.subtype === 'init') {
         const servers = Array.isArray(ev.mcp_servers) ? ev.mcp_servers : [];
         mcpFailed = Boolean(mcpConfigPath)

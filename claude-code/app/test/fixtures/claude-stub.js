@@ -78,11 +78,28 @@ function finish(prompt, wantsProposal) {
       };
   }
 
+  // LONGSTREAM pads the answer well past the server's stream safety window so a
+  // test can observe genuine mid-generation deltas (not just a single tail flush).
+  const filler = prompt.includes('LONGSTREAM') ? ` ${'lorem ipsum dolor '.repeat(18)}` : '';
   const structured = wantsProposal
-    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}`, proposal }
+    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}${filler}`, proposal }
     // write mode: reflect what actually reached the child via stdin, so the test
     // can prove the untrusted client prompt is absent and the intents present.
     : { text: `stdin_has_inject=${prompt.includes('INJECTED')} stdin_has_intent=${prompt.includes('HassTurnOff')}` };
+
+  // Fine-grained streaming: when --include-partial-messages is on, emit the
+  // StructuredOutput tool input as input_json_delta fragments (wrapped under
+  // 'stream_event', exactly as the real CLI does) so the server's onText path
+  // is exercised. The final `result` below remains the authoritative payload.
+  if (args.includes('--include-partial-messages')) {
+    const wrap = (event) => emit({ type: 'stream_event', event });
+    wrap({ type: 'content_block_start', index: 1, content_block: { type: 'tool_use', name: 'StructuredOutput', input: {} } });
+    const full = JSON.stringify(structured);
+    for (let i = 0; i < full.length; i += 17) {
+      wrap({ type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: full.slice(i, i + 17) } });
+    }
+    wrap({ type: 'content_block_stop', index: 1 });
+  }
 
   emit({
     type: 'result', subtype: 'success', is_error: false,
