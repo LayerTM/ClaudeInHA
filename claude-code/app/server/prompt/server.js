@@ -12,6 +12,7 @@ const {
   validateIntents, redactDeep, sha12,
 } = require('./security');
 const { runClaude } = require('./runner');
+const { createHistoryStore } = require('./history');
 
 const MAX_PROMPT_BYTES = 8 * 1024;
 const MAX_CONCURRENT_RUNS = 2;
@@ -108,6 +109,9 @@ function createPromptApp({
   app.disable('x-powered-by');
 
   let activeRuns = 0;
+  // Bounded per-conversation chat history for the read path (memory). Keyed by
+  // the client-supplied conversation_id, so it is hard-capped inside history.js.
+  const conversations = createHistoryStore();
 
   // Cached `claude --version` (refreshed lazily, at most every 5 minutes).
   // A single in-flight refresh is shared by all concurrent callers, so a burst
@@ -324,6 +328,8 @@ function createPromptApp({
           model,
           cwd: workDir,
           signal: abort.signal,
+          history: (mode === 'read' && conversationId)
+            ? conversations.recent(conversationId) : undefined,
         });
       } finally {
         activeRuns -= 1;
@@ -350,6 +356,11 @@ function createPromptApp({
       // leaves the add-on — text, the whole proposal (summary + each intent's
       // free-form data), and the tool names.
       const text = redact(outcome.text);
+      // Remember this read turn (redacted text only) so the next turn in the same
+      // conversation has context. Write turns are intent-driven and not recorded.
+      if (mode === 'read' && conversationId) {
+        conversations.append(conversationId, prompt, text);
+      }
       const proposal = outcome.proposal ? redactDeep(outcome.proposal, redact) : null;
       const toolsUsed = outcome.toolsUsed.map((t) => redact(t));
 

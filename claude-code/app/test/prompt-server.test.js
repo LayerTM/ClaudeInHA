@@ -32,6 +32,7 @@ fs.writeFileSync(process.env.CLAUDE_PROMPT_OPTIONS, JSON.stringify({
 
 const security = require('../server/prompt/security');
 const { createRateLimiter } = require('../server/prompt/server');
+const { createHistoryStore } = require('../server/prompt/history');
 const promptServer = require('../server/prompt');
 
 // ---------------------------------------------------------------------------
@@ -105,6 +106,22 @@ test('createRateLimiter: per-caller bucket throttles after its burst', () => {
     if (limit('same-caller') > 0) { throttledAt = i; break; }
   }
   assert.ok(throttledAt > 0 && throttledAt <= 6, `throttled within per-caller burst (was ${throttledAt})`);
+});
+
+test('history store: records turns, caps length, expires by TTL, isolates ids', () => {
+  let t = 1000;
+  const h = createHistoryStore(() => t);
+  assert.equal(h.recent('c1').length, 0); // unknown id
+  h.append('c1', 'q1', 'a1');
+  assert.deepEqual(h.recent('c1').map((x) => x.content), ['q1', 'a1']);
+  assert.equal(h.recent('c2').length, 0); // isolated per conversation
+  for (let i = 0; i < 20; i += 1) h.append('c1', `q${i}`, `a${i}`);
+  assert.ok(h.recent('c1').length <= 12, 'turns capped at MAX_TURNS'); // MAX_TURNS
+  assert.equal(h.recent('c1').at(-1).content, 'a19'); // keeps the newest
+  h.append('', 'x', 'y'); // empty id is a no-op
+  assert.equal(h.recent('').length, 0);
+  t += 31 * 60 * 1000; // advance past the 30-min TTL
+  assert.equal(h.recent('c1').length, 0, 'expired conversation dropped');
 });
 
 // ---------------------------------------------------------------------------
@@ -213,6 +230,19 @@ test('read: proposal carries the per-intent risk hint (default sensitive; low ho
   assert.equal(s.json.proposal.intents[0].risk, 'sensitive');
   const l = await post({ prompt: 'PROPOSE LOWRISK please' }, { 'X-Claude-Caller': 'user.risk2' });
   assert.equal(l.json.proposal.intents[0].risk, 'low');
+});
+
+test('read: conversation memory feeds prior turns into the next prompt', async () => {
+  const c = { 'X-Claude-Caller': 'user.mem' };
+  const first = await post({ prompt: 'what is the kitchen temperature', conversation_id: 'mem-1' }, c);
+  assert.equal(first.status, 200);
+  assert.ok(first.json.text.includes('history=false'), 'first turn has no prior context');
+  const second = await post({ prompt: 'and the bedroom', conversation_id: 'mem-1' }, c);
+  assert.equal(second.status, 200);
+  assert.ok(second.json.text.includes('history=true'), 'second turn carries prior context');
+  // a different conversation id starts fresh
+  const other = await post({ prompt: 'hello there', conversation_id: 'mem-2' }, c);
+  assert.ok(other.json.text.includes('history=false'), 'separate conversation is isolated');
 });
 
 test('write confirmation: auto/confirmed and the critical-domain backstop', async () => {

@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.9.0] — 2026-07-04
+
+### Added
+- **The chat remembers the conversation now.** Follow-ups work — ask "what's the
+  kitchen temperature?" then "and the bedroom?" and Claude keeps the thread. The
+  add-on holds a short, bounded per-conversation history (keyed by the conversation
+  id Home Assistant already sends) and feeds the recent turns back as context, so
+  no change is needed on the integration side. Each Claude run itself stays
+  stateless and read-only; the history is capped per conversation, expires when
+  idle (~30 min), evicts oldest conversations under load, and stores only the
+  already-redacted reply text.
+
 ## [1.8.0] — 2026-07-04
 
 ### Added

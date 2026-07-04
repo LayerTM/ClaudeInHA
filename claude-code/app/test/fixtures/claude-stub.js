@@ -79,7 +79,7 @@ function finish(prompt, wantsProposal) {
   }
 
   const structured = wantsProposal
-    ? { text: `answer includes ${apiKey} and ${jwt}`, proposal }
+    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}`, proposal }
     // write mode: reflect what actually reached the child via stdin, so the test
     // can prove the untrusted client prompt is absent and the intents present.
     : { text: `stdin_has_inject=${prompt.includes('INJECTED')} stdin_has_intent=${prompt.includes('HassTurnOff')}` };
