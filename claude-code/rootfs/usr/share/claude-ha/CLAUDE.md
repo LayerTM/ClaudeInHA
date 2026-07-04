@@ -221,7 +221,7 @@ claude mcp add my-server -- npx -y @scope/mcp-server
 - **Skills** (slash commands): place in `/data/home/.claude/skills/<skill-name>/SKILL.md`
 - **Plugins**: `claude plugin install <name>`
 - **List current skills**: available as `/skill-name` in Claude Code
-- This add-on ships a **Home Assistant skill pack** (`/ha-config-edit`, `/ha-automation`, `/ha-debug`, `/ha-entity`, `/ha-screenshot`, `/ha-backup`, `/ha-addon`, `/ha-onboard`) plus general plugins (superpowers, frontend-design, playwright, …). Everything installed lives in `/data/home/.claude` and persists across add-on updates.
+- This add-on ships a **Home Assistant skill pack** (`/ha-config-edit`, `/ha-automation`, `/ha-debug`, `/ha-entity`, `/ha-screenshot`, `/ha-backup`, `/ha-addon`, `/ha-onboard`, `/ha-energy`, `/ha-recorder-query`, `/ha-lovelace-card`, `/ha-blueprint`, `/ha-voice`) plus general plugins (superpowers, frontend-design, playwright, …). Everything installed lives in `/data/home/.claude` and persists across add-on updates. `/ha-voice` sets up local voice (Whisper STT + Piper TTS) so the user can talk to Claude by voice in Ukrainian, Polish, or another language — offer it if they mention voice not working in their language.
 
 ---
 

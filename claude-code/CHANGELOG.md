@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.13.0] — 2026-07-04
+
+### Added
+- **`/ha-voice` skill — talk to Claude by voice in your language.** A new console
+  skill that sets up a fully local voice pipeline — Whisper (speech-to-text,
+  multilingual incl. Ukrainian & Polish) + Piper (text-to-speech) + Claude as the
+  conversation agent — so you can speak to Claude via Assist in Ukrainian, Polish,
+  or another language Home Assistant's English default doesn't offer. Ask the
+  console "set up Ukrainian voice" and it installs/configures the Whisper & Piper
+  add-ons and walks you through the one-click pipeline. (The chat already
+  understands every language in text; this fills the speech-in / speech-out gap.)
+
 ## [1.12.0] — 2026-07-04
 
 ### Added
