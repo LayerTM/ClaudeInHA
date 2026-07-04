@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.9.1] — 2026-07-04
+
+### Fixed
+- **Safe actions were always held for confirmation instead of running immediately.**
+  The per-action `risk` tag was optional in the structured-output schema, so the model
+  routinely omitted it and it safely defaulted to "sensitive" — which meant even
+  trivially safe requests (turn on a fan, a light, a TV) were always confirmed, and the
+  companion integration's auto-execute path effectively never fired. Made `risk`
+  required so every proposed action is classified, and rebalanced the rubric so ordinary
+  reversible household actions (lights, media, fans, air purifiers, scenes, comfort) are
+  tagged "low" confidently. Anything genuinely consequential stays "sensitive", and the
+  integration's metadata-aware classifier remains the real gate for critical entities.
+
 ## [1.9.0] — 2026-07-04
 
 ### Added
