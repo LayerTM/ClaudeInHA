@@ -175,7 +175,10 @@ async function start() {
     claudeBin: CLAUDE_BIN,
     usageBin: USAGE_BIN,
     mcpConfigPath,
-    model: optionString(options, 'model'),
+    // A dedicated chat model (e.g. a faster/cheaper one) is preferred; fall back
+    // to the console's model override, then the Claude default.
+    model: optionString(options, 'chat_model') || optionString(options, 'model'),
+    dailyBudgetUsd: Number(options.chat_daily_budget_usd) || 0,
     workDir,
     addonVersion: process.env.ADDON_VERSION || 'unknown',
     redact,

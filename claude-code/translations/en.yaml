@@ -146,3 +146,19 @@ configuration:
       Assistant user and paste that user's token here. Leave empty to fall back
       to 'HA Token'. Either way, Claude can only see entities exposed to
       Assist.
+  chat_model:
+    name: Chat Model (claude_ha integration)
+    description: >-
+      Optional model override used ONLY for the companion chat (the claude_ha
+      integration), separate from the console. Use a faster, cheaper model here
+      (e.g. claude-sonnet-4-6) for snappy, low-cost Assist replies while the
+      console keeps its own model. Leave empty to use the Model Override above,
+      or the Claude default.
+  chat_daily_budget_usd:
+    name: Chat Daily Budget (USD)
+    description: >-
+      Optional safety cap on how much the companion chat may spend per day (US
+      dollars, from Claude's reported cost). When the day's chat spend reaches
+      this, the chat politely pauses until the next day — a guard against a
+      runaway automation or heavy use draining your plan. The console is not
+      affected. Set 0 to disable (no cap). Resets daily and on add-on restart.

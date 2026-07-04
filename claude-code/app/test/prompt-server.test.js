@@ -31,7 +31,7 @@ fs.writeFileSync(process.env.CLAUDE_PROMPT_OPTIONS, JSON.stringify({
 }));
 
 const security = require('../server/prompt/security');
-const { createRateLimiter } = require('../server/prompt/server');
+const { createRateLimiter, createBudget } = require('../server/prompt/server');
 const { createHistoryStore } = require('../server/prompt/history');
 const promptServer = require('../server/prompt');
 
@@ -106,6 +106,20 @@ test('createRateLimiter: per-caller bucket throttles after its burst', () => {
     if (limit('same-caller') > 0) { throttledAt = i; break; }
   }
   assert.ok(throttledAt > 0 && throttledAt <= 6, `throttled within per-caller burst (was ${throttledAt})`);
+});
+
+test('createBudget: daily USD cap enforced, resets by day, 0 = unlimited', () => {
+  let clock = new Date('2026-07-04T10:00:00Z');
+  const b = createBudget(0.5, () => clock);
+  assert.equal(b.exceeded(), false);
+  b.add(0.30); assert.equal(b.exceeded(), false);
+  b.add(0.30); assert.equal(b.exceeded(), true); // 0.60 >= 0.50
+  clock = new Date('2026-07-05T00:00:01Z'); // next UTC day
+  assert.equal(b.exceeded(), false, 'resets on day rollover');
+  assert.equal(b.spent(), 0);
+  const unlimited = createBudget(0);
+  unlimited.add(999);
+  assert.equal(unlimited.exceeded(), false, 'zero limit is unlimited');
 });
 
 test('history store: records turns, caps length, expires by TTL, isolates ids', () => {

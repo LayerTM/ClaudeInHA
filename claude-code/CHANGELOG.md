@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.11.0] — 2026-07-04
+
+### Added
+- **Separate chat model.** A new *Chat Model* (`chat_model`) option lets the
+  companion chat use its own model — e.g. a faster, cheaper one for snappy Assist
+  replies — while the console keeps its own. Falls back to the Model Override,
+  then the Claude default.
+- **Daily chat budget.** A new *Chat Daily Budget (USD)* (`chat_daily_budget_usd`)
+  option caps how much the companion chat may spend per day; when reached, the
+  chat politely pauses until the next day — a guard against a runaway automation
+  or heavy use draining your plan. The console is unaffected. Set 0 to disable.
+
 ## [1.10.0] — 2026-07-04
 
 ### Changed

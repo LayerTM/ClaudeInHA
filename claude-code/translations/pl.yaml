@@ -146,3 +146,20 @@ configuration:
       Assistant bez uprawnień administratora i wklej jego token tutaj. Zostaw
       puste, aby użyć 'Token HA'. Tak czy inaczej Claude widzi tylko encje
       udostępnione dla Assist.
+  chat_model:
+    name: Model czatu (integracja claude_ha)
+    description: >-
+      Opcjonalne nadpisanie modelu TYLKO dla czatu towarzyszącego (integracja
+      claude_ha), niezależnie od konsoli. Użyj szybszego, tańszego modelu (np.
+      claude-sonnet-4-6) dla błyskawicznych, tanich odpowiedzi w Assist, podczas
+      gdy konsola zachowuje własny model. Zostaw puste, aby użyć „Nadpisania
+      modelu" powyżej lub domyślnego modelu Claude.
+  chat_daily_budget_usd:
+    name: Dzienny budżet czatu (USD)
+    description: >-
+      Opcjonalny limit bezpieczeństwa, ile czat towarzyszący może wydać dziennie
+      (w dolarach USA, wg kosztu raportowanego przez Claude). Gdy dzienne wydatki
+      czatu osiągną tę kwotę, czat grzecznie wstrzymuje się do następnego dnia —
+      zabezpieczenie przed zapętloną automatyzacją lub intensywnym użyciem
+      wyczerpującym Twój plan. Nie dotyczy konsoli. Ustaw 0, aby wyłączyć (bez
+      limitu). Resetuje się codziennie i przy restarcie dodatku.

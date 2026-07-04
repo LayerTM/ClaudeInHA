@@ -102,8 +102,37 @@ function createRateLimiter() {
   };
 }
 
+// Optional per-day spend cap (USD) for the chat, so a runaway automation or heavy
+// use cannot silently drain the plan. limitUsd <= 0 disables it. The window is a
+// calendar day (UTC); spend resets on day change and on add-on restart (a restart
+// is a privileged action, so this is a guardrail, not a hard billing gate).
+function createBudget(limitUsd, now = () => new Date()) {
+  let day = '';
+  let spent = 0;
+  const roll = () => {
+    const d = now().toISOString().slice(0, 10);
+    if (d !== day) { day = d; spent = 0; }
+  };
+  return {
+    enabled: limitUsd > 0,
+    limit: limitUsd,
+    exceeded() {
+      if (!(limitUsd > 0)) return false;
+      roll();
+      return spent >= limitUsd;
+    },
+    add(cost) {
+      if (!(limitUsd > 0) || !(cost > 0)) return;
+      roll();
+      spent += cost;
+    },
+    spent() { roll(); return spent; },
+  };
+}
+
 function createPromptApp({
-  token, claudeBin, usageBin, mcpConfigPath, model, workDir, addonVersion, redact, audit,
+  token, claudeBin, usageBin, mcpConfigPath, model, dailyBudgetUsd = 0,
+  workDir, addonVersion, redact, audit,
 }) {
   const app = express();
   app.disable('x-powered-by');
@@ -112,6 +141,8 @@ function createPromptApp({
   // Bounded per-conversation chat history for the read path (memory). Keyed by
   // the client-supplied conversation_id, so it is hard-capped inside history.js.
   const conversations = createHistoryStore();
+  // Optional daily spend cap for the chat.
+  const budget = createBudget(dailyBudgetUsd);
 
   // Cached `claude --version` (refreshed lazily, at most every 5 minutes).
   // A single in-flight refresh is shared by all concurrent callers, so a burst
@@ -303,6 +334,20 @@ function createPromptApp({
         return res.status(429).json({ error: 'rate limited' });
       }
 
+      // 4b. Daily chat spend cap. Enforced on the read path — it is the
+      // expensive, conversation-driving call, and blocking it also halts any
+      // follow-on auto-write. Returns a plain 200 so the chat surfaces a friendly
+      // message (no error) and no Claude process is spawned (so no further spend).
+      if (mode === 'read' && budget.exceeded()) {
+        audit(`prompt[deny] reason=budget caller=${caller} spent=$${budget.spent().toFixed(4)}/${budget.limit}`);
+        return res.status(200).json({
+          text: `I've reached today's Claude usage budget ($${budget.limit}), so I'm paused until tomorrow. You can raise "Chat daily budget (USD)" in the add-on options.`,
+          proposal: null,
+          tools_used: [],
+          truncated: false,
+        });
+      }
+
       // 5. Concurrency semaphore.
       if (activeRuns >= MAX_CONCURRENT_RUNS) {
         audit(`prompt[deny] reason=503-busy caller=${caller}`);
@@ -351,6 +396,10 @@ function createPromptApp({
         console.error(`[prompt] run failed (${caller}): ${redact(outcome.message || 'unknown')}`);
         return res.status(500).json({ error: 'internal error' });
       }
+
+      // Count every run's cost toward the daily cap (read and write), even though
+      // the cap is only enforced on the read path.
+      budget.add(outcome.costUsd);
 
       // 7. Output: redact secrets from EVERY model-shaped field before it
       // leaves the add-on — text, the whole proposal (summary + each intent's
@@ -403,4 +452,6 @@ function createPromptApp({
   return app;
 }
 
-module.exports = { createPromptApp, createRateLimiter, Bucket };
+module.exports = {
+  createPromptApp, createRateLimiter, createBudget, Bucket,
+};
