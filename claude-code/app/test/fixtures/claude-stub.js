@@ -67,7 +67,14 @@ function finish(prompt, wantsProposal) {
         // summary AND intents[].data carry secret-shaped values so the test can
         // prove deep redaction reaches every field of the proposal.
         summary: `Turn off the heater; token ${jwt}`,
-        intents: [{ intent: 'HassTurnOff', targets: ['switch.heater'], data: { note: `leak ${apiKey} and ${jwt}` } }],
+        intents: [{
+          intent: 'HassTurnOff',
+          targets: ['switch.heater'],
+          data: { note: `leak ${apiKey} and ${jwt}` },
+          // The model's risk hint. Omitted unless the prompt asks for LOWRISK, so
+          // the default-to-"sensitive" path is exercised by the plain PROPOSE.
+          ...(prompt.includes('LOWRISK') ? { risk: 'low' } : {}),
+        }],
       };
   }
 

@@ -93,9 +93,18 @@ function validateProposal(raw) {
   if (typeof raw.summary !== 'string' || !Array.isArray(raw.intents)) return null;
   const summary = sanitizePrompt(raw.summary).slice(0, 500).trim();
   if (!summary) return null;
-  const checked = validateIntents(raw.intents.slice(0, 5));
+  const rawIntents = raw.intents.slice(0, 5);
+  const checked = validateIntents(rawIntents);
   if (!checked.ok) return null;
-  return { summary, intents: checked.intents };
+  // Attach the model's per-intent risk hint. It is UNTRUSTED (model output), so
+  // it is only a UX hint for the integration; the integration's metadata-aware
+  // classifier and the write-path domain backstop are the real gate. Default to
+  // the safe value ("sensitive") whenever it is missing or malformed.
+  const intents = checked.intents.map((it, i) => ({
+    ...it,
+    risk: rawIntents[i] && rawIntents[i].risk === 'low' ? 'low' : 'sensitive',
+  }));
+  return { summary, intents };
 }
 
 function escapeRegExp(s) {

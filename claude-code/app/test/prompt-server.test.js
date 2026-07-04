@@ -78,6 +78,11 @@ test('validateProposal: drops non-conforming model output', () => {
   const p = security.validateProposal({ summary: 'do it', intents: [{ intent: 'HassTurnOff', targets: ['switch.x'] }] });
   assert.equal(p.summary, 'do it');
   assert.equal(p.intents[0].intent, 'HassTurnOff');
+  // risk hint: safe default when the model omits or malforms it; honoured only
+  // for the exact value "low".
+  assert.equal(p.intents[0].risk, 'sensitive');
+  assert.equal(security.validateProposal({ summary: 'x', intents: [{ intent: 'HassTurnOff', targets: ['light.x'], risk: 'low' }] }).intents[0].risk, 'low');
+  assert.equal(security.validateProposal({ summary: 'x', intents: [{ intent: 'HassTurnOff', targets: ['light.x'], risk: 'bogus' }] }).intents[0].risk, 'sensitive');
 });
 
 test('redactDeep: redacts secrets in nested strings', () => {
@@ -201,6 +206,30 @@ test('read: happy path with deep redaction, proposal, tools_used', async () => {
 test('read: invalid model intent drops the proposal to null', async () => {
   const { json } = await post({ prompt: 'PROPOSE BADINTENT' }, { 'X-Claude-Caller': 'user.beta' });
   assert.equal(json.proposal, null);
+});
+
+test('read: proposal carries the per-intent risk hint (default sensitive; low honoured)', async () => {
+  const s = await post({ prompt: 'PROPOSE please' }, { 'X-Claude-Caller': 'user.risk1' });
+  assert.equal(s.json.proposal.intents[0].risk, 'sensitive');
+  const l = await post({ prompt: 'PROPOSE LOWRISK please' }, { 'X-Claude-Caller': 'user.risk2' });
+  assert.equal(l.json.proposal.intents[0].risk, 'low');
+});
+
+test('write confirmation: auto/confirmed and the critical-domain backstop', async () => {
+  const c = { 'X-Claude-Caller': 'user.conf' };
+  // invalid value / wrong mode — rejected up front
+  assert.equal((await post({ mode: 'write', confirmation: 'maybe', intents: [{ intent: 'HassTurnOff', targets: ['switch.heater'] }] }, c)).status, 400);
+  assert.equal((await post({ prompt: 'hi', confirmation: 'auto' }, c)).status, 400);
+  // auto on a non-critical domain executes
+  assert.equal((await post({ mode: 'write', confirmation: 'auto', intents: [{ intent: 'HassTurnOff', targets: ['media_player.tcl_tv'] }] }, c)).status, 200);
+  // auto on a critical domain is refused, naming the offending domain
+  const blocked = await post({ mode: 'write', confirmation: 'auto', intents: [{ intent: 'HassTurnOn', targets: ['lock.front_door'] }] }, c);
+  assert.equal(blocked.status, 403);
+  assert.deepEqual(blocked.json.domains, ['lock']);
+  // the SAME critical action goes through once explicitly confirmed
+  assert.equal((await post({ mode: 'write', confirmation: 'confirmed', intents: [{ intent: 'HassTurnOn', targets: ['lock.front_door'] }] }, c)).status, 200);
+  // absent confirmation === confirmed (backward compatible): critical still runs
+  assert.equal((await post({ mode: 'write', intents: [{ intent: 'HassOpen', targets: ['cover.garage'] }] }, c)).status, 200);
 });
 
 test('read: falls back to plain text without structured output', async () => {

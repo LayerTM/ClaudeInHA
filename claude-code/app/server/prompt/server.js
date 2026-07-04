@@ -15,7 +15,20 @@ const { runClaude } = require('./runner');
 
 const MAX_PROMPT_BYTES = 8 * 1024;
 const MAX_CONCURRENT_RUNS = 2;
-const BODY_KEYS = new Set(['prompt', 'mode', 'conversation_id', 'intents']);
+const BODY_KEYS = new Set(['prompt', 'mode', 'conversation_id', 'intents', 'confirmation']);
+
+// Boundary backstop for unconfirmed (`confirmation:"auto"`) writes. The
+// integration does the fine-grained, metadata-aware risk classification (it has
+// the HA registry: device_class, entity_category, integration). This coarse
+// domain denylist is defense-in-depth AT THE SECURITY BOUNDARY: these domains
+// are inherently high-consequence, so an auto write is NEVER allowed to touch
+// them no matter what the caller or the model claimed. Confirmed writes are
+// unaffected. From an entity id only the domain (prefix before ".") is knowable
+// here, so this is intentionally coarse — the real gate is upstream.
+const CRITICAL_NEVER_AUTO = new Set([
+  'lock', 'cover', 'alarm_control_panel', 'valve', 'water_heater',
+  'lawn_mower', 'update', 'siren', 'garage_door',
+]);
 
 // Token bucket. Refill is computed lazily on take().
 class Bucket {
@@ -236,6 +249,17 @@ function createPromptApp({
       }
       const conversationId = sanitizeId(body.conversation_id, 128);
 
+      // Unconfirmed (auto) vs user-confirmed writes. Default "confirmed"
+      // preserves the pre-1.8 contract: absent === the integration already got
+      // the user's explicit yes. "auto" is the opt-in low-risk fast path.
+      const confirmation = body.confirmation === undefined ? 'confirmed' : body.confirmation;
+      if (confirmation !== 'auto' && confirmation !== 'confirmed') {
+        return res.status(400).json({ error: 'confirmation must be "auto" or "confirmed"' });
+      }
+      if (mode !== 'write' && body.confirmation !== undefined) {
+        return res.status(400).json({ error: 'confirmation is only valid with mode "write"' });
+      }
+
       let intents = null;
       if (mode === 'write') {
         const checked = validateIntents(body.intents);
@@ -247,6 +271,19 @@ function createPromptApp({
         if (!mcpConfigPath) {
           audit(`prompt[deny] reason=503-no-mcp caller=${caller}`);
           return res.status(503).json({ error: 'write mode unavailable: no HA MCP configured (set an HA token in the add-on options)' });
+        }
+        // Boundary backstop: an auto (unconfirmed) write may never touch an
+        // inherently critical domain, regardless of caller/model intent.
+        if (confirmation === 'auto') {
+          const blocked = [...new Set(
+            intents.flatMap((i) => i.targets)
+              .map((t) => t.split('.')[0])
+              .filter((d) => CRITICAL_NEVER_AUTO.has(d)),
+          )];
+          if (blocked.length) {
+            audit(`prompt[deny] reason=auto-critical caller=${caller} domains=${blocked.join('+')}`);
+            return res.status(403).json({ error: 'sensitive action requires explicit confirmation', domains: blocked });
+          }
         }
       } else if (body.intents !== undefined) {
         return res.status(400).json({ error: 'intents is only valid with mode "write"' });

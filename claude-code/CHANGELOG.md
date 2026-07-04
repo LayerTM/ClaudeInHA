@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.8.0] — 2026-07-04
+
+### Added
+- **Groundwork for hybrid chat actions — act on the safe stuff, confirm the
+  important stuff, judged by real risk (not a blunt per-domain rule).** The prompt
+  API now assesses each proposed action so the companion `claude_ha` integration
+  can run low-risk actions immediately and only ask before consequential ones.
+  - Read proposals tag each intent with `risk` (`low`/`sensitive`) from a rubric:
+    locks, doors, gates, garage, covers, alarms, or any network/router/access-point
+    or device-configuration control (reboot, firmware/OS update, PoE), or anything
+    hard to undo → `sensitive`; lights, TV/media, fans, air purifier, scenes → `low`;
+    when unsure → `sensitive`. It's a hint (untrusted model output), never the sole gate.
+  - Write requests accept `confirmation: "auto" | "confirmed"` (default `confirmed`,
+    fully backward-compatible). An `auto` (unconfirmed) write is refused with `403`
+    if it targets an inherently critical domain (locks, covers, alarms, valves, water
+    heaters, mowers, firmware updates, sirens, garage doors) — a boundary backstop
+    underneath the integration's own metadata-aware classifier.
+  - Nothing changes for the current chat until the integration adopts these fields;
+    the fine-grained "which specific switch is the router" classification lives in
+    the integration (it has the entity/device registry).
+
 ## [1.7.4] — 2026-07-03
 
 ### Fixed
