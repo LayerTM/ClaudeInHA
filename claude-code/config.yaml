@@ -91,5 +91,3 @@ schema:
   prompt_api: bool
   api_token: "password"
   prompt_ha_token: "password"
-
-stage: stable
