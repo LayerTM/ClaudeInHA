@@ -51,6 +51,27 @@ function run(prompt) {
     });
     process.exit(0);
   }
+  if (prompt.includes('STREAMERR')) {
+    // Streams substantial assistant TEXT (well past the server's 96-char safety
+    // window) so the client RECEIVES a real answer, THEN the run errors — mirrors
+    // a vision/read turn that finished streaming before a late transient
+    // model-error. The user got the answer, so the health signal must treat this
+    // as delivered (recovered), not a user-visible degrade. Only emits the
+    // partial-message deltas when the server asked for them (streaming path).
+    if (args.includes('--include-partial-messages')) {
+      const wrap = (event) => emit({ type: 'stream_event', event });
+      wrap({ type: 'content_block_start', index: 1, content_block: { type: 'tool_use', name: 'StructuredOutput', input: {} } });
+      const full = JSON.stringify({ text: `delivered answer ${'lorem ipsum dolor '.repeat(18)}` });
+      for (let i = 0; i < full.length; i += 17) {
+        wrap({ type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: full.slice(i, i + 17) } });
+      }
+      wrap({ type: 'content_block_stop', index: 1 });
+    }
+    emit({
+      type: 'result', subtype: 'error', is_error: true, result: 'late blip after full stream', num_turns: 4,
+    });
+    process.exit(0);
+  }
   if (prompt.includes('MAXTURNS')) {
     // Deterministic exhaustion — carries a real cost and must NOT be retried.
     emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'mcp__ha__GetLiveContext', input: {} }] } });

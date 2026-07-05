@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.22.0] — 2026-07-05
+
+### Changed
+- **`chat_health` now reflects the user's experience, not the raw envelope.** A
+  streaming read that already delivered its answer to the user and then hit a
+  late/transient model-error is counted as **recovered** (an absorbed transient),
+  not **degraded** — so the companion integration's soft "chat degraded" indicator
+  no longer trips on a turn where the user actually got a full answer. A turn where
+  the user gets only the apology (no content streamed) still counts as degraded. The
+  audit line is unchanged (it still records the raw `200-degraded reason=`).
+
 ## [1.21.0] — 2026-07-05
 
 ### Added

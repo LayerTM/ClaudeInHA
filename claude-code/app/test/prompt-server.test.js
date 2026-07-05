@@ -538,6 +538,27 @@ test('stream: a persistent error ends with a friendly done line, not a broken st
   assert.match(last.text, /try again|couldn't finish/i);
 });
 
+test('chat_health: a streaming read delivered before a late error counts as recovered, not degraded', async () => {
+  // A vision/read turn can stream the FULL answer, then the final envelope flags a
+  // transient model-error. The user still received a real answer, so it is an
+  // ABSORBED transient (recovered), NOT user-visible degradation — it must not
+  // inflate chat_health.degraded (which drives the integration's soft "degraded"
+  // indicator). Only a turn where the user gets the apology (no streamed content)
+  // is truly degraded. Delta-based so prior reads in the suite don't matter.
+  const health = async () => (await (await fetch(`${BASE}/api/status`, { headers: { Authorization: `Bearer ${TOKEN}` } })).json()).chat_health;
+  const before = await health();
+  const { status, events } = await postNDJSON(
+    { prompt: 'STREAMERR', stream: true },
+    { 'X-Claude-Caller': 'user.delivered' },
+  );
+  assert.equal(status, 200);
+  assert.ok(events.some((e) => e.type === 'delta' && e.text && e.text.length > 0), 'the client received streamed answer content before the error');
+  assert.equal(events.at(-1).type, 'done', 'ends with a friendly done, not a fatal error line');
+  const after = await health();
+  assert.equal(after.degraded, before.degraded, 'a delivered-then-late-error turn does NOT increment degraded');
+  assert.equal(after.recovered, before.recovered + 1, 'it counts as recovered (absorbed transient)');
+});
+
 test('stream: a timed-out read also ends with a friendly done line, never a fatal error line', async () => {
   // A streaming read must NEVER terminate with {type:"error"} — the integration's
   // NDJSON reader treats that as fatal and the chat hard-fails, defeating the

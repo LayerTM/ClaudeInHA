@@ -662,7 +662,14 @@ function createPromptApp({
         // retried where it could). Write: fail honestly with 500 — a state-changing
         // action must NEVER report a fabricated success.
         if (mode === 'read') {
-          chatHealth.record(false, reason, false);
+          // Health signal reflects the USER's experience, not the raw envelope.
+          // A streaming read that already shipped deltas hit a late/transient error
+          // but the user still received a real answer — an ABSORBED transient
+          // (recovered), NOT user-visible degradation. Only a turn where the user
+          // gets the apology (no content streamed) counts as degraded. (The audit
+          // below still records the raw `200-degraded reason=` either way.)
+          const delivered = streaming && emittedLen > 0;
+          chatHealth.record(delivered, delivered ? null : reason, delivered);
           audit(`prompt[read] ${base} status=200-degraded ${diag} dur=${seconds}s`);
           if (streaming) { streamDone(degradedBody); return undefined; }
           return res.status(200).json(degradedBody);
