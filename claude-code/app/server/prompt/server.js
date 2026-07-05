@@ -90,12 +90,21 @@ const delay = (ms) => new Promise((r) => { setTimeout(r, ms); });
 // In-memory ring (last `cap`); a failure carries only a reason TOKEN from the
 // runner's reason enum — NEVER prompt content. `recovered` counts reads that a
 // retry rescued (a transient blip the user never saw).
-function createChatHealth(cap = 50) {
-  const runs = [];
+function createChatHealth(cap = 50, persist = null) {
+  // Optionally seed from a durable store so the rolling window survives an
+  // add-on restart (I9). A malformed/absent store reads as an empty history.
+  const saved = persist && persist.load ? persist.load() : null;
+  const runs = (Array.isArray(saved) ? saved : []).slice(-cap).map((r) => ({
+    ok: Boolean(r && r.ok),
+    reason: (r && r.ok) ? null : ((r && r.reason) || 'unknown'),
+    recovered: Boolean(r && r.recovered),
+  }));
+  const flush = () => { if (persist && persist.save) persist.save(runs); };
   return {
     record(ok, reason, recovered) {
       runs.push({ ok: Boolean(ok), reason: ok ? null : (reason || 'unknown'), recovered: Boolean(recovered) });
       if (runs.length > cap) runs.shift();
+      flush();
     },
     snapshot() {
       const degraded = runs.filter((r) => !r.ok);
@@ -187,12 +196,20 @@ function createRateLimiter() {
 // use cannot silently drain the plan. limitUsd <= 0 disables it. The window is a
 // calendar day (UTC); spend resets on day change and on add-on restart (a restart
 // is a privileged action, so this is a guardrail, not a hard billing gate).
-function createBudget(limitUsd, now = () => new Date()) {
+function createBudget(limitUsd, now = () => new Date(), persist = null) {
   let day = '';
   let spent = 0;
+  // Optionally restore today's spend from a durable store so a restart mid-day
+  // doesn't silently reset the cap (I9). A stale day is handled by roll() below.
+  const saved = persist && persist.load ? persist.load() : null;
+  if (saved && typeof saved.spent === 'number') {
+    day = typeof saved.day === 'string' ? saved.day : '';
+    spent = saved.spent;
+  }
+  const flush = () => { if (persist && persist.save) persist.save({ day, spent }); };
   const roll = () => {
     const d = now().toISOString().slice(0, 10);
-    if (d !== day) { day = d; spent = 0; }
+    if (d !== day) { day = d; spent = 0; flush(); }
   };
   return {
     enabled: limitUsd > 0,
@@ -206,8 +223,20 @@ function createBudget(limitUsd, now = () => new Date()) {
       if (!(limitUsd > 0) || !(cost > 0)) return;
       roll();
       spent += cost;
+      flush();
     },
     spent() { roll(); return spent; },
+  };
+}
+
+// Durable, best-effort JSON state under the add-on's /data (survives restarts,
+// I9). load() is synchronous (called once, at startup); save() is
+// fire-and-forget — a write failure must never break the chat, and a corrupt or
+// absent file simply reads back as null.
+function fileStore(file) {
+  return {
+    load() { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } },
+    save(obj) { fsp.writeFile(file, JSON.stringify(obj), { mode: 0o600 }).catch(() => {}); },
   };
 }
 
@@ -264,7 +293,7 @@ async function fetchSnapshot(entity, haToken, workDir, fetchImpl = fetch) {
 
 function createPromptApp({
   token, claudeBin, usageBin, mcpConfigPath, model, dailyBudgetUsd = 0, haToken,
-  workDir, addonVersion, redact, audit,
+  workDir, addonVersion, redact, audit, stateDir = null,
 }) {
   const app = express();
   app.disable('x-powered-by');
@@ -273,15 +302,23 @@ function createPromptApp({
   // Bounded per-conversation chat history for the read path (memory). Keyed by
   // the client-supplied conversation_id, so it is hard-capped inside history.js.
   const conversations = createHistoryStore();
-  // Optional daily spend cap for the chat.
-  const budget = createBudget(dailyBudgetUsd);
+  // Optional daily spend cap for the chat. Durable across restarts when a
+  // stateDir is provided (I9), so a mid-day restart doesn't reset the cap.
+  const budget = createBudget(
+    dailyBudgetUsd, undefined,
+    stateDir ? fileStore(path.join(stateDir, 'budget.json')) : null,
+  );
   // Whether the most recent read actually CONNECTED to the HA MCP server (vs.
   // merely being configured). null until the first read. Surfaced in /api/status
   // so the integration's health check can tell "configured but not connecting"
   // (e.g. the Model Context Protocol Server integration is missing) apart from
   // "connected". Distinct from ha_mcp, which only says a config file exists.
   let lastMcpConnected = null;
-  const chatHealth = createChatHealth();
+  // Rolling chat-health window; durable across restarts when a stateDir is
+  // provided (I9) so the health sensor's history isn't wiped on every update.
+  const chatHealth = createChatHealth(
+    50, stateDir ? fileStore(path.join(stateDir, 'chat-health.json')) : null,
+  );
 
   // Cached `claude --version` (refreshed lazily, at most every 5 minutes).
   // A single in-flight refresh is shared by all concurrent callers, so a burst
@@ -749,5 +786,5 @@ function createPromptApp({
 }
 
 module.exports = {
-  createPromptApp, createRateLimiter, createBudget, createChatHealth, fetchSnapshot, resizeSnapshot, Bucket,
+  createPromptApp, createRateLimiter, createBudget, createChatHealth, fileStore, fetchSnapshot, resizeSnapshot, Bucket,
 };

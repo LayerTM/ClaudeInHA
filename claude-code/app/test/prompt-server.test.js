@@ -43,7 +43,7 @@ fs.writeFileSync(process.env.CLAUDE_PROMPT_OPTIONS, JSON.stringify({
 
 const security = require('../server/prompt/security');
 const {
-  createRateLimiter, createBudget, fetchSnapshot, resizeSnapshot, createChatHealth,
+  createRateLimiter, createBudget, fetchSnapshot, resizeSnapshot, createChatHealth, fileStore,
 } = require('../server/prompt/server');
 const { createHistoryStore } = require('../server/prompt/history');
 const promptServer = require('../server/prompt');
@@ -133,6 +133,57 @@ test('createBudget: daily USD cap enforced, resets by day, 0 = unlimited', () =>
   const unlimited = createBudget(0);
   unlimited.add(999);
   assert.equal(unlimited.exceeded(), false, 'zero limit is unlimited');
+});
+
+test('createBudget: persists spend across a restart via a persist store (I9)', () => {
+  let clock = new Date('2026-07-04T10:00:00Z');
+  const store = { s: null, load() { return this.s; }, save(v) { this.s = v; } };
+  const b1 = createBudget(0.5, () => clock, store);
+  b1.add(0.30);
+  assert.equal(b1.spent(), 0.30);
+  // a "restart": a fresh budget on the SAME store restores today's spend.
+  const b2 = createBudget(0.5, () => clock, store);
+  assert.equal(b2.spent(), 0.30, 'spend restored from the persist store');
+  b2.add(0.30);
+  assert.equal(b2.exceeded(), true, '0.60 >= 0.50 after restore + add');
+  // a day rollover still resets — and the reset is persisted, not resurrected.
+  clock = new Date('2026-07-05T00:00:01Z');
+  assert.equal(b2.spent(), 0, 'resets on day rollover');
+  assert.equal(createBudget(0.5, () => clock, store).spent(), 0, 'the reset persisted');
+});
+
+test('createChatHealth: persists recent runs across a restart via a persist store (I9)', () => {
+  const store = { s: null, load() { return this.s; }, save(v) { this.s = v; } };
+  const h1 = createChatHealth(3, store);
+  h1.record(true, null, false);
+  h1.record(false, 'model-error', false);
+  // a "restart": a fresh instance on the SAME store restores history.
+  const h2 = createChatHealth(3, store);
+  const s = h2.snapshot();
+  assert.equal(s.recent, 2, 'runs restored from the persist store');
+  assert.equal(s.degraded, 1);
+  assert.equal(s.last_reason, 'model-error');
+  h2.record(true, null, true);
+  assert.equal(createChatHealth(3, store).snapshot().recovered, 1, 'the new record persisted');
+});
+
+test('fileStore: a budget restores today’s spend from a real 0600 /data json (I9)', () => {
+  const file = path.join(TMP, 'i9-budget.json');
+  const clock = new Date('2026-07-04T10:00:00Z');
+  // The running add-on leaves state like this on disk; write it synchronously so
+  // the test is deterministic (fileStore.save's fire-and-forget write is covered
+  // by the createBudget-persist unit test above). What matters for I9 is RESTORE.
+  fs.writeFileSync(file, JSON.stringify({ day: '2026-07-04', spent: 0.42 }), { mode: 0o600 });
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600, 'state file is 0600');
+  // a "restart": a fresh budget restores that spend via fileStore.load().
+  const b = createBudget(1.0, () => clock, fileStore(file));
+  assert.equal(b.spent(), 0.42, 'restored from the on-disk file');
+  assert.equal(b.exceeded(), false);
+  b.add(0.60);
+  assert.equal(b.exceeded(), true, '1.02 >= 1.0 after restore + add');
+  // a corrupt/empty file must read back as an empty state, never throw.
+  fs.writeFileSync(file, '', { mode: 0o600 });
+  assert.equal(createBudget(1.0, () => clock, fileStore(file)).spent(), 0, 'corrupt file → fresh state');
 });
 
 test('createChatHealth: rolling recent/degraded/recovered/last_reason, capped, token-only', () => {

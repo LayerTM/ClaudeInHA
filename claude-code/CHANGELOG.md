@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.23.0] — 2026-07-05
+
+### Added
+- **Chat budget spend and the `chat_health` window now survive add-on restarts (I9).**
+  Both were in-memory and reset on every restart/update, so the budget sensor and the
+  chat-health history started from scratch each time. They now persist to small
+  best-effort `0600` JSON files under `/data` (`claude-prompt/budget.json`,
+  `claude-prompt/chat-health.json`): loaded once at startup, written on change. The
+  daily budget still resets on the UTC day rollover; a corrupt or absent file simply
+  reads back as an empty state and never breaks the chat.
+
 ## [1.22.0] — 2026-07-05
 
 ### Changed
