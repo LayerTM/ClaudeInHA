@@ -85,6 +85,30 @@ const budgetNotice = (lang, limit) => ({
 }[lang]);
 const delay = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
+// Rolling summary of recent chat READ runs, surfaced on /api/status so the
+// integration can show a soft health signal ("chat degraded N of the last M").
+// In-memory ring (last `cap`); a failure carries only a reason TOKEN from the
+// runner's reason enum — NEVER prompt content. `recovered` counts reads that a
+// retry rescued (a transient blip the user never saw).
+function createChatHealth(cap = 50) {
+  const runs = [];
+  return {
+    record(ok, reason, recovered) {
+      runs.push({ ok: Boolean(ok), reason: ok ? null : (reason || 'unknown'), recovered: Boolean(recovered) });
+      if (runs.length > cap) runs.shift();
+    },
+    snapshot() {
+      const degraded = runs.filter((r) => !r.ok);
+      return {
+        recent: runs.length,
+        degraded: degraded.length,
+        recovered: runs.filter((r) => r.recovered).length,
+        last_reason: degraded.length ? degraded[degraded.length - 1].reason : null,
+      };
+    },
+  };
+}
+
 // Token bucket. Refill is computed lazily on take().
 class Bucket {
   constructor(capacity, refillPerSec) {
@@ -257,6 +281,7 @@ function createPromptApp({
   // (e.g. the Model Context Protocol Server integration is missing) apart from
   // "connected". Distinct from ha_mcp, which only says a config file exists.
   let lastMcpConnected = null;
+  const chatHealth = createChatHealth();
 
   // Cached `claude --version` (refreshed lazily, at most every 5 minutes).
   // A single in-flight refresh is shared by all concurrent callers, so a burst
@@ -347,6 +372,7 @@ function createPromptApp({
       model: model || '',
       ha_mcp: Boolean(mcpConfigPath),
       ha_mcp_connected: mcpConfigPath ? lastMcpConnected : false,
+      chat_health: chatHealth.snapshot(),
     });
   });
 
@@ -614,6 +640,7 @@ function createPromptApp({
       };
       if (outcome.status === 'timeout') {
         audit(`prompt[${mode}] ${base} status=504 dur=${seconds}s`);
+        if (mode === 'read') chatHealth.record(false, 'timeout', false);
         if (streaming) { streamDone(degradedBody); return undefined; }
         return res.status(504).json({ error: 'timeout' });
       }
@@ -629,6 +656,7 @@ function createPromptApp({
         // retried where it could). Write: fail honestly with 500 — a state-changing
         // action must NEVER report a fabricated success.
         if (mode === 'read') {
+          chatHealth.record(false, reason, false);
           audit(`prompt[read] ${base} status=200-degraded ${diag} dur=${seconds}s`);
           if (streaming) { streamDone(degradedBody); return undefined; }
           return res.status(200).json(degradedBody);
@@ -641,6 +669,8 @@ function createPromptApp({
       // (Cost was already billed for every attempt above, via budget.add(spent).)
       // Remember whether the read path reached the HA MCP server (for /api/status).
       if (mode === 'read') lastMcpConnected = !outcome.mcpFailed;
+      // Health signal: a successful read (recovered=true if a retry rescued it).
+      if (mode === 'read') chatHealth.record(true, null, attempts > 1);
 
       // 7. Output: redact secrets from EVERY model-shaped field before it
       // leaves the add-on — text, the whole proposal (summary + each intent's
@@ -706,5 +736,5 @@ function createPromptApp({
 }
 
 module.exports = {
-  createPromptApp, createRateLimiter, createBudget, fetchSnapshot, resizeSnapshot, Bucket,
+  createPromptApp, createRateLimiter, createBudget, createChatHealth, fetchSnapshot, resizeSnapshot, Bucket,
 };

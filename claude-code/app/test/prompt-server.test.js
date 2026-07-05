@@ -43,7 +43,7 @@ fs.writeFileSync(process.env.CLAUDE_PROMPT_OPTIONS, JSON.stringify({
 
 const security = require('../server/prompt/security');
 const {
-  createRateLimiter, createBudget, fetchSnapshot, resizeSnapshot,
+  createRateLimiter, createBudget, fetchSnapshot, resizeSnapshot, createChatHealth,
 } = require('../server/prompt/server');
 const { createHistoryStore } = require('../server/prompt/history');
 const promptServer = require('../server/prompt');
@@ -133,6 +133,25 @@ test('createBudget: daily USD cap enforced, resets by day, 0 = unlimited', () =>
   const unlimited = createBudget(0);
   unlimited.add(999);
   assert.equal(unlimited.exceeded(), false, 'zero limit is unlimited');
+});
+
+test('createChatHealth: rolling recent/degraded/recovered/last_reason, capped, token-only', () => {
+  const h = createChatHealth(3);
+  assert.deepEqual(h.snapshot(), {
+    recent: 0, degraded: 0, recovered: 0, last_reason: null,
+  });
+  h.record(true, null, false);
+  h.record(false, 'model-error', false);
+  h.record(true, null, true); // a retry that recovered
+  let s = h.snapshot();
+  assert.equal(s.recent, 3);
+  assert.equal(s.degraded, 1);
+  assert.equal(s.recovered, 1);
+  assert.equal(s.last_reason, 'model-error');
+  h.record(false, 'timeout', false); // exceeds cap(3) → oldest dropped
+  s = h.snapshot();
+  assert.equal(s.recent, 3, 'ring capped');
+  assert.equal(s.last_reason, 'timeout', 'newest failure reason wins');
 });
 
 test('fetchSnapshot: validates entity/token/status and writes a 0600 temp file', async () => {
@@ -233,6 +252,18 @@ test('status: ha_mcp_connected reflects the last read run', async () => {
   const res = await fetch(`${BASE}/api/status`, { headers: { Authorization: `Bearer ${TOKEN}` } });
   const body = await res.json();
   assert.equal(body.ha_mcp_connected, true); // the stub reports the `ha` MCP server connected
+});
+
+test('status: chat_health summarizes recent read outcomes (reason is a token only)', async () => {
+  const c = { 'X-Claude-Caller': 'user.health' };
+  await post({ prompt: 'hello there' }, c); // a healthy read
+  await post({ prompt: 'ISERROR' }, c); // degrades → model-error
+  const res = await fetch(`${BASE}/api/status`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+  const body = await res.json();
+  assert.ok(body.chat_health, 'chat_health present on /api/status');
+  assert.ok(body.chat_health.recent >= 2, `recent counts reads, got ${body.chat_health.recent}`);
+  assert.ok(body.chat_health.degraded >= 1, `degraded counts failures, got ${body.chat_health.degraded}`);
+  assert.equal(body.chat_health.last_reason, 'model-error', 'last failure reason token');
 });
 
 test('usage: authed report from ha-usage --json', async () => {

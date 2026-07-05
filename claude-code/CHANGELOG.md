@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.20.0] — 2026-07-05
+
+### Added
+- **`/api/status` now reports `chat_health`.** A rolling summary of recent chat
+  reads — `{ recent, degraded, recovered, last_reason }` — so the companion
+  integration can surface a soft health signal ("chat degraded N of the last M;
+  last reason …") as a sensor attribute. `last_reason` is a **token only** (from
+  the internal reason enum, e.g. `model-error` / `timeout` / `no-result`), never
+  prompt content; `recovered` counts reads a retry silently rescued. In-memory,
+  additive, capped ring — no new storage, no contract break.
+
 ## [1.19.0] — 2026-07-05
 
 ### Added
