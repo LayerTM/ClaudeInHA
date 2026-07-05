@@ -43,3 +43,6 @@ dist/
 
 # internal notes for the claude-ha integration bridge — not shipped
 .integration-bridge/
+
+# Maestri multi-agent workspace (role dirs) — service dir, never shipped
+.maestri/
