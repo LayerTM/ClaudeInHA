@@ -14,7 +14,7 @@ const {
   ipAllowed, tokenMatches, sanitizePrompt, sanitizeId,
   validateIntents, redactDeep, sha12,
 } = require('./security');
-const { runClaude } = require('./runner');
+const { runClaude, TIMEOUT_MS } = require('./runner');
 const { createHistoryStore } = require('./history');
 
 const MAX_PROMPT_BYTES = 8 * 1024;
@@ -45,6 +45,29 @@ const CRITICAL_NEVER_AUTO = new Set([
   'lock', 'cover', 'alarm_control_panel', 'valve', 'water_heater',
   'lawn_mower', 'update', 'siren', 'garage_door',
 ]);
+
+// D1 resilience: a chat read that dies to a transient API/generation failure is
+// the single worst UX (the whole answer just vanishes). These reasons are
+// transient — the identical prompt commonly succeeds on a second run — so a read
+// is retried once before we give up, and even then it DEGRADES to a friendly 200
+// message instead of a bare 500 so the conversation never simply dies. Writes are
+// never retried or degraded: a state-changing action must fail honestly.
+const RETRYABLE_REASONS = new Set(['no-result', 'model-error']);
+// Total attempts per read (1 = no retry). Bounded to keep worst-case latency sane.
+const MAX_ATTEMPTS = Math.min(3, Math.max(1, Number(process.env.CLAUDE_PROMPT_MAX_ATTEMPTS) || 2));
+// Backoff between attempts; small, since each attempt already carries its own
+// wall-clock cost. Tunable (and driven low by the test suite).
+const RETRY_BACKOFF_MS = Math.min(5000, Math.max(0, Number(process.env.CLAUDE_PROMPT_RETRY_BACKOFF_MS) || 300));
+// A retry only fires if at least this much of the one-request budget remains — so
+// the TOTAL wall-clock across attempts stays within a single TIMEOUT_MS (the retry
+// gets the REMAINING budget, not a fresh one) and a nearly-spent read degrades now
+// instead of running a pointless second time. Tunable (low in tests).
+const MIN_RETRY_BUDGET_MS = Math.min(TIMEOUT_MS, Math.max(1000, Number(process.env.CLAUDE_PROMPT_MIN_RETRY_BUDGET_MS) || 15000));
+// Server-authored fallback shown when a read cannot be completed. English to
+// match the other server-authored notice (the daily-budget message); the model
+// otherwise answers in the user's language.
+const DEGRADE_TEXT = "Sorry — I couldn't finish that response. Please try again.";
+const delay = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
 // Token bucket. Refill is computed lazily on take().
 class Bucket {
@@ -491,27 +514,56 @@ function createPromptApp({
       }
 
       let outcome;
+      let attempts = 0;
+      let spent = 0; // real API cost of EVERY attempt (billed even on a failed/degraded read)
       try {
-        // 6. Run Claude (stateless, scrubbed, deny-by-default).
-        outcome = await runClaude({
-          bin: claudeBin,
-          prompt,
-          mode,
-          intents: intents || [],
-          mcpConfigPath,
-          model,
-          cwd: workDir,
-          signal: abort.signal,
-          history: (mode === 'read' && conversationId)
-            ? conversations.recent(conversationId) : undefined,
-          imagePath,
-          onText,
-        });
+        // 6. Run Claude (stateless, scrubbed, deny-by-default). A read whose run
+        //    fails to a TRANSIENT reason is retried (the identical prompt commonly
+        //    succeeds), EXCEPT a camera-vision read (its snapshot is single-use) or
+        //    a stream that already shipped deltas (they cannot be un-sent). One
+        //    logical request holds the one concurrency slot across its attempts.
+        for (;;) {
+          attempts += 1;
+          // eslint-disable-next-line no-await-in-loop
+          outcome = await runClaude({
+            bin: claudeBin,
+            prompt,
+            mode,
+            intents: intents || [],
+            mcpConfigPath,
+            model,
+            cwd: workDir,
+            signal: abort.signal,
+            history: (mode === 'read' && conversationId)
+              ? conversations.recent(conversationId) : undefined,
+            imagePath,
+            onText,
+            // First attempt gets the full ceiling; a retry gets only what's LEFT of
+            // the one-request budget, so TOTAL wall-clock across attempts never
+            // exceeds TIMEOUT_MS (the client can pair its timeout to that one bound).
+            timeoutMs: attempts === 1 ? undefined : Math.max(0, TIMEOUT_MS - (Date.now() - started)),
+          });
+          spent += Number(outcome.costUsd) || 0;
+          const retryable = outcome.status === 'error'
+            && mode === 'read'
+            && !imagePath
+            && !(streaming && emittedLen > 0)
+            && RETRYABLE_REASONS.has(outcome.reason)
+            && attempts < MAX_ATTEMPTS
+            && !res.writableEnded // client still connected
+            && (TIMEOUT_MS - (Date.now() - started)) > MIN_RETRY_BUDGET_MS; // budget left to be worth it
+          if (!retryable) break;
+          // eslint-disable-next-line no-await-in-loop
+          await delay(RETRY_BACKOFF_MS);
+        }
       } finally {
         activeRuns -= 1;
         // Always delete the snapshot — it lived only for this one call.
         if (imagePath) fsp.rm(imagePath, { force: true }).catch(() => {});
       }
+      // Bill EVERY attempt's real cost against the daily cap — including a failed or
+      // degraded read (the tokens were spent regardless of the final outcome).
+      budget.add(spent);
 
       const seconds = ((Date.now() - started) / 1000).toFixed(1);
       // Audit the confirmed intents/targets for write, the prompt hash for read.
@@ -521,27 +573,50 @@ function createPromptApp({
       const base = `caller=${caller}${conversationId ? ` conv=${conversationId}` : ''}`
         + `${imageEntity ? ` img=${imageEntity}${imagePath ? '' : '(fetch-failed)'}` : ''} ${detail}`;
 
-      // Under streaming the NDJSON headers are already sent, so a failure goes
-      // out as a terminal `error` line and closes, rather than an HTTP status.
+      // A streaming READ must NEVER terminate with `{type:"error"}` — the
+      // integration's NDJSON reader treats that as fatal and the chat hard-fails,
+      // which would defeat graceful degradation on the primary path. So every
+      // streaming-read failure (a transient error surviving retry, OR a timeout)
+      // ends with a friendly `done` carrying the degrade body. The NDJSON headers
+      // are already sent, so there is no HTTP status to set. (Writes never stream.)
+      const streamDone = (body) => {
+        try { res.write(`${JSON.stringify({ type: 'done', ...body })}\n`); } catch { /* client gone */ }
+        try { res.end(); } catch { /* client gone */ }
+      };
       const failStream = (err) => {
         try { res.write(`${JSON.stringify({ type: 'error', error: err })}\n`); } catch { /* gone */ }
         try { res.end(); } catch { /* gone */ }
       };
+      const degradedBody = {
+        text: DEGRADE_TEXT, proposal: null, tools_used: [], truncated: false, degraded: true,
+      };
       if (outcome.status === 'timeout') {
         audit(`prompt[${mode}] ${base} status=504 dur=${seconds}s`);
-        if (streaming) return failStream('timeout');
+        if (streaming) { streamDone(degradedBody); return undefined; }
         return res.status(504).json({ error: 'timeout' });
       }
       if (outcome.status !== 'ok') {
-        audit(`prompt[${mode}] ${base} status=500 dur=${seconds}s`);
-        console.error(`[prompt] run failed (${caller}): ${redact(outcome.message || 'unknown')}`);
+        // Observability: carry the reason + whatever turns/tools the failed run did
+        // show into the audit — all of this was dropped before, leaving 500s blind.
+        const reason = outcome.reason || 'unknown';
+        const diag = `reason=${reason} attempts=${attempts} turns=${outcome.numTurns ?? '?'}`
+          + ` tools=${(outcome.toolsUsed || []).map((t) => sanitizeId(t, 64)).join('|') || '-'}`
+          + ` cost=$${spent.toFixed(4)}`;
+        console.error(`[prompt] run failed (${caller}): ${reason} — ${redact(outcome.message || 'unknown')}`);
+        // Read: never let the chat die — degrade to a friendly 200 (the run already
+        // retried where it could). Write: fail honestly with 500 — a state-changing
+        // action must NEVER report a fabricated success.
+        if (mode === 'read') {
+          audit(`prompt[read] ${base} status=200-degraded ${diag} dur=${seconds}s`);
+          if (streaming) { streamDone(degradedBody); return undefined; }
+          return res.status(200).json(degradedBody);
+        }
+        audit(`prompt[write] ${base} status=500 ${diag} dur=${seconds}s`);
         if (streaming) return failStream('internal error');
         return res.status(500).json({ error: 'internal error' });
       }
 
-      // Count every run's cost toward the daily cap (read and write), even though
-      // the cap is only enforced on the read path.
-      budget.add(outcome.costUsd);
+      // (Cost was already billed for every attempt above, via budget.add(spent).)
       // Remember whether the read path reached the HA MCP server (for /api/status).
       if (mode === 'read') lastMcpConnected = !outcome.mcpFailed;
 

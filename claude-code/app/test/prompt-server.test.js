@@ -24,6 +24,13 @@ process.env.CLAUDE_PROMPT_DEV = '1'; // skip Supervisor discovery
 // the global rate limiter ample burst so throttling never masks other assertions.
 // The rate limiter's real behavior is covered by the createRateLimiter unit test.
 process.env.CLAUDE_PROMPT_RATE_BURST = '500';
+// Keep retry-on-transient-error fast in tests (real default is a few hundred ms).
+process.env.CLAUDE_PROMPT_RETRY_BACKOFF_MS = '10';
+// Low wall-clock ceiling so a hung (SLEEP) run times out fast (clamped to the
+// runner's 10s floor), still well above the SLOW stub's 1.2s so concurrency runs
+// complete. A low min-retry-budget so a retry still fires under that low ceiling.
+process.env.CLAUDE_PROMPT_TIMEOUT_MS = '2000';
+process.env.CLAUDE_PROMPT_MIN_RETRY_BUDGET_MS = '1000';
 process.env.CLAUDE_PROMPT_DATA = TMP;
 process.env.CLAUDE_PROMPT_OPTIONS = path.join(TMP, 'options.json');
 process.env.CLAUDE_PROMPT_BIN = path.join(__dirname, 'fixtures', 'claude-stub.js');
@@ -386,9 +393,80 @@ test('read: falls back to plain text without structured output', async () => {
   assert.equal(json.proposal, null);
 });
 
-test('errors: crash and model-error both surface as 500', async () => {
-  assert.equal((await post({ prompt: 'CRASH' }, { 'X-Claude-Caller': 'user.delta' })).status, 500);
-  assert.equal((await post({ prompt: 'ISERROR' }, { 'X-Claude-Caller': 'user.epsilon' })).status, 500);
+test('read: a transient run error is retried and recovers to a real 200 answer', async () => {
+  // The stub errors on the first spawn for this token, then succeeds — proving the
+  // server retried and surfaced the real answer, never the degrade message.
+  const { status, json } = await post({ prompt: 'FLAKY:recover1 what is up' }, { 'X-Claude-Caller': 'user.retry' });
+  assert.equal(status, 200);
+  assert.ok(typeof json.text === 'string' && json.text.length > 0);
+  assert.ok(!/try again|couldn't finish/i.test(json.text), `got the real answer, not the degrade text: ${json.text}`);
+});
+
+test('read: a persistent run error degrades to a friendly 200, never a bare 500', async () => {
+  // model-error (ISERROR) and a crash (no result event) both degrade on the read
+  // path so the chat surfaces a message instead of dying.
+  const err = await post({ prompt: 'ISERROR' }, { 'X-Claude-Caller': 'user.epsilon' });
+  assert.equal(err.status, 200);
+  assert.match(err.json.text, /try again|couldn't finish/i);
+  assert.equal(err.json.proposal, null);
+  const crash = await post({ prompt: 'CRASH' }, { 'X-Claude-Caller': 'user.delta' });
+  assert.equal(crash.status, 200);
+  assert.match(crash.json.text, /try again|couldn't finish/i);
+});
+
+test('write: a run failure surfaces honestly as 500 (never a fake success)', async () => {
+  // The untrusted prompt never reaches a write child, so the failure marker rides
+  // in an intent's data. A write must NOT be degraded to a cheerful 200.
+  const r = await post({
+    mode: 'write',
+    intents: [{ intent: 'HassTurnOff', targets: ['switch.heater'], data: { note: 'ISERROR' } }],
+  }, { 'X-Claude-Caller': 'user.wfail' });
+  assert.equal(r.status, 500);
+});
+
+test('audit: a failed run records the reason, turns and tools', async () => {
+  await post({ prompt: 'ISERROR' }, { 'X-Claude-Caller': 'user.auditfail' });
+  const log = fs.readFileSync(path.join(TMP, 'claude-audit.log'), 'utf8');
+  const line = log.trim().split('\n').reverse().find((l) => l.includes('user.auditfail'));
+  assert.ok(line, 'an audit line for the failed run exists');
+  assert.match(line, /reason=model-error/, `reason logged: ${line}`);
+  assert.match(line, /turns=3/, `turns logged: ${line}`);
+  assert.match(line, /tools=mcp__ha__GetLiveContext/, `tools logged: ${line}`);
+});
+
+test('read: a deterministic max-turns failure is NOT retried and its cost is billed', async () => {
+  await post({ prompt: 'MAXTURNS' }, { 'X-Claude-Caller': 'user.maxturns' });
+  const log = fs.readFileSync(path.join(TMP, 'claude-audit.log'), 'utf8');
+  const line = log.trim().split('\n').reverse().find((l) => l.includes('user.maxturns'));
+  assert.ok(line, 'an audit line for the max-turns run exists');
+  assert.match(line, /reason=max-turns/, `reason logged: ${line}`);
+  assert.match(line, /attempts=1/, `deterministic failure not retried: ${line}`);
+  // the failed run's real spend is accounted, not silently dropped
+  assert.match(line, /cost=\$0\.5000/, `cost billed: ${line}`);
+});
+
+test('stream: a persistent error ends with a friendly done line, not a broken stream', async () => {
+  const { status, events } = await postNDJSON(
+    { prompt: 'ISERROR', stream: true },
+    { 'X-Claude-Caller': 'user.streamdeg' },
+  );
+  assert.equal(status, 200);
+  const last = events.at(-1);
+  assert.equal(last.type, 'done', `stream ends with a done line, got ${last.type}`);
+  assert.match(last.text, /try again|couldn't finish/i);
+});
+
+test('stream: a timed-out read also ends with a friendly done line, never a fatal error line', async () => {
+  // A streaming read must NEVER terminate with {type:"error"} — the integration's
+  // NDJSON reader treats that as fatal and the chat hard-fails, defeating the
+  // whole point of graceful degradation on the primary (streaming) path.
+  const { status, events } = await postNDJSON(
+    { prompt: 'SLEEP forever', stream: true },
+    { 'X-Claude-Caller': 'user.streamto' },
+  );
+  assert.equal(status, 200);
+  assert.ok(!events.some((e) => e.type === 'error'), 'no fatal error line on a streaming read');
+  assert.equal(events.at(-1).type, 'done', `ends with done, got ${events.at(-1).type}`);
 });
 
 test('concurrency: a third run while two are busy gets 503', async () => {

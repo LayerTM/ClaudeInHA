@@ -251,13 +251,23 @@ function shutdown() {
  * Run one claude call. Resolves to:
  *   { status: 'ok', text, proposal, toolsUsed, numTurns, costUsd,
  *     truncated, mcpFailed }
- *   { status: 'timeout' } | { status: 'error', message }
+ *   { status: 'timeout' }
+ *   { status: 'error', reason, message, numTurns?, toolsUsed?, costUsd? }
+ *     reason ∈ spawn-failed | aborted | stream-cap | no-result | model-error | max-turns
+ *     (no-result and model-error are transient — safe to retry a read;
+ *      max-turns is deterministic — retrying only burns tokens, so it is not)
  * Never rejects.
  */
 function runClaude({
-  bin, prompt, mode, intents, mcpConfigPath, model, cwd, signal, history, imagePath, onText,
+  bin, prompt, mode, intents, mcpConfigPath, model, cwd, signal, history, imagePath, onText, timeoutMs,
 }) {
   return new Promise((resolve) => {
+    // A caller may cap THIS run below the module ceiling (e.g. a retry gets only
+    // the request's REMAINING budget, so total wall-clock across attempts stays
+    // within one TIMEOUT_MS). Floored at 1s so a nearly-spent budget still runs.
+    const runTimeout = timeoutMs != null
+      ? Math.min(TIMEOUT_MS, Math.max(1000, timeoutMs))
+      : TIMEOUT_MS;
     const read = mode !== 'write';
     const vision = read && Boolean(imagePath);
     let allowedTools;
@@ -300,7 +310,7 @@ function runClaude({
         detached: true, // own process group -> group SIGKILL reaps MCP children
       });
     } catch (err) {
-      resolve({ status: 'error', message: `spawn failed: ${err.message}` });
+      resolve({ status: 'error', reason: 'spawn-failed', message: `spawn failed: ${err.message}` });
       return;
     }
     children.add(child);
@@ -321,7 +331,7 @@ function runClaude({
     const timer = setTimeout(() => {
       timedOut = true;
       killGroup(child);
-    }, TIMEOUT_MS);
+    }, runTimeout);
 
     const onAbort = () => {
       aborted = true;
@@ -342,7 +352,7 @@ function runClaude({
     };
 
     child.on('error', (err) => {
-      finish({ status: 'error', message: `spawn failed: ${err.message}` });
+      finish({ status: 'error', reason: 'spawn-failed', message: `spawn failed: ${err.message}` });
     });
 
     // Read mode: the untrusted prompt goes in as data. Write mode: the prompt
@@ -424,26 +434,43 @@ function runClaude({
         return;
       }
       if (aborted) {
-        finish({ status: 'error', message: 'client disconnected' });
+        finish({ status: 'error', reason: 'aborted', message: 'client disconnected' });
         return;
       }
       if (streamBytes > STREAM_CAP_BYTES) {
-        finish({ status: 'error', message: 'output stream exceeded cap' });
+        finish({ status: 'error', reason: 'stream-cap', message: 'output stream exceeded cap' });
         return;
       }
+      // No result event (crash / killed mid-flight) and a model-reported error are
+      // both TRANSIENT generation-layer failures — the same prompt often succeeds
+      // on a retry. Carry the reason plus whatever turns/tools we did observe so
+      // the caller can retry, degrade, and audit WHY (all lost before).
       if (!resultEnvelope) {
         finish({
           status: 'error',
+          reason: 'no-result',
           message: `claude exited (${code}) without a result: ${stderrBuf.slice(0, 300)}`,
+          numTurns: null,
+          toolsUsed,
+          costUsd: null,
         });
         return;
       }
       if (resultEnvelope.is_error) {
+        // Distinguish a DETERMINISTIC exhaustion (error_max_turns — the identical
+        // prompt just fails again, so a retry only burns tokens) from a transient
+        // generation error (retryable). costUsd is surfaced even on error so the
+        // caller can bill every attempt against the daily cap.
+        const deterministic = resultEnvelope.subtype === 'error_max_turns';
         finish({
           status: 'error',
+          reason: deterministic ? 'max-turns' : 'model-error',
           message: typeof resultEnvelope.result === 'string'
             ? resultEnvelope.result.slice(0, 300)
             : 'claude reported an error',
+          numTurns: resultEnvelope.num_turns ?? null,
+          toolsUsed,
+          costUsd: resultEnvelope.total_cost_usd ?? null,
         });
         return;
       }

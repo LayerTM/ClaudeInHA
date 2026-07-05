@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.18.0] — 2026-07-05
+
+### Fixed
+- **A chat read no longer dies with a bare 500 on a transient generation
+  error.** Some reads intermittently failed during the model's final answer
+  generation (an upstream/API blip — not a tool loop, not a timeout) and
+  surfaced as an empty, broken chat. Such a read is now **retried once** (the
+  identical prompt commonly succeeds), and if it still fails it **degrades to a
+  friendly message** (`200`, with `"degraded": true`) instead of a `500`, so the
+  conversation never simply vanishes. A camera-vision read (its snapshot is
+  single-use) and a stream that already shipped text are not retried. A
+  **write** is never retried or degraded — a state-changing action still fails
+  honestly with `500`.
+- A deterministic max-turns exhaustion (`error_max_turns`) is now classified
+  apart from a transient error and is **not** retried (a retry would only burn
+  tokens without any chance of recovering).
+- A **streaming** read now always terminates with a `done` line (a friendly one
+  when it failed or timed out), never a `{"type":"error"}` line — so a failed
+  streaming read degrades gracefully on the primary path instead of breaking the
+  consumer.
+- The **total** wall-clock of a read (including its one retry) stays within a
+  single timeout budget: the retry runs on the *remaining* budget, not a fresh
+  one, and only fires when enough budget is left. So the whole request is bounded
+  by `CLAUDE_PROMPT_TIMEOUT_MS` (default 120s), which a client can pair its own
+  request timeout against (set it comfortably above that one number).
+
+### Changed
+- **Failed runs are now self-diagnosing in the audit log.** The error path
+  previously dropped the turn count, tools and reason, so a `500` audit line
+  explained nothing. It now records `reason=`, `attempts=`, `turns=`, `tools=`
+  and `cost=`. Every attempt's real API cost — including a failed or degraded
+  read — is billed against the daily budget (previously only the final
+  successful attempt was counted).
+
 ## [1.17.0] — 2026-07-04
 
 ### Changed

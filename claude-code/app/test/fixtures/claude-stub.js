@@ -5,6 +5,10 @@
 // It speaks just enough stream-json for the parser in ../../server/prompt/runner.js
 // and branches on markers in the prompt it reads from stdin.
 
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
 const args = process.argv.slice(2);
 
 if (args.includes('--version')) {
@@ -39,7 +43,20 @@ function run(prompt) {
   if (prompt.includes('SLOW')) { setTimeout(() => finish(prompt, wantsProposal), 1200); return; }
   if (prompt.includes('CRASH')) { process.exit(7); }
   if (prompt.includes('ISERROR')) {
-    emit({ type: 'result', subtype: 'error', is_error: true, result: 'model exploded' });
+    // A tool ran, then generation errored — so the error path has turns/tools to
+    // surface (exercises the enriched error-audit).
+    emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'mcp__ha__GetLiveContext', input: {} }] } });
+    emit({
+      type: 'result', subtype: 'error', is_error: true, result: 'model exploded', num_turns: 3,
+    });
+    process.exit(0);
+  }
+  if (prompt.includes('MAXTURNS')) {
+    // Deterministic exhaustion — carries a real cost and must NOT be retried.
+    emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'mcp__ha__GetLiveContext', input: {} }] } });
+    emit({
+      type: 'result', subtype: 'error_max_turns', is_error: true, result: 'error_max_turns', num_turns: 20, total_cost_usd: 0.5,
+    });
     process.exit(0);
   }
   if (prompt.includes('NOSTRUCT')) {
@@ -48,6 +65,22 @@ function run(prompt) {
       result: 'plain fallback text', num_turns: 1, total_cost_usd: 0.001,
     });
     process.exit(0);
+  }
+  // FLAKY:<token> — a transient model error on the FIRST spawn for a given token,
+  // then a normal success on the next, so the server's retry-then-recover path is
+  // exercised end to end. The marker file makes the "next spawn" stateful.
+  const flaky = prompt.match(/FLAKY:(\w+)/);
+  if (flaky) {
+    const marker = path.join(os.tmpdir(), `cc-flaky-${flaky[1]}`);
+    if (!fs.existsSync(marker)) {
+      fs.writeFileSync(marker, '1');
+      emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'mcp__ha__GetLiveContext', input: {} }] } });
+      emit({
+        type: 'result', subtype: 'error', is_error: true, result: 'transient blip', num_turns: 2,
+      });
+      process.exit(0);
+    }
+    fs.rmSync(marker, { force: true }); // recovered — fall through to a normal success
   }
   finish(prompt, wantsProposal);
 }
