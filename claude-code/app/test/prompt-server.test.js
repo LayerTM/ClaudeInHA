@@ -414,6 +414,25 @@ test('read: a persistent run error degrades to a friendly 200, never a bare 500'
   assert.match(crash.json.text, /try again|couldn't finish/i);
 });
 
+test('read: the degrade apology is localized by the request language (en fallback)', async () => {
+  const uk = await post({ prompt: 'ISERROR', language: 'uk' }, { 'X-Claude-Caller': 'user.loc.uk' });
+  assert.equal(uk.status, 200);
+  assert.match(uk.json.text, /Вибач|Спробуй/, `uk degrade text, got: ${uk.json.text}`);
+  // a full locale ("pl-PL") normalizes to its 2-letter language
+  const pl = await post({ prompt: 'ISERROR', language: 'pl-PL' }, { 'X-Claude-Caller': 'user.loc.pl' });
+  assert.match(pl.json.text, /Przepraszam|Spróbuj/, `pl degrade text, got: ${pl.json.text}`);
+  // absent language → English (backward compatible)
+  const en = await post({ prompt: 'ISERROR' }, { 'X-Claude-Caller': 'user.loc.en' });
+  assert.match(en.json.text, /try again|couldn't finish/i);
+  // unknown language → English fallback
+  const zz = await post({ prompt: 'ISERROR', language: 'zz' }, { 'X-Claude-Caller': 'user.loc.zz' });
+  assert.match(zz.json.text, /try again|couldn't finish/i);
+});
+
+test('read: language must be a string when present', async () => {
+  assert.equal((await post({ prompt: 'hi', language: 5 }, { 'X-Claude-Caller': 'user.langval' })).status, 400);
+});
+
 test('write: a run failure surfaces honestly as 500 (never a fake success)', async () => {
   // The untrusted prompt never reaches a write child, so the failure marker rides
   // in an intent's data. A write must NOT be degraded to a cheerful 200.

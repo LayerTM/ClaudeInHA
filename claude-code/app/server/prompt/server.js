@@ -20,7 +20,7 @@ const { createHistoryStore } = require('./history');
 const MAX_PROMPT_BYTES = 8 * 1024;
 const MAX_CONCURRENT_RUNS = 2;
 const BODY_KEYS = new Set([
-  'prompt', 'mode', 'conversation_id', 'intents', 'confirmation', 'image_entity', 'stream',
+  'prompt', 'mode', 'conversation_id', 'intents', 'confirmation', 'image_entity', 'stream', 'language',
 ]);
 
 // When streaming, hold back this many trailing chars of the redacted text before
@@ -63,10 +63,26 @@ const RETRY_BACKOFF_MS = Math.min(5000, Math.max(0, Number(process.env.CLAUDE_PR
 // gets the REMAINING budget, not a fresh one) and a nearly-spent read degrades now
 // instead of running a pointless second time. Tunable (low in tests).
 const MIN_RETRY_BUDGET_MS = Math.min(TIMEOUT_MS, Math.max(1000, Number(process.env.CLAUDE_PROMPT_MIN_RETRY_BUDGET_MS) || 15000));
-// Server-authored fallback shown when a read cannot be completed. English to
-// match the other server-authored notice (the daily-budget message); the model
-// otherwise answers in the user's language.
-const DEGRADE_TEXT = "Sorry — I couldn't finish that response. Please try again.";
+// The few user-facing strings the SERVER authors (the model otherwise answers in
+// the user's own language). Localized to the request `language` — the integration
+// forwards the HA conversation language, e.g. "uk" / "en" / "pl-PL". An absent or
+// unsupported language falls back to English. The English degrade wording keeps
+// "couldn't finish" / "try again" — callers and tests key off it.
+const SUPPORTED_LANGS = new Set(['en', 'uk', 'pl']);
+function langOf(raw) {
+  const code = String(raw || '').slice(0, 2).toLowerCase();
+  return SUPPORTED_LANGS.has(code) ? code : 'en';
+}
+const DEGRADE_TEXT = {
+  en: "Sorry — I couldn't finish that response. Please try again.",
+  uk: 'Вибач — не вдалося завершити відповідь. Спробуй ще раз.',
+  pl: 'Przepraszam — nie udało się dokończyć odpowiedzi. Spróbuj ponownie.',
+};
+const budgetNotice = (lang, limit) => ({
+  en: `I've reached today's Claude usage budget ($${limit}), so I'm paused until tomorrow. You can raise "Chat daily budget (USD)" in the add-on options.`,
+  uk: `Досягнуто денного бюджету Claude ($${limit}) — я на паузі до завтра. Збільшити його можна в опції додатка «Chat daily budget (USD)».`,
+  pl: `Osiągnięto dzienny budżet Claude ($${limit}) — jestem wstrzymany do jutra. Możesz go zwiększyć w opcji dodatku „Chat daily budget (USD)”.`,
+}[lang]);
 const delay = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
 // Token bucket. Refill is computed lazily on take().
@@ -382,6 +398,12 @@ function createPromptApp({
         return res.status(400).json({ error: 'conversation_id must be a string' });
       }
       const conversationId = sanitizeId(body.conversation_id, 128);
+      // Optional language hint for the server-authored notices (degrade / budget);
+      // normalized to a supported code with an English fallback.
+      if (body.language !== undefined && typeof body.language !== 'string') {
+        return res.status(400).json({ error: 'language must be a string' });
+      }
+      const language = langOf(body.language);
 
       // Camera vision: an optional camera entity to snapshot and let Claude SEE.
       // Read-only, strict entity format; the integration must only pass cameras
@@ -463,7 +485,7 @@ function createPromptApp({
       if (mode === 'read' && budget.exceeded()) {
         audit(`prompt[deny] reason=budget caller=${caller} spent=$${budget.spent().toFixed(4)}/${budget.limit}`);
         return res.status(200).json({
-          text: `I've reached today's Claude usage budget ($${budget.limit}), so I'm paused until tomorrow. You can raise "Chat daily budget (USD)" in the add-on options.`,
+          text: budgetNotice(language, budget.limit),
           proposal: null,
           tools_used: [],
           truncated: false,
@@ -588,7 +610,7 @@ function createPromptApp({
         try { res.end(); } catch { /* gone */ }
       };
       const degradedBody = {
-        text: DEGRADE_TEXT, proposal: null, tools_used: [], truncated: false, degraded: true,
+        text: DEGRADE_TEXT[language], proposal: null, tools_used: [], truncated: false, degraded: true,
       };
       if (outcome.status === 'timeout') {
         audit(`prompt[${mode}] ${base} status=504 dur=${seconds}s`);

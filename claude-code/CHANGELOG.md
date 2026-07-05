@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.19.0] — 2026-07-05
+
+### Added
+- **Server-authored notices are localized.** The two strings the add-on itself
+  writes — the graceful-degrade apology and the daily-budget notice — now follow
+  a `language` hint on `/api/prompt` (the companion integration forwards the Home
+  Assistant conversation language, e.g. `uk` / `en` / `pl`). Supported: English,
+  Ukrainian, Polish; anything else falls back to English. Additive and backward
+  compatible — an absent `language` keeps the English wording. (The model's own
+  answers were already in the user's language; this closes the gap for the few
+  messages the server authors itself.)
+
 ## [1.18.0] — 2026-07-05
 
 ### Fixed
