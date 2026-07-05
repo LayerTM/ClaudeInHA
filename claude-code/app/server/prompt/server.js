@@ -373,6 +373,11 @@ function createPromptApp({
       ha_mcp: Boolean(mcpConfigPath),
       ha_mcp_connected: mcpConfigPath ? lastMcpConnected : false,
       chat_health: chatHealth.snapshot(),
+      // The add-on's wall-clock ceiling per request (a TIME) — lets the client pair
+      // its own REQUEST_TIMEOUT dynamically. Distinct from the daily-$ budget below.
+      prompt_timeout_ms: TIMEOUT_MS,
+      // Daily chat spend cap for a budget sensor (limit 0 = unlimited).
+      budget: { limit: budget.limit, spent: Number(budget.spent().toFixed(4)) },
     });
   });
 
@@ -619,7 +624,8 @@ function createPromptApp({
         ? `intents=${intents.map((i) => `${i.intent}(${i.targets.join('+')})`).join(',')}`
         : `len=${Buffer.byteLength(prompt, 'utf8')} sha=${sha12(prompt)}`;
       const base = `caller=${caller}${conversationId ? ` conv=${conversationId}` : ''}`
-        + `${imageEntity ? ` img=${imageEntity}${imagePath ? '' : '(fetch-failed)'}` : ''} ${detail}`;
+        + `${imageEntity ? ` img=${imageEntity}${imagePath ? '' : '(fetch-failed)'}` : ''}`
+        + ` lang=${language} ${detail}`;
 
       // A streaming READ must NEVER terminate with `{type:"error"}` — the
       // integration's NDJSON reader treats that as fatal and the chat hard-fails,

@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.21.0] — 2026-07-05
+
+### Added
+- **`/api/status` now reports `prompt_timeout_ms` and `budget`.** `prompt_timeout_ms`
+  is the add-on's per-request wall-clock ceiling, so the companion integration can
+  pair its own request timeout dynamically. `budget: { limit, spent }` is the daily
+  chat-spend cap (limit `0` = unlimited) for a budget sensor. Two distinct additive
+  fields — a TIME and a dollar amount, deliberately not conflated.
+- **The audit log records the request `language`** (`lang=…` on each prompt line):
+  end-to-end confirmation of the localized-notice path (1.19.0) sitting right next to
+  the existing `img=` camera-vision marker.
+
 ## [1.20.0] — 2026-07-05
 
 ### Added

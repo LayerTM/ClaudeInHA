@@ -281,6 +281,18 @@ test('status: chat_health summarizes recent read outcomes (reason is a token onl
   assert.equal(body.chat_health.last_reason, 'model-error', 'last failure reason token');
 });
 
+test('status: exposes prompt_timeout_ms and the daily budget (I8 — for the integration sensors)', async () => {
+  const res = await fetch(`${BASE}/api/status`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+  const body = await res.json();
+  // prompt_timeout_ms = the add-on's wall-clock ceiling, so the client can pair its
+  // REQUEST_TIMEOUT dynamically (max(135, prompt_timeout_ms/1000 + 15)).
+  assert.equal(typeof body.prompt_timeout_ms, 'number');
+  assert.ok(body.prompt_timeout_ms >= 1000, `sane timeout, got ${body.prompt_timeout_ms}`);
+  // daily-$ budget for a budget sensor (distinct from the time field).
+  assert.ok(body.budget && typeof body.budget.limit === 'number' && typeof body.budget.spent === 'number',
+    `budget {limit,spent}, got ${JSON.stringify(body.budget)}`);
+});
+
 test('usage: authed report from ha-usage --json', async () => {
   const noTok = await fetch(`${BASE}/api/usage`);
   assert.equal(noTok.status, 401);
@@ -506,6 +518,13 @@ test('read: a deterministic max-turns failure is NOT retried and its cost is bil
   assert.match(line, /attempts=1/, `deterministic failure not retried: ${line}`);
   // the failed run's real spend is accounted, not silently dropped
   assert.match(line, /cost=\$0\.5000/, `cost billed: ${line}`);
+});
+
+test('audit: a read logs the request language (I10 — end-to-end I1 confirmation)', async () => {
+  await post({ prompt: 'hello there', language: 'uk' }, { 'X-Claude-Caller': 'user.langaudit' });
+  const line = await waitForAuditLine('user.langaudit');
+  assert.ok(line, 'an audit line for the language read exists');
+  assert.match(line, /lang=uk/, `audit logs the request language, got: ${line}`);
 });
 
 test('stream: a persistent error ends with a friendly done line, not a broken stream', async () => {
