@@ -229,6 +229,21 @@ async function post(body, headers = {}) {
   return { status: res.status, json };
 }
 
+// The server writes the audit line with async fire-and-forget fs.appendFile, so a
+// test reading right after the HTTP response can race the flush. Poll briefly for
+// the matching line instead of a single read.
+async function waitForAuditLine(match, tries = 40) {
+  const file = path.join(TMP, 'claude-audit.log');
+  for (let i = 0; i < tries; i += 1) {
+    const log = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+    const line = log.trim().split('\n').reverse().find((l) => l.includes(match));
+    if (line) return line;
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => { setTimeout(r, 25); });
+  }
+  return null;
+}
+
 test('auth: 401 without and with a bad token', async () => {
   const noTok = await fetch(`${BASE}/api/prompt`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"prompt":"hi"}' });
   assert.equal(noTok.status, 401);
@@ -476,8 +491,7 @@ test('write: a run failure surfaces honestly as 500 (never a fake success)', asy
 
 test('audit: a failed run records the reason, turns and tools', async () => {
   await post({ prompt: 'ISERROR' }, { 'X-Claude-Caller': 'user.auditfail' });
-  const log = fs.readFileSync(path.join(TMP, 'claude-audit.log'), 'utf8');
-  const line = log.trim().split('\n').reverse().find((l) => l.includes('user.auditfail'));
+  const line = await waitForAuditLine('user.auditfail');
   assert.ok(line, 'an audit line for the failed run exists');
   assert.match(line, /reason=model-error/, `reason logged: ${line}`);
   assert.match(line, /turns=3/, `turns logged: ${line}`);
@@ -486,8 +500,7 @@ test('audit: a failed run records the reason, turns and tools', async () => {
 
 test('read: a deterministic max-turns failure is NOT retried and its cost is billed', async () => {
   await post({ prompt: 'MAXTURNS' }, { 'X-Claude-Caller': 'user.maxturns' });
-  const log = fs.readFileSync(path.join(TMP, 'claude-audit.log'), 'utf8');
-  const line = log.trim().split('\n').reverse().find((l) => l.includes('user.maxturns'));
+  const line = await waitForAuditLine('user.maxturns');
   assert.ok(line, 'an audit line for the max-turns run exists');
   assert.match(line, /reason=max-turns/, `reason logged: ${line}`);
   assert.match(line, /attempts=1/, `deterministic failure not retried: ${line}`);
