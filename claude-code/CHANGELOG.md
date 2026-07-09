@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.24.0] — 2026-07-09
+
+### Fixed
+- **Claude now answers chat in the user's own language, reliably.** The `language`
+  hint on `/api/prompt` was only used for the two server-authored notices (degrade /
+  budget) — it never reached the model, and the read/write system prompts carry no
+  language directive, so on short or ambiguous turns the reply could drift to
+  English. The raw Home Assistant conversation language is now threaded into the
+  Claude invocation and appended to the system prompt as an explicit directive, so
+  replies follow the user's HA language for **any** language — not just the three the
+  server notices are translated into. The tag is strictly validated (a well-formed
+  BCP-47 language subtag) before use, so an untrusted client can never inject
+  instructions through it; an absent or malformed language keeps the prior behaviour.
+  No API contract change (`language` has been accepted since 1.19.0).
+
 ## [1.23.0] — 2026-07-05
 
 ### Added

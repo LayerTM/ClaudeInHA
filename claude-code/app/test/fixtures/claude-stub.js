@@ -135,8 +135,12 @@ function finish(prompt, wantsProposal) {
   // LONGSTREAM pads the answer well past the server's stream safety window so a
   // test can observe genuine mid-generation deltas (not just a single tail flush).
   const filler = prompt.includes('LONGSTREAM') ? ` ${'lorem ipsum dolor '.repeat(18)}` : '';
+  // Reflect the language subtag the server threaded into --append-system-prompt
+  // (T1), so a test can prove the model is told which language to answer in.
+  const sysIdx = args.indexOf('--append-system-prompt');
+  const sysLang = (((sysIdx !== -1 ? args[sysIdx + 1] : '').match(/language is "([^"]+)"/)) || [])[1] || '';
   const structured = wantsProposal
-    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}${filler}`, proposal }
+    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}${filler}; syslang=${sysLang}`, proposal }
     // write mode: reflect what actually reached the child via stdin, so the test
     // can prove the untrusted client prompt is absent and the intents present.
     : { text: `stdin_has_inject=${prompt.includes('INJECTED')} stdin_has_intent=${prompt.includes('HassTurnOff')}` };

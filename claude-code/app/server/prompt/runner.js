@@ -140,6 +140,24 @@ const WRITE_SYSTEM_PROMPT = [
   'the outcome, including any tool failure.',
 ].join(' ');
 
+// The user's Home Assistant conversation language (BCP-47, e.g. "uk", "pl-PL",
+// "de"). Appended to the system prompt so the model writes its answer in the
+// user's OWN language regardless of these English instructions or the (English)
+// tool results — the integration forwards the raw HA `user_input.language`.
+// STRICTLY validated as a well-formed language tag so an untrusted client can
+// never inject instructions through this field; anything else → no directive
+// (backward-compatible: absent/invalid language keeps the prior behaviour).
+// NOTE: this is the RAW tag, not the en/uk/pl-normalized notice code — the model
+// understands every language, so we do not restrict it to the three we translate.
+const LANG_TAG_RE = /^[a-z]{2,3}(-[a-z0-9]{1,8})*$/i;
+function languageDirective(language) {
+  const tag = String(language == null ? '' : language).trim();
+  if (!LANG_TAG_RE.test(tag)) return '';
+  return ` The user's Home Assistant language is "${tag}" — always write the`
+    + ' "text" field in that language, regardless of the language of these'
+    + ' instructions or of any tool results.';
+}
+
 // The stdin content for a write run. IMPORTANT: the untrusted client prompt is
 // NEVER included here — only the server-validated intents. This removes the
 // injection vector entirely: there is no untrusted channel into the privileged
@@ -260,6 +278,7 @@ function shutdown() {
  */
 function runClaude({
   bin, prompt, mode, intents, mcpConfigPath, model, cwd, signal, history, imagePath, onText, timeoutMs,
+  language,
 }) {
   return new Promise((resolve) => {
     // A caller may cap THIS run below the module ceiling (e.g. a retry gets only
@@ -287,7 +306,8 @@ function runClaude({
       '--allowed-tools', allowedTools.join(','),
       '--disallowed-tools', vision ? DISALLOWED_TOOLS_VISION : DISALLOWED_TOOLS,
       '--json-schema', read ? READ_SCHEMA : WRITE_SCHEMA,
-      '--append-system-prompt', read ? READ_SYSTEM_PROMPT : WRITE_SYSTEM_PROMPT,
+      '--append-system-prompt',
+      (read ? READ_SYSTEM_PROMPT : WRITE_SYSTEM_PROMPT) + languageDirective(language),
       // Accepted (though no longer documented) by CLI 2.1.200; bounds agentic
       // loops as a second ceiling next to the wall-clock timeout.
       '--max-turns', String(MAX_TURNS),

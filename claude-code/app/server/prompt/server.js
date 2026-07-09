@@ -628,6 +628,10 @@ function createPromptApp({
               ? conversations.recent(conversationId) : undefined,
             imagePath,
             onText,
+            // Raw HA language tag → the model answers in the user's own language
+            // (the runner validates it as a well-formed tag before use). Distinct
+            // from `language` above (the en/uk/pl-normalized code for notices).
+            language: body.language,
             // First attempt gets the full ceiling; a retry gets only what's LEFT of
             // the one-request budget, so TOTAL wall-clock across attempts never
             // exceeds TIMEOUT_MS (the client can pair its timeout to that one bound).
