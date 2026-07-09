@@ -150,9 +150,16 @@ const WRITE_SYSTEM_PROMPT = [
 // NOTE: this is the RAW tag, not the en/uk/pl-normalized notice code — the model
 // understands every language, so we do not restrict it to the three we translate.
 const LANG_TAG_RE = /^[a-z]{2,3}(-[a-z0-9]{1,8})*$/i;
-function languageDirective(language) {
+// The request language as a validated BCP-47 tag, or '' if absent/malformed.
+// Single source of truth for BOTH the model directive (below) and the audit
+// `langdir=` field — so the log records exactly the tag the model was told.
+function safeLangTag(language) {
   const tag = String(language == null ? '' : language).trim();
-  if (!LANG_TAG_RE.test(tag)) return '';
+  return LANG_TAG_RE.test(tag) ? tag : '';
+}
+function languageDirective(language) {
+  const tag = safeLangTag(language);
+  if (!tag) return '';
   return ` The user's Home Assistant language is "${tag}" — always write the`
     + ' "text" field in that language, regardless of the language of these'
     + ' instructions or of any tool results.';
@@ -527,4 +534,6 @@ function runClaude({
   });
 }
 
-module.exports = { runClaude, shutdown, TIMEOUT_MS };
+module.exports = {
+  runClaude, shutdown, TIMEOUT_MS, safeLangTag,
+};

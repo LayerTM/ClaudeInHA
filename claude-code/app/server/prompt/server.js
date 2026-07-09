@@ -14,7 +14,7 @@ const {
   ipAllowed, tokenMatches, sanitizePrompt, sanitizeId,
   validateIntents, redactDeep, sha12,
 } = require('./security');
-const { runClaude, TIMEOUT_MS } = require('./runner');
+const { runClaude, TIMEOUT_MS, safeLangTag } = require('./runner');
 const { createHistoryStore } = require('./history');
 
 const MAX_PROMPT_BYTES = 8 * 1024;
@@ -680,7 +680,7 @@ function createPromptApp({
         : `len=${Buffer.byteLength(prompt, 'utf8')} sha=${sha12(prompt)}`;
       const base = `caller=${caller}${conversationId ? ` conv=${conversationId}` : ''}`
         + `${imageEntity ? ` img=${imageEntity}${imagePath ? '' : '(fetch-failed)'}` : ''}`
-        + ` lang=${language} ${detail}`;
+        + ` lang=${language} langdir=${safeLangTag(body.language) || '-'} ${detail}`;
 
       // A streaming READ must NEVER terminate with `{type:"error"}` — the
       // integration's NDJSON reader treats that as fatal and the chat hard-fails,

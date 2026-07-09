@@ -597,6 +597,13 @@ test('audit: a read logs the request language (I10 — end-to-end I1 confirmatio
   const line = await waitForAuditLine('user.langaudit');
   assert.ok(line, 'an audit line for the language read exists');
   assert.match(line, /lang=uk/, `audit logs the request language, got: ${line}`);
+  assert.match(line, /langdir=uk/, `audit logs the raw directive tag (I13), got: ${line}`);
+  // I13: a language OUTSIDE the notice table logs the normalized notice code
+  // (`lang=en` fallback) AND the RAW tag the model was actually told (`langdir=ja`),
+  // so the two never conflate — the old `lang=` alone under-reported non-notice langs.
+  await post({ prompt: 'hello', language: 'ja' }, { 'X-Claude-Caller': 'user.langaudit.ja' });
+  const ja = await waitForAuditLine('user.langaudit.ja');
+  assert.match(ja, /lang=en langdir=ja/, `non-notice language logs fallback + raw tag, got: ${ja}`);
 });
 
 test('stream: a persistent error ends with a friendly done line, not a broken stream', async () => {

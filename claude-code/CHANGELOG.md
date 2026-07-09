@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.26.0] — 2026-07-09
+
+### Added
+- **The audit now records `langdir=` — the exact language the model was told to answer in
+  (I13).** The audit already logged `lang=` (the *notice* code, normalized to the handful of
+  languages the server-authored strings are translated into, with an `en` fallback), so a
+  request in a language outside that set logged `lang=en` and hid the real language. It now
+  also logs `langdir=<tag>` — the validated BCP-47 tag threaded into the model's system
+  prompt (1.24.0), or `-` when absent/malformed — so the log shows the language the reply
+  actually followed, even for languages the notices don't cover. Both fields come from one
+  shared validator, so the log can never drift from the directive.
+
 ## [1.25.0] — 2026-07-09
 
 ### Added
