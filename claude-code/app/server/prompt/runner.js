@@ -86,13 +86,16 @@ const READ_SCHEMA = JSON.stringify({
       required: ['summary', 'intents'],
       additionalProperties: false,
     },
-    // N1 (read-side draft, additive/optional): when the user asks to CREATE or
-    // MODIFY an automation, the model drafts a Home Assistant automation config
-    // here for the user to confirm. The add-on never commits it — the companion
-    // integration re-validates with HA's own validator + an action allowlist and
-    // writes it in-process on confirm. Absent for every non-automation turn.
+    // N1 (read-side draft): when the user asks to CREATE a new automation, the
+    // model drafts a Home Assistant automation config here for the user to
+    // confirm. The add-on never commits it — the companion integration
+    // re-validates with HA's own validator + an action allowlist and writes it
+    // in-process on confirm. REQUIRED and nullable — mirroring `proposal`, so the
+    // model must EXPLICITLY emit the config object or null on every read rather
+    // than silently omitting it (an optional field was described in prose instead
+    // of populated, observed live). null → the server drops it from the response.
     automation: {
-      type: 'object',
+      type: ['object', 'null'],
       properties: {
         alias: { type: 'string' },
         description: { type: 'string' },
@@ -105,7 +108,7 @@ const READ_SCHEMA = JSON.stringify({
       additionalProperties: false,
     },
   },
-  required: ['text', 'proposal'],
+  required: ['text', 'proposal', 'automation'],
   additionalProperties: false,
 });
 
@@ -146,20 +149,24 @@ const READ_SYSTEM_PROMPT = [
   'Otherwise set "proposal" to null.',
   // N1 — natural-language automation drafting (read-only). The model DRAFTS the
   // config; the integration re-validates and commits it in-process on confirm.
-  'If (and only if) the user asks to CREATE a NEW automation (an ongoing',
-  'rule like "when X happens, do Y"), set the structured-output field "automation"',
-  'to a Home Assistant automation config {alias, triggers, conditions, actions,',
-  'optionally description and mode} — "triggers", "conditions" and "actions" are',
-  'arrays of standard HA automation blocks and must reference entity ids that',
-  'exist in the current state. Draft only; you are NOT changing anything and must',
-  'NOT call any tool to create it — the user will confirm the draft first. Put a',
-  'short plain-language description of what the automation does in "text". Only',
-  'NEW automations are supported: if the user asks to MODIFY, DISABLE or DELETE an',
-  'EXISTING automation, do NOT set "automation" (that would create a duplicate);',
-  'answer in "text" that editing existing automations is not yet supported here.',
-  'For a one-off state change (not an ongoing rule) use "proposal" as above, not',
-  '"automation". Omit "automation" entirely for every request that is not about',
-  'creating a new automation. Keep "text"',
+  'Set "automation" to null UNLESS the user asks to CREATE a NEW automation (an',
+  'ongoing rule like "when X happens, do Y"). When they do, you MUST put the FULL',
+  'Home Assistant automation config in the structured-output field "automation" as',
+  'an object {alias, triggers, conditions, actions, optionally description and',
+  'mode} — NEVER describe the automation only in "text" prose; the config object',
+  'is what gets created, so it must be in the "automation" field. "triggers",',
+  '"conditions" and "actions" are arrays of standard HA automation blocks. If the',
+  'rule references devices (lights, sensors, switches, doors), FIRST call',
+  'GetLiveContext to get their real entity ids and use those; if the needed device',
+  "isn't in the state, set \"automation\" to null and say so in \"text\". Draft only;",
+  'you are NOT changing anything and must NOT call any tool to create it — the user',
+  'confirms the draft first. Keep "text" to ONE short summary sentence of what the',
+  'automation does (the config lives in "automation", not in "text"). Only NEW',
+  'automations are supported: if the user asks to MODIFY, DISABLE or DELETE an',
+  'EXISTING automation, set "automation" to null (creating one would duplicate it)',
+  'and say in "text" that editing existing automations is not supported yet. For a',
+  'one-off state change (not an ongoing rule) use "proposal", and set "automation"',
+  'to null. Keep "text"',
   'short and phone-readable.',
 ].join(' ');
 

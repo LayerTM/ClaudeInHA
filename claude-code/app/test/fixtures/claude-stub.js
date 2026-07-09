@@ -193,7 +193,7 @@ function finish(prompt, wantsProposal) {
   const mIdx = args.indexOf('--model');
   const usedModel = mIdx !== -1 ? args[mIdx + 1] : '';
   const structured = wantsProposal
-    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}${filler}; syslang=${sysLang}; voice=${sysVoice}; model=${usedModel}`, proposal, ...(automation ? { automation } : {}) }
+    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}${filler}; syslang=${sysLang}; voice=${sysVoice}; model=${usedModel}`, proposal, automation: automation || null }
     // write mode: reflect what actually reached the child via stdin, so the test
     // can prove the untrusted client prompt is absent and the intents present.
     : { text: `stdin_has_inject=${prompt.includes('INJECTED')} stdin_has_intent=${prompt.includes('HassTurnOff')}` };

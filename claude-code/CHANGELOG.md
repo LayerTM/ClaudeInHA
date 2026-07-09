@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.34.0] — 2026-07-09
+
+### Fixed
+- **Automation drafting (N1) now reliably returns the config, not just a prose promise.** Live
+  testing showed the model would answer "here's a draft automation, confirm to create it" while
+  leaving the structured `automation` field empty — because the field was optional, so the model
+  treated describing it in `text` as sufficient. The field is now **required and nullable**
+  (mirroring `proposal`), so the model must explicitly emit the config object or `null` on every
+  read, and the system prompt now insists the full config go in `automation` (never only in
+  prose) and to call `GetLiveContext` for real entity ids first when the rule references devices.
+  `null` is still dropped from the response, so ordinary turns are unchanged.
+
 ## [1.33.1] — 2026-07-09
 
 ### Fixed
