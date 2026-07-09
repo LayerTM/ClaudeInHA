@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.33.1] — 2026-07-09
+
+### Fixed
+- **Automation drafting (N1) is scoped to NEW automations only, so a "modify" request can't
+  create a duplicate.** The draft has no way to reference an existing automation's id, and the
+  commit assigns a fresh id — so a "change my existing automation" request would have been
+  committed as a second, duplicate automation. The model is now told to draft only for creating
+  a new automation and to answer plainly that editing an existing one isn't supported yet
+  (a future enhancement that needs an id in the contract). No API change; the feature is not yet
+  user-visible (the companion integration's commit step is still in progress), so no behaviour
+  regresses.
+
 ## [1.33.0] — 2026-07-09
 
 ### Added

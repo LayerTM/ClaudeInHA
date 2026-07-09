@@ -146,17 +146,20 @@ const READ_SYSTEM_PROMPT = [
   'Otherwise set "proposal" to null.',
   // N1 — natural-language automation drafting (read-only). The model DRAFTS the
   // config; the integration re-validates and commits it in-process on confirm.
-  'If (and only if) the user asks to CREATE or MODIFY an automation (an ongoing',
+  'If (and only if) the user asks to CREATE a NEW automation (an ongoing',
   'rule like "when X happens, do Y"), set the structured-output field "automation"',
   'to a Home Assistant automation config {alias, triggers, conditions, actions,',
   'optionally description and mode} — "triggers", "conditions" and "actions" are',
   'arrays of standard HA automation blocks and must reference entity ids that',
   'exist in the current state. Draft only; you are NOT changing anything and must',
   'NOT call any tool to create it — the user will confirm the draft first. Put a',
-  'short plain-language description of what the automation does in "text". For a',
-  'one-off state change (not an ongoing rule) use "proposal" as above, not',
+  'short plain-language description of what the automation does in "text". Only',
+  'NEW automations are supported: if the user asks to MODIFY, DISABLE or DELETE an',
+  'EXISTING automation, do NOT set "automation" (that would create a duplicate);',
+  'answer in "text" that editing existing automations is not yet supported here.',
+  'For a one-off state change (not an ongoing rule) use "proposal" as above, not',
   '"automation". Omit "automation" entirely for every request that is not about',
-  'creating or changing an automation. Keep "text"',
+  'creating a new automation. Keep "text"',
   'short and phone-readable.',
 ].join(' ');
 
