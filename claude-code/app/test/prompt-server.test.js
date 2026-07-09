@@ -619,6 +619,16 @@ test('audit: a read logs the request language (I10 — end-to-end I1 confirmatio
   assert.match(ja, /lang=en langdir=ja/, `non-notice language logs fallback + raw tag, got: ${ja}`);
 });
 
+test('audit: MCP is NOT flagged failed when an ha tool actually ran, even if init showed it not-yet-connected', async () => {
+  // The `system/init` snapshot can show the ha MCP server still connecting while
+  // it serves GetLiveContext fine a moment later — that must not read as a failure.
+  await post({ prompt: 'MCPLATE hello' }, { 'X-Claude-Caller': 'user.mcplate' });
+  const line = await waitForAuditLine('user.mcplate');
+  assert.ok(line, 'an audit line exists');
+  assert.match(line, /tools=mcp__ha__GetLiveContext/, `the ha tool ran, got: ${line}`);
+  assert.doesNotMatch(line, /mcp=FAILED/, `a late-connecting MCP that served a tool is not "failed", got: ${line}`);
+});
+
 test('stream: a persistent error ends with a friendly done line, not a broken stream', async () => {
   const { status, events } = await postNDJSON(
     { prompt: 'ISERROR', stream: true },

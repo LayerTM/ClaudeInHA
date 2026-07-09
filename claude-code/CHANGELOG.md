@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.29.0] — 2026-07-09
+
+### Fixed
+- **The audit no longer logs a false `mcp=FAILED` when Home Assistant state was actually read.**
+  The `mcp=` health field was computed only from the `system/init` snapshot, so if the `ha` MCP
+  server was still connecting at init — common for a few seconds after a restart — it read as
+  failed even when `GetLiveContext` then ran and returned real state (observed live: a correct
+  kitchen temperature was answered, yet `mcp=FAILED` was logged). It now counts MCP failed only
+  if init showed it disconnected **and** no `mcp__ha__*` tool was actually used in the run — a
+  used HA tool proves the server was reachable. This also corrects the same signal where it
+  feeds `ha_mcp_connected` on `/api/status` (the companion integration's health check).
+
 ## [1.28.0] — 2026-07-09
 
 ### Added

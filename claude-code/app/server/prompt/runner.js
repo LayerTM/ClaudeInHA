@@ -537,7 +537,12 @@ function runClaude({
         numTurns: resultEnvelope.num_turns ?? null,
         costUsd: resultEnvelope.total_cost_usd ?? null,
         truncated,
-        mcpFailed,
+        // The init snapshot can show the `ha` MCP server not-yet-connected while
+        // it actually connects a moment later and serves the tool fine (observed
+        // live: GetLiveContext returned real state, yet mcp=FAILED was logged). So
+        // only call MCP failed if init showed it disconnected AND no `mcp__ha__*`
+        // tool was actually used this run — a used ha tool proves it was reachable.
+        mcpFailed: mcpFailed && !toolsUsed.some((t) => t.startsWith('mcp__ha__')),
       });
     });
   });

@@ -32,7 +32,10 @@ function run(prompt) {
     type: 'system',
     subtype: 'init',
     tools: ['mcp__ha__GetLiveContext'],
-    mcp_servers: hasMcp ? [{ name: 'ha', status: 'connected' }] : [],
+    // MCPLATE simulates the `ha` server still connecting at init (it serves the
+    // tool fine a moment later) — exercises the mcp=FAILED false-positive fix.
+    mcp_servers: hasMcp
+      ? [{ name: 'ha', status: prompt.includes('MCPLATE') ? 'pending' : 'connected' }] : [],
     permissionMode: 'dontAsk',
   });
   // A diagnostics line the parser must ignore (mirrors the real CLI's
