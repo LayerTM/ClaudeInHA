@@ -35,7 +35,7 @@ function run(prompt) {
     // MCPLATE simulates the `ha` server still connecting at init (it serves the
     // tool fine a moment later) — exercises the mcp=FAILED false-positive fix.
     mcp_servers: hasMcp
-      ? [{ name: 'ha', status: prompt.includes('MCPLATE') ? 'pending' : 'connected' }] : [],
+      ? [{ name: 'ha', status: (prompt.includes('MCPLATE') || prompt.includes('MCPNOEV')) ? 'pending' : 'connected' }] : [],
     permissionMode: 'dontAsk',
   });
   // A diagnostics line the parser must ignore (mirrors the real CLI's
@@ -90,6 +90,16 @@ function run(prompt) {
     });
     process.exit(0);
   }
+  if (prompt.includes('MCPNOEV')) {
+    // A read that never touches the ha MCP tool (init showed it pending) → the run
+    // gives NO reachability evidence, so ha_mcp_connected must not change.
+    const s = { text: 'no tool used', proposal: null };
+    emit({
+      type: 'result', subtype: 'success', is_error: false,
+      result: JSON.stringify(s), structured_output: s, num_turns: 1, total_cost_usd: 0.001,
+    });
+    process.exit(0);
+  }
   // FLAKY:<token> — a transient model error on the FIRST spawn for a given token,
   // then a normal success on the next, so the server's retry-then-recover path is
   // exercised end to end. The marker file makes the "next spawn" stateful.
@@ -110,7 +120,11 @@ function run(prompt) {
 }
 
 function finish(prompt, wantsProposal) {
-  emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'mcp__ha__GetLiveContext', input: {} }] } });
+  const haId = 'toolu_ha_glc';
+  emit({ type: 'assistant', message: { content: [{ type: 'tool_use', id: haId, name: 'mcp__ha__GetLiveContext', input: {} }] } });
+  // The tool RESULT — is_error only when MCPERR is present (MCP unreachable case),
+  // so mcpConnected can be proven up (default) or down (MCPERR).
+  emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: haId, is_error: prompt.includes('MCPERR'), content: 'ha state' }] } });
 
   // Secret-SHAPED but fake: the redactor matches them by shape, while the
   // 'EXAMPLE' marker tells the repo secret-scanner they are intentional fakes.

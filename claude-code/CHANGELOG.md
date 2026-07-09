@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.30.0] — 2026-07-09
+
+### Fixed
+- **No more bogus "MCP Server unreachable" repair when chat can actually see the home.**
+  `/api/status.ha_mcp_connected` was derived from each read's `system/init` snapshot, so a chat
+  turn that didn't need HA state (a greeting, a fun fact) right after a restart — while the
+  `mcp_server` was still connecting — flipped the signal to false even though `GetLiveContext`
+  then worked fine (observed live: a correct bedroom temperature was answered, yet
+  `ha_mcp_connected=false`). The companion integration turned that into a scary "MCP
+  missing/unreachable" repair. Now the signal only moves on **real evidence**: an `mcp__ha__*`
+  tool result that came back OK (connected) or errored (unreachable); a read that never touched
+  MCP leaves the last known value, and init-connected remains a positive signal. No contract
+  change (`ha_mcp_connected` shape is unchanged).
+
 ## [1.29.0] — 2026-07-09
 
 ### Fixed

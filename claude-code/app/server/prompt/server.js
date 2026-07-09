@@ -746,7 +746,11 @@ function createPromptApp({
 
       // (Cost was already billed for every attempt above, via budget.add(spent).)
       // Remember whether the read path reached the HA MCP server (for /api/status).
-      if (mode === 'read') lastMcpConnected = !outcome.mcpFailed;
+      // Only move the signal when the read gave real evidence (used the ha tool, or
+      // saw it connected at init); a read that never touched MCP leaves the last
+      // known value — this stops a state-free turn right after a restart from
+      // falsely flipping ha_mcp_connected and raising a bogus "MCP unreachable".
+      if (mode === 'read' && outcome.mcpConnected != null) lastMcpConnected = outcome.mcpConnected;
       // Health signal: a successful read (recovered=true if a retry rescued it).
       if (mode === 'read') chatHealth.record(true, null, attempts > 1);
 

@@ -320,6 +320,20 @@ test('status: ha_mcp_connected reflects the last read run', async () => {
   assert.equal(body.ha_mcp_connected, true); // the stub reports the `ha` MCP server connected
 });
 
+test('status: ha_mcp_connected only moves on real evidence — a no-tool read never false-flags it', async () => {
+  const status = async () => (await (await fetch(`${BASE}/api/status`, { headers: { Authorization: `Bearer ${TOKEN}` } })).json()).ha_mcp_connected;
+  // 1. a normal read exercises the ha tool and it returns OK → connected
+  await post({ prompt: 'hi there' }, { 'X-Claude-Caller': 'user.mcp.ok' });
+  assert.equal(await status(), true, 'a successful ha tool result marks MCP connected');
+  // 2. a read that used NO ha tool AND saw init not-yet-connected must NOT flip it
+  //    false — this was the bug behind the bogus "MCP unreachable" repair.
+  await post({ prompt: 'MCPNOEV just chatting' }, { 'X-Claude-Caller': 'user.mcp.noev' });
+  assert.equal(await status(), true, 'a read with no MCP evidence leaves the signal unchanged');
+  // 3. a read whose ha tool ERRORED is real negative evidence → unreachable
+  await post({ prompt: 'MCPERR what is on' }, { 'X-Claude-Caller': 'user.mcp.err' });
+  assert.equal(await status(), false, 'an errored ha tool result marks MCP unreachable');
+});
+
 test('status: chat_health summarizes recent read outcomes (reason is a token only)', async () => {
   const c = { 'X-Claude-Caller': 'user.health' };
   await post({ prompt: 'hello there' }, c); // a healthy read

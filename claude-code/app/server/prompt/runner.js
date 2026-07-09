@@ -359,6 +359,15 @@ function runClaude({
     let stderrBuf = '';
     let resultEnvelope = null;
     let mcpFailed = false;
+    // A RELIABLE ha-MCP-reachability signal for `/api/status.ha_mcp_connected`,
+    // separate from the init snapshot (which is often stale right after a
+    // restart while the mcp_server is still connecting). Evidence, strongest first:
+    // an ha tool that returned OK (proven up) > one that errored (proven down) >
+    // the init snapshot > nothing (a read that never touched MCP → no evidence).
+    let mcpInitConnected = false;
+    let haToolOk = false;
+    let haToolErr = false;
+    const haToolUseIds = new Set();
     const toolsUsed = [];
     // Hold partial multi-byte UTF-8 sequences across chunk boundaries so
     // non-ASCII model output is never corrupted into replacement characters.
@@ -421,8 +430,8 @@ function runClaude({
       }
       if (ev.type === 'system' && ev.subtype === 'init') {
         const servers = Array.isArray(ev.mcp_servers) ? ev.mcp_servers : [];
-        mcpFailed = Boolean(mcpConfigPath)
-          && !servers.some((s) => s && s.name === 'ha' && s.status === 'connected');
+        mcpInitConnected = servers.some((s) => s && s.name === 'ha' && s.status === 'connected');
+        mcpFailed = Boolean(mcpConfigPath) && !mcpInitConnected;
       } else if (ev.type === 'assistant') {
         const content = ev.message && Array.isArray(ev.message.content)
           ? ev.message.content : [];
@@ -431,6 +440,17 @@ function runClaude({
               // internal plumbing of --json-schema, not a real tool
               && block.name !== 'StructuredOutput') {
             toolsUsed.push(block.name);
+            if (block.name.startsWith('mcp__ha__') && block.id) haToolUseIds.add(block.id);
+          }
+        }
+      } else if (ev.type === 'user') {
+        // Tool RESULTS come back as a user message; whether an ha MCP tool
+        // actually succeeded is the ground truth for reachability.
+        const content = ev.message && Array.isArray(ev.message.content)
+          ? ev.message.content : [];
+        for (const block of content) {
+          if (block && block.type === 'tool_result' && haToolUseIds.has(block.tool_use_id)) {
+            if (block.is_error) haToolErr = true; else haToolOk = true;
           }
         }
       } else if (ev.type === 'result') {
@@ -543,6 +563,11 @@ function runClaude({
         // only call MCP failed if init showed it disconnected AND no `mcp__ha__*`
         // tool was actually used this run — a used ha tool proves it was reachable.
         mcpFailed: mcpFailed && !toolsUsed.some((t) => t.startsWith('mcp__ha__')),
+        // Reachability for `/api/status.ha_mcp_connected`: proven-up > proven-down
+        // > init-snapshot > null (no evidence — a read that never used MCP must NOT
+        // flip the health signal, which caused a false "MCP unreachable" repair).
+        // eslint-disable-next-line no-nested-ternary
+        mcpConnected: haToolOk ? true : (haToolErr ? false : (mcpInitConnected ? true : null)),
       });
     });
   });
