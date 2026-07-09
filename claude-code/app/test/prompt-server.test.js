@@ -530,6 +530,9 @@ test('read: the degrade apology is localized by the request language (en fallbac
   // a full locale ("pl-PL") normalizes to its 2-letter language
   const pl = await post({ prompt: 'ISERROR', language: 'pl-PL' }, { 'X-Claude-Caller': 'user.loc.pl' });
   assert.match(pl.json.text, /Przepraszam|Spróbuj/, `pl degrade text, got: ${pl.json.text}`);
+  // I12: newly-added languages — a German ("de-DE") request gets German, not English
+  const de = await post({ prompt: 'ISERROR', language: 'de-DE' }, { 'X-Claude-Caller': 'user.loc.de' });
+  assert.match(de.json.text, /Entschuldigung|versuche/, `de degrade text, got: ${de.json.text}`);
   // absent language → English (backward compatible)
   const en = await post({ prompt: 'ISERROR' }, { 'X-Claude-Caller': 'user.loc.en' });
   assert.match(en.json.text, /try again|couldn't finish/i);

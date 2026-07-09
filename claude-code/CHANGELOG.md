@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.25.0] — 2026-07-09
+
+### Added
+- **Server-authored notices are localized in more languages (I12).** The two strings
+  the add-on itself authors — the "couldn't finish" degrade apology and the daily-budget
+  notice — were only translated for English, Ukrainian and Polish, so any other Home
+  Assistant language got the English text. They now also cover **German, French, Spanish,
+  Italian, Portuguese and Dutch**, with English as the fallback. The supported-language
+  set is derived from the notice table itself, so the two can never drift. Additive and
+  backward compatible — an absent or unknown language still falls back to English. (The
+  model's own answers already follow the user's language for any language since 1.24.0;
+  this widens the few strings the server must author itself when the model can't run.)
+
 ## [1.24.0] — 2026-07-09
 
 ### Fixed
