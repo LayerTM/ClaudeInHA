@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.27.0] — 2026-07-09
+
+### Changed
+- **`/ha-voice` skill rewritten to match the real, verified setup.** The guide was written
+  before the voice pipeline was actually built on a live system; it wrongly told you to
+  hard-pin Whisper to one language and to set things up per language. Corrected from a real
+  run: install Whisper (model `small-int8`, **Language `auto`**, task `transcribe`) and Piper
+  **once** — a single pair of engines serves **all** languages, because each Assist assistant
+  carries its own language (passed to the engines per request) and Piper downloads the
+  requested voice on demand. Create one assistant per language, conversation agent
+  **"Claude Code"**, and pick a `(high)` Piper voice (Ukrainian has good high voices — the old
+  "low quality" caveat is dropped). Wyoming discovery (Devices & services → Add) and the
+  mic-verify step are clarified.
+
 ## [1.26.0] — 2026-07-09
 
 ### Added
