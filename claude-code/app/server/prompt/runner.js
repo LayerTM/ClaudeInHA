@@ -12,7 +12,7 @@
 
 const { spawn } = require('node:child_process');
 const { StringDecoder } = require('node:string_decoder');
-const { validateProposal } = require('./security');
+const { validateProposal, validateAutomationDraft } = require('./security');
 
 // Wall-clock ceiling per claude run; tunable for slow hardware via the
 // add-on's environment_vars (CLAUDE_PROMPT_TIMEOUT_MS), bounded 10s..10min.
@@ -86,6 +86,24 @@ const READ_SCHEMA = JSON.stringify({
       required: ['summary', 'intents'],
       additionalProperties: false,
     },
+    // N1 (read-side draft, additive/optional): when the user asks to CREATE or
+    // MODIFY an automation, the model drafts a Home Assistant automation config
+    // here for the user to confirm. The add-on never commits it — the companion
+    // integration re-validates with HA's own validator + an action allowlist and
+    // writes it in-process on confirm. Absent for every non-automation turn.
+    automation: {
+      type: 'object',
+      properties: {
+        alias: { type: 'string' },
+        description: { type: 'string' },
+        triggers: { type: 'array', items: { type: 'object' } },
+        conditions: { type: 'array', items: { type: 'object' } },
+        actions: { type: 'array', items: { type: 'object' } },
+        mode: { type: 'string', enum: ['single', 'restart', 'queued', 'parallel'] },
+      },
+      required: ['alias', 'triggers', 'actions'],
+      additionalProperties: false,
+    },
   },
   required: ['text', 'proposal'],
   additionalProperties: false,
@@ -125,7 +143,20 @@ const READ_SYSTEM_PROMPT = [
   'access-point or device-configuration control (reboot, firmware or software',
   'update, PoE), or anything that affects safety, security or access or is hard',
   'to undo. The user may confirm before anything runs.',
-  'Otherwise set "proposal" to null. Keep "text"',
+  'Otherwise set "proposal" to null.',
+  // N1 — natural-language automation drafting (read-only). The model DRAFTS the
+  // config; the integration re-validates and commits it in-process on confirm.
+  'If (and only if) the user asks to CREATE or MODIFY an automation (an ongoing',
+  'rule like "when X happens, do Y"), set the structured-output field "automation"',
+  'to a Home Assistant automation config {alias, triggers, conditions, actions,',
+  'optionally description and mode} — "triggers", "conditions" and "actions" are',
+  'arrays of standard HA automation blocks and must reference entity ids that',
+  'exist in the current state. Draft only; you are NOT changing anything and must',
+  'NOT call any tool to create it — the user will confirm the draft first. Put a',
+  'short plain-language description of what the automation does in "text". For a',
+  'one-off state change (not an ongoing rule) use "proposal" as above, not',
+  '"automation". Omit "automation" entirely for every request that is not about',
+  'creating or changing an automation. Keep "text"',
   'short and phone-readable.',
 ].join(' ');
 
@@ -282,7 +313,7 @@ function shutdown() {
 
 /**
  * Run one claude call. Resolves to:
- *   { status: 'ok', text, proposal, toolsUsed, numTurns, costUsd,
+ *   { status: 'ok', text, proposal, automation, toolsUsed, numTurns, costUsd,
  *     truncated, mcpFailed }
  *   { status: 'timeout' }
  *   { status: 'error', reason, message, numTurns?, toolsUsed?, costUsd? }
@@ -534,9 +565,13 @@ function runClaude({
       const structured = resultEnvelope.structured_output;
       let text;
       let proposal = null;
+      let automation = null;
       if (structured && typeof structured === 'object' && typeof structured.text === 'string') {
         text = structured.text;
-        if (read) proposal = validateProposal(structured.proposal);
+        if (read) {
+          proposal = validateProposal(structured.proposal);
+          automation = validateAutomationDraft(structured.automation);
+        }
       } else {
         // Structured output missing (schema retry exhausted) — fall back to
         // the plain result text; proposal stays null.
@@ -553,6 +588,7 @@ function runClaude({
         status: 'ok',
         text,
         proposal,
+        automation,
         toolsUsed,
         numTurns: resultEnvelope.num_turns ?? null,
         costUsd: resultEnvelope.total_cost_usd ?? null,

@@ -149,6 +149,36 @@ function finish(prompt, wantsProposal) {
       };
   }
 
+  // N1: a MKAUTO prompt makes the model draft an automation config. BADAUTO makes
+  // it malformed so the test can prove validateAutomationDraft rejects it. The
+  // valid draft carries secret-shaped values in alias + an action's data so the
+  // test proves redactDeep reaches every field of the automation too.
+  let automation;
+  if (wantsProposal && prompt.includes('MKAUTO')) {
+    automation = prompt.includes('BADAUTO')
+      ? { alias: '', triggers: 'not-an-array', actions: [] }
+      : {
+        alias: `Evening lights ${jwt}`,
+        description: 'turn on the living room lights when I get home in the evening',
+        triggers: [{ trigger: 'state', entity_id: 'person.me', to: 'home' }],
+        conditions: [{ condition: 'time', after: '17:00:00' }],
+        // DEEPAUTO buries a secret past the redactor's tree-walk depth cap inside a
+        // choose/sequence chain, to prove deep config blocks are still redacted.
+        actions: [prompt.includes('DEEPAUTO')
+          ? (() => {
+            let deep = { action: 'notify.notify', data: { message: `deep ${apiKey}` } };
+            for (let i = 0; i < 12; i += 1) deep = { choose: [{ conditions: [], sequence: [deep] }] };
+            return deep;
+          })()
+          : {
+            action: 'light.turn_on',
+            target: { entity_id: 'light.living_room' },
+            data: { note: `leak ${apiKey}` },
+          }],
+        mode: 'single',
+      };
+  }
+
   // LONGSTREAM pads the answer well past the server's stream safety window so a
   // test can observe genuine mid-generation deltas (not just a single tail flush).
   const filler = prompt.includes('LONGSTREAM') ? ` ${'lorem ipsum dolor '.repeat(18)}` : '';
@@ -163,7 +193,7 @@ function finish(prompt, wantsProposal) {
   const mIdx = args.indexOf('--model');
   const usedModel = mIdx !== -1 ? args[mIdx + 1] : '';
   const structured = wantsProposal
-    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}${filler}; syslang=${sysLang}; voice=${sysVoice}; model=${usedModel}`, proposal }
+    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}${filler}; syslang=${sysLang}; voice=${sysVoice}; model=${usedModel}`, proposal, ...(automation ? { automation } : {}) }
     // write mode: reflect what actually reached the child via stdin, so the test
     // can prove the untrusted client prompt is absent and the intents present.
     : { text: `stdin_has_inject=${prompt.includes('INJECTED')} stdin_has_intent=${prompt.includes('HassTurnOff')}` };

@@ -100,6 +100,53 @@ test('validateProposal: drops non-conforming model output', () => {
   assert.equal(security.validateProposal({ summary: 'x', intents: [{ intent: 'HassTurnOff', targets: ['light.x'], risk: 'bogus' }] }).intents[0].risk, 'sensitive');
 });
 
+test('validateAutomationDraft: keeps a well-formed draft, drops unusable shapes (N1)', () => {
+  const good = security.validateAutomationDraft({
+    alias: '  Evening lights  ',
+    description: 'lights at dusk',
+    triggers: [{ trigger: 'state', entity_id: 'person.me', to: 'home' }],
+    conditions: [{ condition: 'time', after: '17:00:00' }],
+    actions: [{ action: 'light.turn_on', target: { entity_id: 'light.lr' } }],
+    mode: 'single',
+    id: 'model-should-not-set-this',
+  });
+  assert.equal(good.alias, 'Evening lights', 'alias trimmed');
+  assert.equal(good.triggers.length, 1);
+  assert.equal(good.actions.length, 1);
+  assert.equal(good.conditions.length, 1);
+  assert.equal(good.mode, 'single');
+  assert.ok(!('id' in good), 'unknown top-level keys are dropped (additionalProperties-style)');
+
+  // Unusable shapes → null (the integration re-validates authoritatively; this is
+  // only structural triage so a broken draft never rides the response).
+  assert.equal(security.validateAutomationDraft(null), null);
+  assert.equal(security.validateAutomationDraft({ alias: '', triggers: [{}], actions: [{}] }), null, 'empty alias');
+  assert.equal(security.validateAutomationDraft({ alias: 'x', triggers: 'nope', actions: [{}] }), null, 'triggers not array');
+  assert.equal(security.validateAutomationDraft({ alias: 'x', triggers: [{ t: 1 }], actions: [] }), null, 'no actions');
+  assert.equal(security.validateAutomationDraft({ alias: 'x', triggers: ['not-an-object'], actions: [{}] }), null, 'no object triggers survive');
+  // A bogus mode is dropped, not rejected (the rest of the draft is still usable).
+  const noMode = security.validateAutomationDraft({ alias: 'x', triggers: [{ t: 1 }], actions: [{ a: 1 }], mode: 'bogus' });
+  assert.ok(noMode && !('mode' in noMode), 'invalid mode dropped');
+  // An oversized draft is rejected outright rather than truncated into invalid config.
+  const huge = security.validateAutomationDraft({
+    alias: 'x', triggers: [{ t: 1 }], actions: [{ note: 'z'.repeat(9000) }],
+  });
+  assert.equal(huge, null, 'oversized draft rejected');
+});
+
+test('redactDeep: a secret nested BEYOND the tree-walk depth cap is still redacted', () => {
+  // Regression: the depth cap used to return the sub-tree RAW past depth 8, which
+  // could leak a secret buried in a deeply-nested automation choose/sequence chain
+  // (well under the 8KB draft cap). It must now fall back to whole-blob redaction.
+  const jwt = 'eyJEXAMPLEheaderPart.eyJEXAMPLEbodyPart.EXAMPLEsignature';
+  const redact = security.buildRedactor([]); // shape-based catches the jwt
+  let node = { secret: `token ${jwt}` };
+  for (let i = 0; i < 15; i += 1) node = { choose: [{ sequence: [node] }] }; // ~60 levels deep
+  const blob = JSON.stringify(security.redactDeep(node, redact));
+  assert.ok(!blob.includes('eyJEXAMPLE'), 'secret buried past depth 8 is redacted');
+  assert.ok(blob.includes('[REDACTED]'), 'redaction actually reached the deep node');
+});
+
 test('redactDeep: redacts secrets in nested strings', () => {
   const redact = security.buildRedactor(['dummy-exact-secret-value']);
   const out = security.redactDeep({
@@ -423,6 +470,47 @@ test('read: proposal carries the per-intent risk hint (default sensitive; low ho
   assert.equal(s.json.proposal.intents[0].risk, 'sensitive');
   const l = await post({ prompt: 'PROPOSE LOWRISK please' }, { 'X-Claude-Caller': 'user.risk2' });
   assert.equal(l.json.proposal.intents[0].risk, 'low');
+});
+
+test('read: an automation-creation request returns a drafted config (N1), redacted, audited', async () => {
+  const { status, json } = await post(
+    { prompt: 'PROPOSE MKAUTO create an automation' }, { 'X-Claude-Caller': 'user.mkauto' },
+  );
+  assert.equal(status, 200);
+  assert.ok(json.automation, 'the response carries a drafted automation');
+  assert.equal(json.automation.triggers.length, 1);
+  assert.equal(json.automation.actions.length, 1);
+  assert.equal(json.automation.mode, 'single');
+  // The draft is deep-redacted exactly like the proposal (alias + action data
+  // carried secret-shaped values in the stub).
+  const blob = JSON.stringify(json.automation);
+  assert.ok(!blob.includes('eyJEXAMPLE'), 'no jwt leaks in the automation draft');
+  assert.ok(!blob.includes('EXAMPLEdeadbeef'), 'no api key leaks in the automation draft');
+  assert.ok(json.automation.alias.includes('[REDACTED]'), 'alias redacted');
+  const line = await waitForAuditLine('user.mkauto');
+  assert.match(line, /automation=draft/, `audit flags the draft, got: ${line}`);
+});
+
+test('read: secrets buried deep in a drafted automation are redacted end-to-end (N1)', async () => {
+  const { json } = await post(
+    { prompt: 'PROPOSE MKAUTO DEEPAUTO create an automation' }, { 'X-Claude-Caller': 'user.deepauto' },
+  );
+  assert.ok(json.automation, 'the deep draft still passes structural validation (under 8KB)');
+  const blob = JSON.stringify(json.automation);
+  assert.ok(!blob.includes('EXAMPLEdeadbeef'), 'a secret nested past the depth cap is redacted');
+  assert.ok(blob.includes('[REDACTED]'), 'redaction reached the buried node');
+});
+
+test('read: a malformed automation draft is dropped, not surfaced (N1)', async () => {
+  const { json } = await post(
+    { prompt: 'PROPOSE MKAUTO BADAUTO create an automation' }, { 'X-Claude-Caller': 'user.badauto' },
+  );
+  assert.ok(!('automation' in json), 'a malformed draft is absent, not null-or-broken');
+});
+
+test('read: an ordinary turn has no automation field (N1 additive/absent)', async () => {
+  const { json } = await post({ prompt: 'PROPOSE please' }, { 'X-Claude-Caller': 'user.noauto' });
+  assert.ok(!('automation' in json), 'non-automation turns omit the field entirely');
 });
 
 test('read: conversation memory feeds prior turns into the next prompt', async () => {

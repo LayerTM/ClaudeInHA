@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.33.0] — 2026-07-09
+
+### Added
+- **Draft a Home Assistant automation from plain language (N1, Phase 1).** Ask the companion
+  chat/Assist to "create an automation that turns on the living-room lights when I get home in
+  the evening" and Claude now drafts a real HA automation config (`alias` / `triggers` /
+  `conditions` / `actions`) and returns it in a new, optional `automation` field on the read
+  response — alongside a short plain-language summary in `text`. **The add-on never commits it:**
+  the draft is for the companion integration to show for confirmation and then write in-process
+  using Home Assistant's own automation validator (a later step). The field is additive and
+  absent on every non-automation turn (old integrations simply ignore it), the drafted config is
+  structurally validated and size-capped before it leaves the add-on, and it is deep-redacted
+  exactly like a `proposal`. The audit line flags a drafting turn with `automation=draft`. No
+  breaking API change.
+
+### Security
+- **Deeply-nested structured output can no longer slip a secret past the redactor.** The
+  response redactor walks structured fields to a bounded depth; beyond that depth it used to
+  return the sub-tree unredacted. An automation draft's `choose`/`repeat`/`sequence` blocks can
+  nest past that depth while staying under the size cap, so the depth limit now falls back to
+  whole-blob string redaction (depth-independent) instead of returning raw — closing the leak
+  for the new `automation` field and hardening `proposal` and any future nested field too.
+
 ## [1.32.0] — 2026-07-09
 
 ### Added

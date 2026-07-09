@@ -107,6 +107,50 @@ function validateProposal(raw) {
   return { summary, intents };
 }
 
+function isPlainObject(v) {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+const AUTOMATION_MODES = new Set(['single', 'restart', 'queued', 'parallel']);
+// Cap on the serialized draft so a runaway model can't emit a huge config blob.
+const AUTOMATION_DRAFT_MAX_BYTES = 8192;
+
+// Validate a model-DRAFTED Home Assistant automation config (N1 read-side draft).
+// This is Phase-1 only: the add-on returns the draft for display/confirmation —
+// it NEVER commits it. The authoritative gate lives in the companion integration,
+// which re-validates the dict with HA's own `async_validate_config_item` and
+// enforces an action allowlist at commit time (deterministic, no LLM in the write
+// path). So here we do STRUCTURAL sanity + size caps only, deliberately NOT
+// semantic HA-schema validation (that's the integration's job) and NOT deep
+// string-scrubbing of the config blocks (it would corrupt valid Jinja templates
+// the integration re-inspects). Returns a normalized draft, or null when the
+// shape is unusable. The blocks (triggers/conditions/actions) are passed through
+// verbatim as HA config documents; redactDeep still scrubs secrets from them
+// before the response leaves the add-on, same as every other structured field.
+function validateAutomationDraft(raw) {
+  if (!isPlainObject(raw)) return null;
+  const alias = typeof raw.alias === 'string' ? sanitizePrompt(raw.alias).slice(0, 200).trim() : '';
+  if (!alias) return null;
+  if (!Array.isArray(raw.triggers) || !Array.isArray(raw.actions)) return null;
+  const triggers = raw.triggers.filter(isPlainObject).slice(0, 20);
+  const actions = raw.actions.filter(isPlainObject).slice(0, 40);
+  if (triggers.length === 0 || actions.length === 0) return null;
+  const draft = { alias, triggers, actions };
+  if (Array.isArray(raw.conditions)) {
+    const conditions = raw.conditions.filter(isPlainObject).slice(0, 20);
+    if (conditions.length) draft.conditions = conditions;
+  }
+  if (typeof raw.description === 'string') {
+    const description = sanitizePrompt(raw.description).slice(0, 500).trim();
+    if (description) draft.description = description;
+  }
+  if (typeof raw.mode === 'string' && AUTOMATION_MODES.has(raw.mode)) draft.mode = raw.mode;
+  // Reject an implausibly large draft outright rather than truncating it into an
+  // invalid config the integration would only reject anyway.
+  if (Buffer.byteLength(JSON.stringify(draft), 'utf8') > AUTOMATION_DRAFT_MAX_BYTES) return null;
+  return draft;
+}
+
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -133,12 +177,35 @@ function buildRedactor(secretValues) {
   };
 }
 
+// Redact every string of a JSON-ish value by serializing and running the string
+// redactor over the whole blob at once — no recursion, so no depth limit. Used as
+// the fallback when the tree walk hits its depth cap, so deeply-nested model
+// output (e.g. an automation `choose`/`sequence` chain) can never smuggle a secret
+// past the redactor by burying it. The redactor only ever replaces credential-
+// SHAPED substrings (which exclude JSON structural characters like `"` `{` `,`)
+// with a literal, so the result stays valid JSON; the try/catch is a belt-and-
+// braces guard against any non-serializable input (unreachable for JSON-origin
+// data — drop to null rather than risk leaking a raw value).
+function redactViaJson(value, redact) {
+  if (typeof value === 'string') return redact(value);
+  if (value === null || typeof value !== 'object') return value;
+  try {
+    return JSON.parse(redact(JSON.stringify(value)));
+  } catch {
+    return null;
+  }
+}
+
 // Apply a redactor to every string inside a JSON-ish value (strings, arrays,
 // object values). Used so model-controlled structured output (proposal intents,
-// their free-form `data`) is redacted just like plain text — closing the
-// exfiltration-via-answer channel for ALL response fields, not only text.
+// their free-form `data`; the N1 automation draft's arbitrarily-nested blocks) is
+// redacted just like plain text — closing the exfiltration-via-answer channel for
+// ALL response fields, not only text. The depth cap bounds recursion against
+// pathological nesting; PAST the cap we do NOT return the value raw (that would
+// leak secrets buried deep in a config document) — we fall back to whole-blob
+// string redaction, which is depth-independent.
 function redactDeep(value, redact, depth = 0) {
-  if (depth > 8) return value;
+  if (depth > 8) return redactViaJson(value, redact);
   if (typeof value === 'string') return redact(value);
   if (Array.isArray(value)) return value.map((v) => redactDeep(v, redact, depth + 1));
   if (value && typeof value === 'object') {
@@ -160,6 +227,7 @@ module.exports = {
   sanitizeId,
   validateIntents,
   validateProposal,
+  validateAutomationDraft,
   buildRedactor,
   redactDeep,
   sha12,

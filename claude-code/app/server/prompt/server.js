@@ -771,6 +771,11 @@ function createPromptApp({
         conversations.append(conversationId, prompt, text);
       }
       const proposal = outcome.proposal ? redactDeep(outcome.proposal, redact) : null;
+      // N1 draft (read-side): a model-drafted automation config, redacted like the
+      // proposal. Additive/optional — absent on every non-automation turn, so an
+      // old integration that doesn't read it is unaffected. The add-on never
+      // commits it; the integration re-validates + writes it in-process on confirm.
+      const automation = outcome.automation ? redactDeep(outcome.automation, redact) : null;
       const toolsUsed = outcome.toolsUsed.map((t) => redact(t));
 
       const cost = outcome.costUsd == null ? '' : ` cost=$${Number(outcome.costUsd).toFixed(4)}`;
@@ -778,7 +783,8 @@ function createPromptApp({
         `prompt[${mode}] ${base} status=200 dur=${seconds}s turns=${outcome.numTurns ?? '?'}`
         + ` tools=${outcome.toolsUsed.map((t) => sanitizeId(t, 64)).join('|') || '-'}`
         + ` out=${Buffer.byteLength(text, 'utf8')}B${outcome.truncated ? ' truncated' : ''}`
-        + `${outcome.mcpFailed ? ' mcp=FAILED' : ''}${proposal ? ' proposal=yes' : ''}${cost}`,
+        + `${outcome.mcpFailed ? ' mcp=FAILED' : ''}${proposal ? ' proposal=yes' : ''}`
+        + `${automation ? ' automation=draft' : ''}${cost}`,
       );
       if (outcome.mcpFailed) {
         console.error('[prompt] HA MCP server did not connect — check the HA token and that the Model Context Protocol Server integration is installed');
@@ -787,6 +793,10 @@ function createPromptApp({
       const responseBody = {
         text,
         proposal,
+        // Only present when the model drafted an automation (N1), so the field is
+        // absent — not null — for ordinary turns; the integration keys on its
+        // presence and old clients ignore it.
+        ...(automation ? { automation } : {}),
         tools_used: toolsUsed,
         truncated: outcome.truncated,
       };
