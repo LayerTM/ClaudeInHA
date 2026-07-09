@@ -47,7 +47,7 @@ const CRITICAL_NEVER_AUTO = new Set([
   'lawn_mower', 'update', 'siren', 'garage_door',
 ]);
 
-// D1 resilience: a chat read that dies to a transient API/generation failure is
+// Resilience: a chat read that dies to a transient API/generation failure is
 // the single worst UX (the whole answer just vanishes). These reasons are
 // transient — the identical prompt commonly succeeds on a second run — so a read
 // is retried once before we give up, and even then it DEGRADES to a friendly 200
@@ -107,7 +107,7 @@ const delay = (ms) => new Promise((r) => { setTimeout(r, ms); });
 // retry rescued (a transient blip the user never saw).
 function createChatHealth(cap = 50, persist = null) {
   // Optionally seed from a durable store so the rolling window survives an
-  // add-on restart (I9). A malformed/absent store reads as an empty history.
+  // add-on restart. A malformed/absent store reads as an empty history.
   const saved = persist && persist.load ? persist.load() : null;
   const runs = (Array.isArray(saved) ? saved : []).slice(-cap).map((r) => ({
     ok: Boolean(r && r.ok),
@@ -215,7 +215,7 @@ function createBudget(limitUsd, now = () => new Date(), persist = null) {
   let day = '';
   let spent = 0;
   // Optionally restore today's spend from a durable store so a restart mid-day
-  // doesn't silently reset the cap (I9). A stale day is handled by roll() below.
+  // doesn't silently reset the cap. A stale day is handled by roll() below.
   const saved = persist && persist.load ? persist.load() : null;
   if (saved && typeof saved.spent === 'number') {
     day = typeof saved.day === 'string' ? saved.day : '';
@@ -244,8 +244,8 @@ function createBudget(limitUsd, now = () => new Date(), persist = null) {
   };
 }
 
-// Durable, best-effort JSON state under the add-on's /data (survives restarts,
-// I9). load() is synchronous (called once, at startup); save() is
+// Durable, best-effort JSON state under the add-on's /data (survives restarts).
+// load() is synchronous (called once, at startup); save() is
 // fire-and-forget — a write failure must never break the chat, and a corrupt or
 // absent file simply reads back as null.
 function fileStore(file) {
@@ -318,7 +318,7 @@ function createPromptApp({
   // the client-supplied conversation_id, so it is hard-capped inside history.js.
   const conversations = createHistoryStore();
   // Optional daily spend cap for the chat. Durable across restarts when a
-  // stateDir is provided (I9), so a mid-day restart doesn't reset the cap.
+  // stateDir is provided, so a mid-day restart doesn't reset the cap.
   const budget = createBudget(
     dailyBudgetUsd, undefined,
     stateDir ? fileStore(path.join(stateDir, 'budget.json')) : null,
@@ -330,7 +330,7 @@ function createPromptApp({
   // "connected". Distinct from ha_mcp, which only says a config file exists.
   let lastMcpConnected = null;
   // Rolling chat-health window; durable across restarts when a stateDir is
-  // provided (I9) so the health sensor's history isn't wiped on every update.
+  // provided so the health sensor's history isn't wiped on every update.
   const chatHealth = createChatHealth(
     50, stateDir ? fileStore(path.join(stateDir, 'chat-health.json')) : null,
   );
@@ -771,7 +771,7 @@ function createPromptApp({
         conversations.append(conversationId, prompt, text);
       }
       const proposal = outcome.proposal ? redactDeep(outcome.proposal, redact) : null;
-      // N1 draft (read-side): a model-drafted automation config, redacted like the
+      // Automation draft (read-side): a model-drafted automation config, redacted like the
       // proposal. Additive/optional — absent on every non-automation turn, so an
       // old integration that doesn't read it is unaffected. The add-on never
       // commits it; the integration re-validates + writes it in-process on confirm.
@@ -793,7 +793,7 @@ function createPromptApp({
       const responseBody = {
         text,
         proposal,
-        // Only present when the model drafted an automation (N1), so the field is
+        // Only present when the model drafted an automation, so the field is
         // absent — not null — for ordinary turns; the integration keys on its
         // presence and old clients ignore it.
         ...(automation ? { automation } : {}),

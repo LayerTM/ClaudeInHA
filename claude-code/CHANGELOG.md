@@ -1,9 +1,15 @@
 # Changelog
 
+## [1.35.1] — 2026-07-09
+
+### Housekeeping
+- Reworded changelog entries and code comments in plain, user-facing terms for clarity. No
+  functional change.
+
 ## [1.35.0] — 2026-07-09
 
 ### Added
-- **Proactive anomaly alerts (N3) — deterministic, no plan usage.** A new opt-in background
+- **Proactive anomaly alerts — deterministic, no plan usage.** A new opt-in background
   loop (`proactive_alerts: true`) watches your Home Assistant states and notifies you the moment
   something looks wrong. Unlike proactive monitoring and the morning digest, it makes **no Claude
   call and spends no plan usage** — it is pure bash + jq applying fixed rules every
@@ -31,7 +37,7 @@
 ## [1.34.0] — 2026-07-09
 
 ### Fixed
-- **Automation drafting (N1) now reliably returns the config, not just a prose promise.** Live
+- **Automation drafting now reliably returns the config, not just a prose promise.** Live
   testing showed the model would answer "here's a draft automation, confirm to create it" while
   leaving the structured `automation` field empty — because the field was optional, so the model
   treated describing it in `text` as sufficient. The field is now **required and nullable**
@@ -43,7 +49,7 @@
 ## [1.33.1] — 2026-07-09
 
 ### Fixed
-- **Automation drafting (N1) is scoped to NEW automations only, so a "modify" request can't
+- **Automation drafting is scoped to NEW automations only, so a "modify" request can't
   create a duplicate.** The draft has no way to reference an existing automation's id, and the
   commit assigns a fresh id — so a "change my existing automation" request would have been
   committed as a second, duplicate automation. The model is now told to draft only for creating
@@ -55,7 +61,7 @@
 ## [1.33.0] — 2026-07-09
 
 ### Added
-- **Draft a Home Assistant automation from plain language (N1, Phase 1).** Ask the companion
+- **Draft a Home Assistant automation from plain language.** Ask the companion
   chat/Assist to "create an automation that turns on the living-room lights when I get home in
   the evening" and Claude now drafts a real HA automation config (`alias` / `triggers` /
   `conditions` / `actions`) and returns it in a new, optional `automation` field on the read
@@ -131,7 +137,7 @@
   to one short, natural, TTS-friendly sentence (no markdown, lists, code, or URLs, which sound
   like noise when read aloud). Absent or `"text"` keeps today's behavior (backward compatible);
   an invalid value is rejected. The audit logs `surface=`. Read-mode only. The companion
-  integration sends `"voice"` for voice turns (co-design in flight).
+  integration sends `"voice"` for voice turns.
 
 ## [1.27.0] — 2026-07-09
 
@@ -151,7 +157,7 @@
 
 ### Added
 - **The audit now records `langdir=` — the exact language the model was told to answer in
-  (I13).** The audit already logged `lang=` (the *notice* code, normalized to the handful of
+ .** The audit already logged `lang=` (the *notice* code, normalized to the handful of
   languages the server-authored strings are translated into, with an `en` fallback), so a
   request in a language outside that set logged `lang=en` and hid the real language. It now
   also logs `langdir=<tag>` — the validated BCP-47 tag threaded into the model's system
@@ -162,7 +168,7 @@
 ## [1.25.0] — 2026-07-09
 
 ### Added
-- **Server-authored notices are localized in more languages (I12).** The two strings
+- **Server-authored notices are localized in more languages.** The two strings
   the add-on itself authors — the "couldn't finish" degrade apology and the daily-budget
   notice — were only translated for English, Ukrainian and Polish, so any other Home
   Assistant language got the English text. They now also cover **German, French, Spanish,
@@ -190,7 +196,7 @@
 ## [1.23.0] — 2026-07-05
 
 ### Added
-- **Chat budget spend and the `chat_health` window now survive add-on restarts (I9).**
+- **Chat budget spend and the `chat_health` window now survive add-on restarts.**
   Both were in-memory and reset on every restart/update, so the budget sensor and the
   chat-health history started from scratch each time. They now persist to small
   best-effort `0600` JSON files under `/data` (`claude-prompt/budget.json`,

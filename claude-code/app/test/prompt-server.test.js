@@ -100,7 +100,7 @@ test('validateProposal: drops non-conforming model output', () => {
   assert.equal(security.validateProposal({ summary: 'x', intents: [{ intent: 'HassTurnOff', targets: ['light.x'], risk: 'bogus' }] }).intents[0].risk, 'sensitive');
 });
 
-test('validateAutomationDraft: keeps a well-formed draft, drops unusable shapes (N1)', () => {
+test('validateAutomationDraft: keeps a well-formed draft, drops unusable shapes', () => {
   const good = security.validateAutomationDraft({
     alias: '  Evening lights  ',
     description: 'lights at dusk',
@@ -183,7 +183,7 @@ test('createBudget: daily USD cap enforced, resets by day, 0 = unlimited', () =>
   assert.equal(unlimited.exceeded(), false, 'zero limit is unlimited');
 });
 
-test('createBudget: persists spend across a restart via a persist store (I9)', () => {
+test('createBudget: persists spend across a restart via a persist store', () => {
   let clock = new Date('2026-07-04T10:00:00Z');
   const store = { s: null, load() { return this.s; }, save(v) { this.s = v; } };
   const b1 = createBudget(0.5, () => clock, store);
@@ -200,7 +200,7 @@ test('createBudget: persists spend across a restart via a persist store (I9)', (
   assert.equal(createBudget(0.5, () => clock, store).spent(), 0, 'the reset persisted');
 });
 
-test('createChatHealth: persists recent runs across a restart via a persist store (I9)', () => {
+test('createChatHealth: persists recent runs across a restart via a persist store', () => {
   const store = { s: null, load() { return this.s; }, save(v) { this.s = v; } };
   const h1 = createChatHealth(3, store);
   h1.record(true, null, false);
@@ -215,12 +215,12 @@ test('createChatHealth: persists recent runs across a restart via a persist stor
   assert.equal(createChatHealth(3, store).snapshot().recovered, 1, 'the new record persisted');
 });
 
-test('fileStore: a budget restores today’s spend from a real 0600 /data json (I9)', () => {
+test('fileStore: a budget restores today’s spend from a real 0600 /data json', () => {
   const file = path.join(TMP, 'i9-budget.json');
   const clock = new Date('2026-07-04T10:00:00Z');
   // The running add-on leaves state like this on disk; write it synchronously so
   // the test is deterministic (fileStore.save's fire-and-forget write is covered
-  // by the createBudget-persist unit test above). What matters for I9 is RESTORE.
+  // by the createBudget-persist unit test above). What matters here is RESTORE.
   fs.writeFileSync(file, JSON.stringify({ day: '2026-07-04', spent: 0.42 }), { mode: 0o600 });
   assert.equal(fs.statSync(file).mode & 0o777, 0o600, 'state file is 0600');
   // a "restart": a fresh budget restores that spend via fileStore.load().
@@ -394,7 +394,7 @@ test('status: chat_health summarizes recent read outcomes (reason is a token onl
   assert.equal(body.chat_health.last_reason, 'model-error', 'last failure reason token');
 });
 
-test('status: exposes prompt_timeout_ms and the daily budget (I8 — for the integration sensors)', async () => {
+test('status: exposes prompt_timeout_ms and the daily budget (for the integration sensors)', async () => {
   const res = await fetch(`${BASE}/api/status`, { headers: { Authorization: `Bearer ${TOKEN}` } });
   const body = await res.json();
   // prompt_timeout_ms = the add-on's wall-clock ceiling, so the client can pair its
@@ -472,7 +472,7 @@ test('read: proposal carries the per-intent risk hint (default sensitive; low ho
   assert.equal(l.json.proposal.intents[0].risk, 'low');
 });
 
-test('read: an automation-creation request returns a drafted config (N1), redacted, audited', async () => {
+test('read: an automation-creation request returns a drafted config, redacted, audited', async () => {
   const { status, json } = await post(
     { prompt: 'PROPOSE MKAUTO create an automation' }, { 'X-Claude-Caller': 'user.mkauto' },
   );
@@ -491,7 +491,7 @@ test('read: an automation-creation request returns a drafted config (N1), redact
   assert.match(line, /automation=draft/, `audit flags the draft, got: ${line}`);
 });
 
-test('read: secrets buried deep in a drafted automation are redacted end-to-end (N1)', async () => {
+test('read: secrets buried deep in a drafted automation are redacted end-to-end', async () => {
   const { json } = await post(
     { prompt: 'PROPOSE MKAUTO DEEPAUTO create an automation' }, { 'X-Claude-Caller': 'user.deepauto' },
   );
@@ -501,14 +501,14 @@ test('read: secrets buried deep in a drafted automation are redacted end-to-end 
   assert.ok(blob.includes('[REDACTED]'), 'redaction reached the buried node');
 });
 
-test('read: a malformed automation draft is dropped, not surfaced (N1)', async () => {
+test('read: a malformed automation draft is dropped, not surfaced', async () => {
   const { json } = await post(
     { prompt: 'PROPOSE MKAUTO BADAUTO create an automation' }, { 'X-Claude-Caller': 'user.badauto' },
   );
   assert.ok(!('automation' in json), 'a malformed draft is absent, not null-or-broken');
 });
 
-test('read: an ordinary turn has no automation field (N1 additive/absent)', async () => {
+test('read: an ordinary turn has no automation field (additive/absent)', async () => {
   const { json } = await post({ prompt: 'PROPOSE please' }, { 'X-Claude-Caller': 'user.noauto' });
   assert.ok(!('automation' in json), 'non-automation turns omit the field entirely');
 });
@@ -633,7 +633,7 @@ test('read: the degrade apology is localized by the request language (en fallbac
   // a full locale ("pl-PL") normalizes to its 2-letter language
   const pl = await post({ prompt: 'ISERROR', language: 'pl-PL' }, { 'X-Claude-Caller': 'user.loc.pl' });
   assert.match(pl.json.text, /Przepraszam|Spróbuj/, `pl degrade text, got: ${pl.json.text}`);
-  // I12: newly-added languages — a German ("de-DE") request gets German, not English
+  // newly-added languages — a German ("de-DE") request gets German, not English
   const de = await post({ prompt: 'ISERROR', language: 'de-DE' }, { 'X-Claude-Caller': 'user.loc.de' });
   assert.match(de.json.text, /Entschuldigung|versuche/, `de degrade text, got: ${de.json.text}`);
   // absent language → English (backward compatible)
@@ -648,7 +648,7 @@ test('read: language must be a string when present', async () => {
   assert.equal((await post({ prompt: 'hi', language: 5 }, { 'X-Claude-Caller': 'user.langval' })).status, 400);
 });
 
-test('read: the request language is threaded into the model system prompt (T1 — any language, injection-safe)', async () => {
+test('read: the request language is threaded into the model system prompt (any language, injection-safe)', async () => {
   // a well-formed subtag reaches the --append-system-prompt directive
   const de = await post({ prompt: 'hello', language: 'de' }, { 'X-Claude-Caller': 'user.syslang.de' });
   assert.equal(de.status, 200);
@@ -716,13 +716,13 @@ test('read: a deterministic max-turns failure is NOT retried and its cost is bil
   assert.match(line, /cost=\$0\.5000/, `cost billed: ${line}`);
 });
 
-test('audit: a read logs the request language (I10 — end-to-end I1 confirmation)', async () => {
+test('audit: a read logs the request language (end-to-end language confirmation)', async () => {
   await post({ prompt: 'hello there', language: 'uk' }, { 'X-Claude-Caller': 'user.langaudit' });
   const line = await waitForAuditLine('user.langaudit');
   assert.ok(line, 'an audit line for the language read exists');
   assert.match(line, /lang=uk/, `audit logs the request language, got: ${line}`);
-  assert.match(line, /langdir=uk/, `audit logs the raw directive tag (I13), got: ${line}`);
-  // I13: a language OUTSIDE the notice table logs the normalized notice code
+  assert.match(line, /langdir=uk/, `audit logs the raw directive tag, got: ${line}`);
+  // a language OUTSIDE the notice table logs the normalized notice code
   // (`lang=en` fallback) AND the RAW tag the model was actually told (`langdir=ja`),
   // so the two never conflate — the old `lang=` alone under-reported non-notice langs.
   await post({ prompt: 'hello', language: 'ja' }, { 'X-Claude-Caller': 'user.langaudit.ja' });

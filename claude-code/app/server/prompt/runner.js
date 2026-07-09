@@ -86,7 +86,7 @@ const READ_SCHEMA = JSON.stringify({
       required: ['summary', 'intents'],
       additionalProperties: false,
     },
-    // N1 (read-side draft): when the user asks to CREATE a new automation, the
+    // Automation draft (read-side): when the user asks to CREATE a new automation, the
     // model drafts a Home Assistant automation config here for the user to
     // confirm. The add-on never commits it — the companion integration
     // re-validates with HA's own validator + an action allowlist and writes it
@@ -147,7 +147,7 @@ const READ_SYSTEM_PROMPT = [
   'update, PoE), or anything that affects safety, security or access or is hard',
   'to undo. The user may confirm before anything runs.',
   'Otherwise set "proposal" to null.',
-  // N1 — natural-language automation drafting (read-only). The model DRAFTS the
+  // Natural-language automation drafting (read-only). The model DRAFTS the
   // config; the integration re-validates and commits it in-process on confirm.
   'Set "automation" to null UNLESS the user asks to CREATE a NEW automation (an',
   'ongoing rule like "when X happens, do Y"). When they do, you MUST put the FULL',

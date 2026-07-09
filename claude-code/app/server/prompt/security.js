@@ -115,8 +115,8 @@ const AUTOMATION_MODES = new Set(['single', 'restart', 'queued', 'parallel']);
 // Cap on the serialized draft so a runaway model can't emit a huge config blob.
 const AUTOMATION_DRAFT_MAX_BYTES = 8192;
 
-// Validate a model-DRAFTED Home Assistant automation config (N1 read-side draft).
-// This is Phase-1 only: the add-on returns the draft for display/confirmation —
+// Validate a model-DRAFTED Home Assistant automation config (the read-side draft).
+// The add-on only DRAFTS: it returns the config for display/confirmation —
 // it NEVER commits it. The authoritative gate lives in the companion integration,
 // which re-validates the dict with HA's own `async_validate_config_item` and
 // enforces an action allowlist at commit time (deterministic, no LLM in the write
@@ -198,7 +198,7 @@ function redactViaJson(value, redact) {
 
 // Apply a redactor to every string inside a JSON-ish value (strings, arrays,
 // object values). Used so model-controlled structured output (proposal intents,
-// their free-form `data`; the N1 automation draft's arbitrarily-nested blocks) is
+// their free-form `data`; the automation draft's arbitrarily-nested blocks) is
 // redacted just like plain text — closing the exfiltration-via-answer channel for
 // ALL response fields, not only text. The depth cap bounds recursion against
 // pathological nesting; PAST the cap we do NOT return the value raw (that would

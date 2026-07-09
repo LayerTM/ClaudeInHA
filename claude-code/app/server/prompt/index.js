@@ -190,7 +190,7 @@ async function start() {
     redact,
     audit,
     // Durable state (budget spend + chat-health window) lives alongside the MCP
-    // config in the existing 0700 claude-prompt dir, so it survives restarts (I9).
+    // config in the existing 0700 claude-prompt dir, so it survives restarts.
     stateDir: path.join(DATA_DIR, 'claude-prompt'),
   });
 

@@ -149,7 +149,7 @@ function finish(prompt, wantsProposal) {
       };
   }
 
-  // N1: a MKAUTO prompt makes the model draft an automation config. BADAUTO makes
+  // A MKAUTO prompt makes the model draft an automation config. BADAUTO makes
   // it malformed so the test can prove validateAutomationDraft rejects it. The
   // valid draft carries secret-shaped values in alias + an action's data so the
   // test proves redactDeep reaches every field of the automation too.
@@ -183,7 +183,7 @@ function finish(prompt, wantsProposal) {
   // test can observe genuine mid-generation deltas (not just a single tail flush).
   const filler = prompt.includes('LONGSTREAM') ? ` ${'lorem ipsum dolor '.repeat(18)}` : '';
   // Reflect the language subtag the server threaded into --append-system-prompt
-  // (T1), so a test can prove the model is told which language to answer in.
+  //, so a test can prove the model is told which language to answer in.
   const sysIdx = args.indexOf('--append-system-prompt');
   const sysPrompt = sysIdx !== -1 ? args[sysIdx + 1] : '';
   const sysLang = ((sysPrompt.match(/language is "([^"]+)"/)) || [])[1] || '';
