@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.31.0] — 2026-07-09
+
+### Added
+- **Optional faster model for voice replies (`chat_model_voice`).** Spoken (voice) Assist
+  turns are short — the voice brevity directive keeps them to one sentence — so latency
+  matters more there than raw capability. A new option points voice turns at a quicker,
+  cheaper model (e.g. `claude-haiku-4-5-20251001`) for near-instant spoken answers, while text
+  chat and the console keep their own models. The add-on uses it whenever the request carries
+  `surface: "voice"` (voice reads and voice-confirmed writes); empty → voice uses the normal
+  Chat Model, so nothing changes unless you set it. Translated (EN/UK/PL).
+
 ## [1.30.0] — 2026-07-09
 
 ### Fixed

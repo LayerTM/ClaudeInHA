@@ -39,6 +39,7 @@ process.env.ANTHROPIC_API_KEY = 'sk-ant-api03-EXAMPLEparent00000000';
 fs.writeFileSync(process.env.CLAUDE_PROMPT_OPTIONS, JSON.stringify({
   prompt_api: true, api_token: '', prompt_ha_token: HA_LLAT,
   ha_token: '', api_key: '', oauth_token: '', model: '',
+  chat_model_voice: 'test-voice-model',
 }));
 
 const security = require('../server/prompt/security');
@@ -588,6 +589,14 @@ test('read: surface="voice" appends a spoken-aloud brevity directive; text/absen
   assert.match(none.json.text, /voice=0\b/, `absent surface omits it, got: ${none.json.text}`);
   // an invalid surface is rejected, not silently ignored
   assert.equal((await post({ prompt: 'hi', surface: 'megaphone' }, { 'X-Claude-Caller': 'user.surf.bad' })).status, 400);
+});
+
+test('read: a voice turn uses the faster chat_model_voice; a text turn uses the normal model', async () => {
+  const v = await post({ prompt: 'hello', surface: 'voice' }, { 'X-Claude-Caller': 'user.vm.v' });
+  assert.match(v.json.text, /model=test-voice-model\b/, `voice turn uses chat_model_voice, got: ${v.json.text}`);
+  // text/absent surface keeps the normal model (empty in this harness → no --model)
+  const t = await post({ prompt: 'hello', surface: 'text' }, { 'X-Claude-Caller': 'user.vm.t' });
+  assert.match(t.json.text, /model=(?!test-voice-model)/, `text turn does NOT use the voice model, got: ${t.json.text}`);
 });
 
 test('write: a run failure surfaces honestly as 500 (never a fake success)', async () => {

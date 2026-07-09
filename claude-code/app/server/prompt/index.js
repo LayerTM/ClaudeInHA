@@ -178,6 +178,10 @@ async function start() {
     // A dedicated chat model (e.g. a faster/cheaper one) is preferred; fall back
     // to the console's model override, then the Claude default.
     model: optionString(options, 'chat_model') || optionString(options, 'model'),
+    // Optional faster/cheaper model for spoken (voice) turns — replies are short
+    // there, so latency matters more than raw capability. Empty → voice uses the
+    // same `model` as text (no change).
+    voiceModel: optionString(options, 'chat_model_voice'),
     dailyBudgetUsd: Number(options.chat_daily_budget_usd) || 0,
     // Same HA token the MCP config uses — for fetching camera snapshots (vision).
     haToken,

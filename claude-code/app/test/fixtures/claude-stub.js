@@ -159,8 +159,11 @@ function finish(prompt, wantsProposal) {
   const sysLang = ((sysPrompt.match(/language is "([^"]+)"/)) || [])[1] || '';
   // Reflect whether the voice-brevity directive was appended (surface=voice).
   const sysVoice = sysPrompt.includes('spoken aloud') ? 1 : 0;
+  // Reflect the --model the server chose (voice turns get the faster voice model).
+  const mIdx = args.indexOf('--model');
+  const usedModel = mIdx !== -1 ? args[mIdx + 1] : '';
   const structured = wantsProposal
-    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}${filler}; syslang=${sysLang}; voice=${sysVoice}`, proposal }
+    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}${filler}; syslang=${sysLang}; voice=${sysVoice}; model=${usedModel}`, proposal }
     // write mode: reflect what actually reached the child via stdin, so the test
     // can prove the untrusted client prompt is absent and the intents present.
     : { text: `stdin_has_inject=${prompt.includes('INJECTED')} stdin_has_intent=${prompt.includes('HassTurnOff')}` };

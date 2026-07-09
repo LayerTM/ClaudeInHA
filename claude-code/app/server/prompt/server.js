@@ -307,7 +307,7 @@ async function fetchSnapshot(entity, haToken, workDir, fetchImpl = fetch) {
 }
 
 function createPromptApp({
-  token, claudeBin, usageBin, mcpConfigPath, model, dailyBudgetUsd = 0, haToken,
+  token, claudeBin, usageBin, mcpConfigPath, model, voiceModel = '', dailyBudgetUsd = 0, haToken,
   workDir, addonVersion, redact, audit, stateDir = null,
 }) {
   const app = express();
@@ -642,7 +642,10 @@ function createPromptApp({
             mode,
             intents: intents || [],
             mcpConfigPath,
-            model,
+            // A voice turn uses the (optional) faster voice model — spoken replies
+            // are short, so lower latency beats raw capability. Falls back to the
+            // normal model when unset. Applies to voice writes too (snappy confirms).
+            model: (body.surface === 'voice' && voiceModel) ? voiceModel : model,
             cwd: workDir,
             signal: abort.signal,
             history: (mode === 'read' && conversationId)

@@ -164,6 +164,13 @@ configuration:
       claude-sonnet-4-6) dla błyskawicznych, tanich odpowiedzi w Assist, podczas
       gdy konsola zachowuje własny model. Zostaw puste, aby użyć „Nadpisania
       modelu" powyżej lub domyślnego modelu Claude.
+  chat_model_voice:
+    name: Model głosowy (integracja claude_ha)
+    description: >-
+      Opcjonalny jeszcze szybszy model TYLKO dla mówionych (głosowych) tur Assist —
+      odpowiedzi głosowe są krótkie, więc niższe opóźnienie liczy się bardziej niż
+      moc. Np. claude-haiku-4-5-20251001 dla niemal natychmiastowych odpowiedzi
+      głosowych. Zostaw puste, aby dla głosu też użyć „Modelu czatu" powyżej.
   chat_daily_budget_usd:
     name: Dzienny budżet czatu (USD)
     description: >-

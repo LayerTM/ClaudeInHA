@@ -164,6 +164,13 @@ configuration:
       (e.g. claude-sonnet-4-6) for snappy, low-cost Assist replies while the
       console keeps its own model. Leave empty to use the Model Override above,
       or the Claude default.
+  chat_model_voice:
+    name: Voice Chat Model (claude_ha integration)
+    description: >-
+      Optional even-faster model used ONLY for spoken (voice) Assist turns — voice
+      replies are short, so lower latency matters more than raw capability. For
+      example claude-haiku-4-5-20251001 for near-instant voice answers. Leave empty
+      to use the Chat Model above for voice too.
   chat_daily_budget_usd:
     name: Chat Daily Budget (USD)
     description: >-
