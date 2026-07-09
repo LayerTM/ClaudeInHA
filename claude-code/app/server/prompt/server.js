@@ -627,6 +627,10 @@ function createPromptApp({
       let outcome;
       let attempts = 0;
       let spent = 0; // real API cost of EVERY attempt (billed even on a failed/degraded read)
+      // A voice turn uses the (optional) faster voice model; everything else uses
+      // the normal chat model. Resolved ONCE here so the run and the audit can't
+      // disagree about which model actually served the turn (empty → Claude default).
+      const resolvedModel = (body.surface === 'voice' && voiceModel) ? voiceModel : model;
       try {
         // 6. Run Claude (stateless, scrubbed, deny-by-default). A read whose run
         //    fails to a TRANSIENT reason is retried (the identical prompt commonly
@@ -645,7 +649,7 @@ function createPromptApp({
             // A voice turn uses the (optional) faster voice model — spoken replies
             // are short, so lower latency beats raw capability. Falls back to the
             // normal model when unset. Applies to voice writes too (snappy confirms).
-            model: (body.surface === 'voice' && voiceModel) ? voiceModel : model,
+            model: resolvedModel,
             cwd: workDir,
             signal: abort.signal,
             history: (mode === 'read' && conversationId)
@@ -693,7 +697,7 @@ function createPromptApp({
       const base = `caller=${caller}${conversationId ? ` conv=${conversationId}` : ''}`
         + `${imageEntity ? ` img=${imageEntity}${imagePath ? '' : '(fetch-failed)'}` : ''}`
         + ` lang=${language} langdir=${safeLangTag(body.language) || '-'}`
-        + ` surface=${body.surface || '-'} ${detail}`;
+        + ` surface=${body.surface || '-'} model=${sanitizeId(resolvedModel, 64) || 'default'} ${detail}`;
 
       // A streaming READ must NEVER terminate with `{type:"error"}` — the
       // integration's NDJSON reader treats that as fatal and the chat hard-fails,

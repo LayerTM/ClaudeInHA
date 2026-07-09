@@ -642,6 +642,24 @@ test('audit: a read logs the request language (I10 — end-to-end I1 confirmatio
   assert.match(ja, /lang=en langdir=ja/, `non-notice language logs fallback + raw tag, got: ${ja}`);
 });
 
+test('audit: the resolved model is logged so voice-vs-text model selection is verifiable in prod', async () => {
+  // The whole point of chat_model_voice is that a voice turn runs a DIFFERENT
+  // (faster) model — but nothing in the audit showed which model actually served
+  // a turn. Log the resolved model so a live voice turn can be confirmed to have
+  // used the voice model, and a text turn to have used the normal one.
+  await post({ prompt: 'hello', surface: 'voice', language: 'uk' }, { 'X-Claude-Caller': 'user.modelaudit.voice' });
+  const v = await waitForAuditLine('user.modelaudit.voice');
+  assert.ok(v, 'an audit line for the voice turn exists');
+  assert.match(v, /model=test-voice-model\b/, `voice turn logs the voice model, got: ${v}`);
+
+  // A text turn with an empty model override logs `default` (Claude's own default),
+  // never the voice model.
+  await post({ prompt: 'hello', surface: 'text' }, { 'X-Claude-Caller': 'user.modelaudit.text' });
+  const t = await waitForAuditLine('user.modelaudit.text');
+  assert.match(t, /model=default\b/, `text turn with empty model logs default, got: ${t}`);
+  assert.doesNotMatch(t, /model=test-voice-model/, `text turn does NOT use the voice model, got: ${t}`);
+});
+
 test('audit: MCP is NOT flagged failed when an ha tool actually ran, even if init showed it not-yet-connected', async () => {
   // The `system/init` snapshot can show the ha MCP server still connecting while
   // it serves GetLiveContext fine a moment later — that must not read as a failure.

@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.32.0] — 2026-07-09
+
+### Added
+- **Audit logs the resolved model (`model=…`).** Every `/api/prompt` audit line now records
+  which Claude model actually served the turn, right next to `surface=`. This closes the
+  observability loop on `chat_model_voice` (1.31.0): a voice turn is now verifiable in
+  production as having run the faster voice model (`model=<voice model>`), while a text turn
+  shows the normal chat model (`model=default` when no override is set). The value is a config
+  string, never prompt content, and is sanitized before logging. No API contract change.
+
 ## [1.31.0] — 2026-07-09
 
 ### Added
