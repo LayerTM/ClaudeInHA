@@ -563,6 +563,19 @@ test('read: the request language is threaded into the model system prompt (T1 â€
   assert.match(inj.json.text, /syslang=(?![\w-])/, `non-tag language yields no directive (injection-safe), got: ${inj.json.text}`);
 });
 
+test('read: surface="voice" appends a spoken-aloud brevity directive; text/absent does not', async () => {
+  const v = await post({ prompt: 'hello', surface: 'voice' }, { 'X-Claude-Caller': 'user.surf.v' });
+  assert.equal(v.status, 200);
+  assert.match(v.json.text, /voice=1\b/, `voice surface adds the spoken-aloud directive, got: ${v.json.text}`);
+  const t = await post({ prompt: 'hello', surface: 'text' }, { 'X-Claude-Caller': 'user.surf.t' });
+  assert.match(t.json.text, /voice=0\b/, `text surface omits it, got: ${t.json.text}`);
+  // absent â†’ omitted (backward compatible)
+  const none = await post({ prompt: 'hello' }, { 'X-Claude-Caller': 'user.surf.n' });
+  assert.match(none.json.text, /voice=0\b/, `absent surface omits it, got: ${none.json.text}`);
+  // an invalid surface is rejected, not silently ignored
+  assert.equal((await post({ prompt: 'hi', surface: 'megaphone' }, { 'X-Claude-Caller': 'user.surf.bad' })).status, 400);
+});
+
 test('write: a run failure surfaces honestly as 500 (never a fake success)', async () => {
   // The untrusted prompt never reaches a write child, so the failure marker rides
   // in an intent's data. A write must NOT be degraded to a cheerful 200.

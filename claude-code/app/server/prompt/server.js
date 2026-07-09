@@ -21,6 +21,7 @@ const MAX_PROMPT_BYTES = 8 * 1024;
 const MAX_CONCURRENT_RUNS = 2;
 const BODY_KEYS = new Set([
   'prompt', 'mode', 'conversation_id', 'intents', 'confirmation', 'image_entity', 'stream', 'language',
+  'surface',
 ]);
 
 // When streaming, hold back this many trailing chars of the redacted text before
@@ -487,6 +488,12 @@ function createPromptApp({
       }
       const language = langOf(body.language);
 
+      // Optional surface hint: "voice" makes the model keep the reply short and
+      // TTS-friendly (spoken aloud). Absent → today's behavior (text-length).
+      if (body.surface !== undefined && body.surface !== 'voice' && body.surface !== 'text') {
+        return res.status(400).json({ error: 'surface must be "voice" or "text"' });
+      }
+
       // Camera vision: an optional camera entity to snapshot and let Claude SEE.
       // Read-only, strict entity format; the integration must only pass cameras
       // the user has exposed to Assist (that is the outer boundary).
@@ -646,6 +653,8 @@ function createPromptApp({
             // (the runner validates it as a well-formed tag before use). Distinct
             // from `language` above (the en/uk/pl-normalized code for notices).
             language: body.language,
+            // "voice" → append a spoken-aloud brevity directive (read only).
+            surface: body.surface,
             // First attempt gets the full ceiling; a retry gets only what's LEFT of
             // the one-request budget, so TOTAL wall-clock across attempts never
             // exceeds TIMEOUT_MS (the client can pair its timeout to that one bound).
@@ -680,7 +689,8 @@ function createPromptApp({
         : `len=${Buffer.byteLength(prompt, 'utf8')} sha=${sha12(prompt)}`;
       const base = `caller=${caller}${conversationId ? ` conv=${conversationId}` : ''}`
         + `${imageEntity ? ` img=${imageEntity}${imagePath ? '' : '(fetch-failed)'}` : ''}`
-        + ` lang=${language} langdir=${safeLangTag(body.language) || '-'} ${detail}`;
+        + ` lang=${language} langdir=${safeLangTag(body.language) || '-'}`
+        + ` surface=${body.surface || '-'} ${detail}`;
 
       // A streaming READ must NEVER terminate with `{type:"error"}` — the
       // integration's NDJSON reader treats that as fatal and the chat hard-fails,

@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.28.0] — 2026-07-09
+
+### Added
+- **Optional `surface` hint on `/api/prompt` for concise spoken replies.** Now that voice
+  (STT/TTS) is a first-class surface, a request may set `surface: "voice"` — the add-on then
+  appends a directive telling the model the reply will be spoken aloud, so it keeps the answer
+  to one short, natural, TTS-friendly sentence (no markdown, lists, code, or URLs, which sound
+  like noise when read aloud). Absent or `"text"` keeps today's behavior (backward compatible);
+  an invalid value is rejected. The audit logs `surface=`. Read-mode only. The companion
+  integration sends `"voice"` for voice turns (co-design in flight).
+
 ## [1.27.0] — 2026-07-09
 
 ### Changed

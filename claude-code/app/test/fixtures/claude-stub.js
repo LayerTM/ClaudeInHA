@@ -138,9 +138,12 @@ function finish(prompt, wantsProposal) {
   // Reflect the language subtag the server threaded into --append-system-prompt
   // (T1), so a test can prove the model is told which language to answer in.
   const sysIdx = args.indexOf('--append-system-prompt');
-  const sysLang = (((sysIdx !== -1 ? args[sysIdx + 1] : '').match(/language is "([^"]+)"/)) || [])[1] || '';
+  const sysPrompt = sysIdx !== -1 ? args[sysIdx + 1] : '';
+  const sysLang = ((sysPrompt.match(/language is "([^"]+)"/)) || [])[1] || '';
+  // Reflect whether the voice-brevity directive was appended (surface=voice).
+  const sysVoice = sysPrompt.includes('spoken aloud') ? 1 : 0;
   const structured = wantsProposal
-    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}${filler}; syslang=${sysLang}`, proposal }
+    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}${filler}; syslang=${sysLang}; voice=${sysVoice}`, proposal }
     // write mode: reflect what actually reached the child via stdin, so the test
     // can prove the untrusted client prompt is absent and the intents present.
     : { text: `stdin_has_inject=${prompt.includes('INJECTED')} stdin_has_intent=${prompt.includes('HassTurnOff')}` };

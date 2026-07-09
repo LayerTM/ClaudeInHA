@@ -164,6 +164,14 @@ function languageDirective(language) {
     + ' "text" field in that language, regardless of the language of these'
     + ' instructions or of any tool results.';
 }
+// When the reply will be spoken aloud (surface="voice"), keep it tight and
+// TTS-friendly — long text and markup are painful to listen to. Read-mode only.
+function voiceDirective(surface) {
+  if (surface !== 'voice') return '';
+  return ' This reply will be spoken aloud by text-to-speech: keep the "text"'
+    + ' field to one short, natural sentence where possible — plain and easy to'
+    + ' hear, with no markdown, lists, code, tables, or URLs.';
+}
 
 // The stdin content for a write run. IMPORTANT: the untrusted client prompt is
 // NEVER included here — only the server-validated intents. This removes the
@@ -285,7 +293,7 @@ function shutdown() {
  */
 function runClaude({
   bin, prompt, mode, intents, mcpConfigPath, model, cwd, signal, history, imagePath, onText, timeoutMs,
-  language,
+  language, surface,
 }) {
   return new Promise((resolve) => {
     // A caller may cap THIS run below the module ceiling (e.g. a retry gets only
@@ -314,7 +322,8 @@ function runClaude({
       '--disallowed-tools', vision ? DISALLOWED_TOOLS_VISION : DISALLOWED_TOOLS,
       '--json-schema', read ? READ_SCHEMA : WRITE_SCHEMA,
       '--append-system-prompt',
-      (read ? READ_SYSTEM_PROMPT : WRITE_SYSTEM_PROMPT) + languageDirective(language),
+      (read ? READ_SYSTEM_PROMPT : WRITE_SYSTEM_PROMPT)
+        + languageDirective(language) + (read ? voiceDirective(surface) : ''),
       // Accepted (though no longer documented) by CLI 2.1.200; bounds agentic
       // loops as a second ceiling next to the wall-clock timeout.
       '--max-turns', String(MAX_TURNS),
