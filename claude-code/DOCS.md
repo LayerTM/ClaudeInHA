@@ -121,6 +121,14 @@ deliberately much more restricted than the interactive console:
   free-form message, so untrusted text never reaches the state-changing path.
 - Rate-limited, concurrency-capped, time-bounded, output-capped, and
   secret-redacted; every call is written to the audit log (`ha-audit`).
+- **Its own model — optionally faster for voice.** The companion chat can run a
+  different model from the interactive console (`chat_model`) — e.g. a quicker,
+  cheaper one for snappy Assist replies — and spoken (voice) turns can use an even
+  faster model (`chat_model_voice`), since voice answers are short and lower
+  latency matters more there than raw capability. Both are optional; leave them
+  empty to use the console's model. Replies are also written in your Home
+  Assistant language, and voice replies are kept to one short, spoken-friendly
+  sentence.
 
 To use it, install the `claude_ha` integration (it will detect this add-on
 automatically) and, for live HA context, install Home Assistant's *Model Context

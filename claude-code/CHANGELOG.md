@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.34.1] — 2026-07-09
+
+### Documentation
+- **Documented the companion chat's model options.** The Prompt API section now explains
+  `chat_model` (a separate, optionally faster/cheaper model for the companion chat) and
+  `chat_model_voice` (an even faster model for short spoken voice turns), plus that replies are
+  written in your Home Assistant language and voice replies are kept to one spoken-friendly
+  sentence. Docs-only.
+
 ## [1.34.0] — 2026-07-09
 
 ### Fixed
