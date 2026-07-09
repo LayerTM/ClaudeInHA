@@ -10,7 +10,8 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node --test \"test/**/*.test.js\"",
+    "test:alerts": "bash test/cc-alerts.test.sh"
   },
   "dependencies": {
     "@xterm/addon-fit": "0.11.0",

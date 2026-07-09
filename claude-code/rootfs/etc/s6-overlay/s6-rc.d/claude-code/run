@@ -274,5 +274,15 @@ if [ -n "${digest_time}" ]; then
     CLAUDE_DIGEST_TIME="${digest_time}" nohup /usr/local/bin/cc-digest >/data/digest.log 2>&1 &
 fi
 
+# --- Proactive anomaly alerts (opt-in via proactive_alerts = true) ---
+# Deterministic bash + jq loop (no Claude call, no plan usage): fetches HA states
+# and notifies via ha-notify when an entity NEWLY hits a rule (low battery, water
+# leak, door open at night, temperature out of band). Off by default.
+if [ "$(jq -r '.proactive_alerts // false' /data/options.json 2>/dev/null || echo false)" = "true" ]; then
+    alerts_interval=$(jq -r '.proactive_alerts_interval_minutes // 15' /data/options.json 2>/dev/null || echo 15)
+    bashio::log.info "Proactive alerts enabled (every ${alerts_interval}m)"
+    CC_ALERTS_INTERVAL_MINUTES="${alerts_interval}" nohup /usr/local/bin/cc-alerts >/data/alerts.log 2>&1 &
+fi
+
 bashio::log.info "Starting Claude Console on port ${CLAUDE_CONSOLE_PORT}..."
 exec node /opt/claude-console/server/index.js

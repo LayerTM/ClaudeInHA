@@ -131,6 +131,69 @@ configuration:
       trochę limitu planu raz dziennie. Zostaw puste, aby wyłączyć. Aby otrzymywać
       na telefon, ustaw też HA_NOTIFY_SERVICE w zmiennych środowiskowych (inaczej
       pojawi się w powiadomieniach HA).
+  proactive_alerts:
+    name: Alerty proaktywne (deterministyczne)
+    description: >-
+      Gdy włączone, lekka pętla w tle obserwuje stany Home Assistant i
+      powiadamia Cię w momencie, gdy coś wygląda źle — wyciek wody, drzwi lub
+      okno zostawione otwarte w nocy, niski poziom baterii albo temperatura poza
+      zakresem. Jest w pełni deterministyczna (stałe reguły, bez Claude i bez
+      zużycia limitu planu) i alarmuje tylko o NOWYM problemie, nie w każdym
+      cyklu. Domyślnie wyłączone. Aby dotrzeć na telefon, ustaw też
+      HA_NOTIFY_SERVICE w zmiennych środowiskowych.
+  proactive_alerts_interval_minutes:
+    name: Interwał sprawdzania alertów (minuty)
+    description: >-
+      Jak często pętla alertów proaktywnych sprawdza dom, w minutach
+      (domyślnie 15). Niższa wartość oznacza szybszą reakcję, ale częstsze
+      sprawdzenia.
+  alert_battery_below:
+    name: Próg niskiej baterii (%)
+    description: >-
+      Alarmuj, gdy dowolna encja baterii spadnie poniżej tego procentu
+      (domyślnie 15). Ustaw 0, aby wyłączyć alerty o niskiej baterii.
+  alert_water_leak:
+    name: Alerty o wycieku wody (krytyczne)
+    description: >-
+      Alarmuj, gdy czujnik wycieku/wilgoci się załączy. Traktowane jako
+      KRYTYCZNE i wysyłane zawsze — nawet w godzinach ciszy. Domyślnie włączone.
+  alert_open_at_night:
+    name: Alerty „otwarte w nocy"
+    description: >-
+      Alarmuj, gdy drzwi, okno lub garaż są otwarte w oknie nocnym poniżej.
+      Domyślnie włączone.
+  alert_night_start:
+    name: Początek okna nocnego (HH:MM)
+    description: >-
+      Początek okna nocnego używanego przez alerty „otwarte w nocy"
+      (domyślnie 23:00).
+  alert_night_end:
+    name: Koniec okna nocnego (HH:MM)
+    description: >-
+      Koniec okna nocnego używanego przez alerty „otwarte w nocy"
+      (domyślnie 06:00).
+  alert_temp_enabled:
+    name: Alerty temperatury
+    description: >-
+      Alarmuj, gdy czujnik temperatury pokaże poniżej dolnego lub powyżej
+      górnego zakresu poniżej. Domyślnie wyłączone, bo rozsądne zakresy różnią
+      się w zależności od czujnika.
+  alert_temp_low:
+    name: Dolna granica temperatury (°)
+    description: >-
+      Alarmuj, gdy włączony czujnik temperatury pokaże poniżej tej wartości
+      (domyślnie 5). Używane tylko, gdy alerty temperatury są włączone.
+  alert_temp_high:
+    name: Górna granica temperatury (°)
+    description: >-
+      Alarmuj, gdy włączony czujnik temperatury pokaże powyżej tej wartości
+      (domyślnie 45). Używane tylko, gdy alerty temperatury są włączone.
+  alert_quiet_hours:
+    name: Godziny ciszy alertów (HH:MM-HH:MM)
+    description: >-
+      W tym oknie alerty niekrytyczne (bateria, temperatura, otwarte w nocy) są
+      wstrzymywane; krytyczne alerty o wycieku wody są wysyłane zawsze. Format
+      np. 22:00-07:00. Zostaw puste, aby wyłączyć godziny ciszy (domyślnie).
   prompt_api:
     name: Prompt API (integracja claude_ha)
     description: >-

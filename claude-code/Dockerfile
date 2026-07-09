@@ -154,6 +154,7 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/claude-code/run \
              /usr/local/bin/provision-extras \
              /usr/local/bin/cc-monitor \
              /usr/local/bin/cc-digest \
+             /usr/local/bin/cc-alerts \
              /usr/local/bin/cc-hook-backup \
              /usr/local/bin/cc-hook-audit \
              /usr/local/bin/cc-hook-notify \

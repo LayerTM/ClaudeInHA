@@ -1,0 +1,37 @@
+[
+  {
+    "entity_id": "sensor.phone_battery",
+    "state": "12",
+    "attributes": { "device_class": "battery", "friendly_name": "Phone battery", "unit_of_measurement": "%" }
+  },
+  {
+    "entity_id": "sensor.kitchen_battery",
+    "state": "80",
+    "attributes": { "device_class": "battery", "friendly_name": "Kitchen sensor battery", "unit_of_measurement": "%" }
+  },
+  {
+    "entity_id": "binary_sensor.basement_leak",
+    "state": "on",
+    "attributes": { "device_class": "moisture", "friendly_name": "Basement leak sensor" }
+  },
+  {
+    "entity_id": "binary_sensor.front_door",
+    "state": "on",
+    "attributes": { "device_class": "door", "friendly_name": "Front door" }
+  },
+  {
+    "entity_id": "binary_sensor.garden_leak",
+    "state": "unavailable",
+    "attributes": { "device_class": "moisture", "friendly_name": "Garden leak sensor" }
+  },
+  {
+    "entity_id": "sensor.broken",
+    "state": "unknown",
+    "attributes": { "device_class": "battery" }
+  },
+  {
+    "entity_id": "light.living_room",
+    "state": "on",
+    "attributes": { "friendly_name": "Living room" }
+  }
+]

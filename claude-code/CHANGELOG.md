@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.35.0] — 2026-07-09
+
+### Added
+- **Proactive anomaly alerts (N3) — deterministic, no plan usage.** A new opt-in background
+  loop (`proactive_alerts: true`) watches your Home Assistant states and notifies you the moment
+  something looks wrong. Unlike proactive monitoring and the morning digest, it makes **no Claude
+  call and spends no plan usage** — it is pure bash + jq applying fixed rules every
+  `proactive_alerts_interval_minutes` (default 15), so there is no prompt-injection surface.
+  Detects: a **water leak** (`alert_water_leak`, critical — always sent), a **door/window/garage
+  open at night** (`alert_open_at_night`, within `alert_night_start`–`alert_night_end`, default
+  23:00–06:00), a **low battery** (`alert_battery_below`, default 15%; 0 = off), and a
+  **temperature out of band** (`alert_temp_enabled`, off by default; `alert_temp_low` 5 /
+  `alert_temp_high` 45). Alerts **dedupe** — you're notified only when an entity *newly* enters an
+  anomaly (remembered in `/data/alerts-state.json`, dropped when it clears, so a still-open door
+  doesn't re-notify every cycle). **Quiet hours** (`alert_quiet_hours`, e.g. `22:00-07:00`) hold
+  back non-critical alerts while always sending critical water-leak ones. All new anomalies in a
+  cycle are batched into one *Claude · Home alert* notification (set `HA_NOTIFY_SERVICE` to reach
+  your phone). Off by default.
+
 ## [1.34.1] — 2026-07-09
 
 ### Documentation

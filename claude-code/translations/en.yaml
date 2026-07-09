@@ -130,6 +130,64 @@ configuration:
       once a day. Leave empty to disable. To receive it on your phone, also set
       HA_NOTIFY_SERVICE in Environment Variables (otherwise it shows in the HA
       notification bell).
+  proactive_alerts:
+    name: Proactive Alerts (deterministic)
+    description: >-
+      When enabled, a lightweight background loop watches your Home Assistant
+      states and notifies you the moment something looks wrong — a water leak,
+      a door or window left open at night, a low battery, or a temperature out
+      of range. It is fully deterministic (fixed rules, no Claude and no plan
+      usage) and only alerts on a NEW problem, not every cycle. Off by default.
+      To reach your phone, also set HA_NOTIFY_SERVICE in Environment Variables.
+  proactive_alerts_interval_minutes:
+    name: Alert Check Interval (minutes)
+    description: >-
+      How often the proactive-alerts loop re-checks your home, in minutes
+      (default 15). Lower is more responsive but checks more often.
+  alert_battery_below:
+    name: Low-Battery Threshold (%)
+    description: >-
+      Alert when any battery entity drops below this percentage (default 15).
+      Set 0 to disable low-battery alerts.
+  alert_water_leak:
+    name: Water-Leak Alerts (critical)
+    description: >-
+      Alert when a leak/moisture sensor turns on. This is treated as CRITICAL
+      and is always sent — even during quiet hours. On by default.
+  alert_open_at_night:
+    name: Open-at-Night Alerts
+    description: >-
+      Alert when a door, window, or garage is open during the night window
+      below. On by default.
+  alert_night_start:
+    name: Night Window Start (HH:MM)
+    description: >-
+      Start of the night window used by open-at-night alerts (default 23:00).
+  alert_night_end:
+    name: Night Window End (HH:MM)
+    description: >-
+      End of the night window used by open-at-night alerts (default 06:00).
+  alert_temp_enabled:
+    name: Temperature Alerts
+    description: >-
+      Alert when a temperature sensor reads below the low or above the high
+      band below. Off by default, since sensible bands vary by sensor.
+  alert_temp_low:
+    name: Temperature Low (°)
+    description: >-
+      Alert when an enabled temperature sensor reads below this value
+      (default 5). Only used when Temperature Alerts is on.
+  alert_temp_high:
+    name: Temperature High (°)
+    description: >-
+      Alert when an enabled temperature sensor reads above this value
+      (default 45). Only used when Temperature Alerts is on.
+  alert_quiet_hours:
+    name: Alert Quiet Hours (HH:MM-HH:MM)
+    description: >-
+      During this window, non-critical alerts (battery, temperature,
+      open-at-night) are held back; critical water-leak alerts are always sent.
+      Format like 22:00-07:00. Leave empty to disable quiet hours (default).
   prompt_api:
     name: Prompt API (claude_ha integration)
     description: >-

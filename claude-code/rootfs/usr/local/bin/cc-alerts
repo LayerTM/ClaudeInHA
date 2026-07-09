@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# Proactive anomaly alerts (opt-in, DETERMINISTIC — no Claude/LLM call, no plan
+# usage). Every proactive_alerts_interval_minutes we fetch all HA states from the
+# Supervisor API ourselves and run a handful of fixed, rule-based checks (low
+# battery, water leak, door/window open at night, temperature out of band). When
+# an entity NEWLY enters an anomaly we push one batched ha-notify; a still-active
+# anomaly is remembered in /data/alerts-state.json so it doesn't re-notify every
+# cycle, and is dropped when it clears so it can alert again next time.
+#
+# Unlike cc-monitor / cc-digest this spends NO plan usage — it is pure bash + jq,
+# so there is no model and thus no prompt-injection surface. SUPERVISOR_TOKEN is
+# used ONLY for the Supervisor states curl.
+#
+# Test hooks (never used in production):
+#   cc-alerts --once           run exactly one check cycle and exit
+#   CC_ALERTS_ONCE=1           same as --once
+#   CC_ALERTS_STATES_FILE=path read states from a JSON fixture instead of curl
+#   CC_ALERTS_DATA_DIR=dir     override /data (options.json + state file) for isolation
+#   CC_ALERTS_NOW=HH:MM        override "now" for the night-window / quiet-hours logic
+#   CC_ALERTS_INTERVAL_MINUTES override the loop sleep (the run script passes this)
+#   CC_ALERTS_NOTIFY_CMD=cmd   override the notifier (default ha-notify) for asserting output
+set -o pipefail
+export HOME=/data/home
+# Production dirs first; the inherited PATH is appended so the tests can find jq
+# etc. on a dev machine (e.g. Homebrew paths) without affecting the container.
+export PATH="/data/home/.local/bin:/usr/local/bin:/usr/bin:/bin:${PATH}"
+
+NOTIFY_CMD="${CC_ALERTS_NOTIFY_CMD:-ha-notify}"
+
+DATA_DIR="${CC_ALERTS_DATA_DIR:-/data}"
+OPTIONS="${DATA_DIR}/options.json"
+STATE="${DATA_DIR}/alerts-state.json"
+
+# --- Config (from options.json, with sensible built-in defaults) ------------
+jqopt() {  # $1 = jq filter, $2 = default (used when key is absent/null/unreadable)
+    local v
+    v="$(jq -r "$1" "${OPTIONS}" 2>/dev/null)"
+    if [ -z "${v}" ] || [ "${v}" = "null" ]; then printf '%s' "$2"; else printf '%s' "${v}"; fi
+}
+
+enabled="$(jqopt '.proactive_alerts' false)"
+[ "${enabled}" = "true" ] || exit 0   # master switch off/absent → do nothing
+
+interval="${CC_ALERTS_INTERVAL_MINUTES:-$(jqopt '.proactive_alerts_interval_minutes' 15)}"
+[ "${interval}" -ge 1 ] 2>/dev/null || interval=15
+
+batt_below="$(jqopt '.alert_battery_below' 15)"      # 0 = off
+water="$(jqopt '.alert_water_leak' true)"            # CRITICAL, always sent
+night_open="$(jqopt '.alert_open_at_night' true)"
+night_start="$(jqopt '.alert_night_start' '23:00')"
+night_end="$(jqopt '.alert_night_end' '06:00')"
+temp_enabled="$(jqopt '.alert_temp_enabled' false)"
+temp_low="$(jqopt '.alert_temp_low' 5)"
+temp_high="$(jqopt '.alert_temp_high' 45)"
+quiet="$(jqopt '.alert_quiet_hours' '')"             # "" = off, else "HH:MM-HH:MM"
+
+# --- Time-window helpers ----------------------------------------------------
+in_window() {  # $1=now $2=start $3=end (HH:MM); handles overnight wrap (start>end)
+    local now="$1" start="$2" end="$3" nm sm em
+    printf '%s' "${now}"   | grep -Eq '^[0-2][0-9]:[0-5][0-9]$' || return 1
+    printf '%s' "${start}" | grep -Eq '^[0-2][0-9]:[0-5][0-9]$' || return 1
+    printf '%s' "${end}"   | grep -Eq '^[0-2][0-9]:[0-5][0-9]$' || return 1
+    nm=$(( 10#${now%%:*} * 60 + 10#${now#*:} ))
+    sm=$(( 10#${start%%:*} * 60 + 10#${start#*:} ))
+    em=$(( 10#${end%%:*} * 60 + 10#${end#*:} ))
+    if [ "${sm}" -le "${em}" ]; then
+        [ "${nm}" -ge "${sm}" ] && [ "${nm}" -lt "${em}" ]
+    else   # overnight window, e.g. 23:00–06:00
+        [ "${nm}" -ge "${sm}" ] || [ "${nm}" -lt "${em}" ]
+    fi
+}
+
+# --- One check cycle --------------------------------------------------------
+run_cycle() {
+    local now_hm states anomalies_json prev_active is_night is_quiet result msg
+
+    now_hm="${CC_ALERTS_NOW:-$(date +%H:%M)}"
+
+    is_night=false
+    if [ "${night_open}" = "true" ] && in_window "${now_hm}" "${night_start}" "${night_end}"; then
+        is_night=true
+    fi
+
+    is_quiet=false
+    if [ -n "${quiet}" ] && [[ "${quiet}" == *-* ]]; then
+        if in_window "${now_hm}" "${quiet%%-*}" "${quiet#*-}"; then is_quiet=true; fi
+    fi
+
+    # Fetch the (untrusted) states — from a fixture in tests, else the Supervisor.
+    if [ -n "${CC_ALERTS_STATES_FILE:-}" ]; then
+        states="$(cat "${CC_ALERTS_STATES_FILE}" 2>/dev/null)"
+    else
+        states="$(curl -sS -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+            http://supervisor/core/api/states 2>/dev/null)"
+    fi
+    [ -n "${states}" ] || return 0
+
+    # Deterministic anomaly detection. Every entry degrades to `empty` on bad
+    # fields, so one malformed state never breaks the array (or the loop).
+    anomalies_json="$(printf '%s' "${states}" | jq -c \
+        --argjson batt "${batt_below}" \
+        --argjson water "${water}" \
+        --argjson nopen "${is_night}" \
+        --argjson tenab "${temp_enabled}" \
+        --argjson tlow "${temp_low}" \
+        --argjson thigh "${temp_high}" '
+        [ .[]
+          | (.attributes.device_class // "") as $dc
+          | (.state // "") as $st
+          | (((.state | tonumber?) // null)) as $num
+          | (.attributes.friendly_name // .entity_id) as $name
+          | select($st != "unavailable" and $st != "unknown" and $st != "")
+          | (
+              ( if ($batt > 0) and ($dc == "battery") and ($num != null) and ($num < $batt)
+                then {key:("battery:" + .entity_id), critical:false,
+                      line:("Low battery: " + $name + " (" + ($num|tostring) + "%)")}
+                else empty end ),
+              ( if $water and ($dc == "moisture") and ($st == "on")
+                then {key:("leak:" + .entity_id), critical:true,
+                      line:("WATER LEAK detected: " + $name)}
+                else empty end ),
+              ( if $nopen and ($st == "on")
+                   and ($dc == "door" or $dc == "window" or $dc == "garage_door" or $dc == "opening")
+                then {key:("night_open:" + .entity_id), critical:false,
+                      line:("Open at night: " + $name)}
+                else empty end ),
+              ( if $tenab and ($dc == "temperature") and ($num != null) and ($num < $tlow or $num > $thigh)
+                then {key:("temp:" + .entity_id), critical:false,
+                      line:("Temperature out of range: " + $name + " (" + ($num|tostring) + "°)")}
+                else empty end )
+            )
+        ]' 2>/dev/null)"
+    [ -n "${anomalies_json}" ] || anomalies_json="[]"
+
+    # Previously-active anomaly keys (dedupe memory).
+    prev_active="$(jq -c '.active // []' "${STATE}" 2>/dev/null)"
+    [ -n "${prev_active}" ] || prev_active="[]"
+
+    # Diff: notify only NEWLY-appeared anomalies. During quiet hours, non-critical
+    # ones are suppressed AND kept out of the active set, so they stay pending and
+    # fire once quiet hours end (rather than being lost or storming every cycle).
+    result="$(jq -nc \
+        --argjson anom "${anomalies_json}" \
+        --argjson prev "${prev_active}" \
+        --argjson quiet "${is_quiet}" '
+        ($anom | map(select((.key as $k | $prev | index($k)) | not))) as $newly
+        | ($newly | map(select(.critical or ($quiet | not))))            as $to_notify
+        | ($newly | map(select(($quiet) and (.critical | not)) | .key))  as $suppressed
+        | { notify: ($to_notify | map(.line)),
+            active: (($anom | map(.key)) - $suppressed) }' 2>/dev/null)"
+    [ -n "${result}" ] || return 0
+
+    # Persist the new active set (0600 — no secrets, but keep it tidy/private).
+    local tmp
+    tmp="$(mktemp)"
+    if printf '%s\n' "${result}" | jq -c '{active: .active}' > "${tmp}" 2>/dev/null; then
+        chmod 600 "${tmp}"
+        mv "${tmp}" "${STATE}"
+    else
+        rm -f "${tmp}"
+    fi
+
+    # One batched notification for everything new this cycle.
+    msg="$(printf '%s' "${result}" | jq -r 'if (.notify | length) > 0 then (.notify | join("\n")) else empty end' 2>/dev/null)"
+    if [ -n "${msg}" ]; then
+        "${NOTIFY_CMD}" "${msg}" "Claude · Home alert" >/dev/null 2>&1 || true
+    fi
+}
+
+# --- Entry point ------------------------------------------------------------
+mkdir -p "${DATA_DIR}"
+
+once=0
+[ "${1:-}" = "--once" ] && once=1
+[ "${CC_ALERTS_ONCE:-0}" = "1" ] && once=1
+
+if [ "${once}" = "1" ]; then
+    run_cycle
+    exit 0
+fi
+
+sleep 120  # let the console and login settle after boot
+
+while true; do
+    run_cycle || true
+    sleep "$(( interval * 60 ))"
+done
