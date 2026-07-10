@@ -162,6 +162,24 @@ deliberately much more restricted than the interactive console:
   Assistant language, and voice replies are kept to one short, spoken-friendly
   sentence.
 
+### Manage automations by chatting
+
+With the companion integration you can **create, edit, and delete automations** by
+describing them in plain language to Assist (text or voice) — no YAML, no editor:
+
+- *"Create an automation that turns on the porch light at sunset."*
+- *"Change my porch-light automation to come on at 21:00."*
+- *"Delete my porch-light automation."*
+
+Claude drafts the automation (or the edit) and shows it to you; **nothing is
+written until you confirm** (yes/no). Safety is built in: before saving, the
+integration re-validates the configuration against Home Assistant's own automation
+schema and permits only a safe set of service calls — it refuses code execution
+(`shell_command`, `python_script`) and payloads that could reach arbitrary
+devices, so a drafted automation can only do ordinary household things. An edit
+preserves the parts you didn't ask to change; a delete always asks first and, when
+more than one automation matches, asks which — it never removes an ambiguous one.
+
 To use it, install the `claude_ha` integration (it will detect this add-on
 automatically) and, for live HA context, install Home Assistant's *Model Context
 Protocol Server* integration and set `prompt_ha_token`. To turn the endpoint off

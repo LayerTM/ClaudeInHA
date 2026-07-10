@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.36.1] — 2026-07-10
+
+### Documentation
+- **Documented managing automations by chatting.** The companion-integration section now explains
+  that you can create, edit, and delete automations in plain language through Assist, with the
+  built-in confirmation and the safe-service checks that guard what a chat-created automation may
+  do. Docs-only.
+
 ## [1.36.0] — 2026-07-10
 
 ### Added
