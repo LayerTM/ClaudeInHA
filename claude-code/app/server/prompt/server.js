@@ -21,7 +21,7 @@ const MAX_PROMPT_BYTES = 8 * 1024;
 const MAX_CONCURRENT_RUNS = 2;
 const BODY_KEYS = new Set([
   'prompt', 'mode', 'conversation_id', 'intents', 'confirmation', 'image_entity', 'stream', 'language',
-  'surface',
+  'surface', 'edit_automation',
 ]);
 
 // When streaming, hold back this many trailing chars of the redacted text before
@@ -494,6 +494,18 @@ function createPromptApp({
         return res.status(400).json({ error: 'surface must be "voice" or "text"' });
       }
 
+      // Optional existing-automation config: when present, the model MODIFIES this
+      // automation (applies the requested change to the config below) instead of
+      // drafting a brand-new one, returning the full updated config in the same
+      // `automation` field. Must be a plain JSON object (the automation's current
+      // config) — an array/string/null is malformed. Absent → today's behavior.
+      if (body.edit_automation !== undefined
+          && (typeof body.edit_automation !== 'object'
+              || body.edit_automation === null
+              || Array.isArray(body.edit_automation))) {
+        return res.status(400).json({ error: 'edit_automation must be a JSON object' });
+      }
+
       // Camera vision: an optional camera entity to snapshot and let Claude SEE.
       // Read-only, strict entity format; the integration must only pass cameras
       // the user has exposed to Assist (that is the outer boundary).
@@ -662,6 +674,9 @@ function createPromptApp({
             language: body.language,
             // "voice" → append a spoken-aloud brevity directive (read only).
             surface: body.surface,
+            // Existing automation config → the model MODIFIES it (read only): the
+            // runner embeds it and returns the full updated config in `automation`.
+            editAutomation: body.edit_automation,
             // First attempt gets the full ceiling; a retry gets only what's LEFT of
             // the one-request budget, so TOTAL wall-clock across attempts never
             // exceeds TIMEOUT_MS (the client can pair its timeout to that one bound).
@@ -697,7 +712,8 @@ function createPromptApp({
       const base = `caller=${caller}${conversationId ? ` conv=${conversationId}` : ''}`
         + `${imageEntity ? ` img=${imageEntity}${imagePath ? '' : '(fetch-failed)'}` : ''}`
         + ` lang=${language} langdir=${safeLangTag(body.language) || '-'}`
-        + ` surface=${body.surface || '-'} model=${sanitizeId(resolvedModel, 64) || 'default'} ${detail}`;
+        + ` surface=${body.surface || '-'} model=${sanitizeId(resolvedModel, 64) || 'default'}`
+        + `${body.edit_automation !== undefined ? ' edit=1' : ''} ${detail}`;
 
       // A streaming READ must NEVER terminate with `{type:"error"}` — the
       // integration's NDJSON reader treats that as fatal and the chat hard-fails,
