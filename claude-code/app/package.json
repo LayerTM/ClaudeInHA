@@ -11,7 +11,9 @@
   "scripts": {
     "start": "node server/index.js",
     "test": "node --test \"test/**/*.test.js\"",
-    "test:alerts": "bash test/cc-alerts.test.sh"
+    "test:alerts": "bash test/cc-alerts.test.sh",
+    "lint": "eslint .",
+    "typecheck": "tsc -p jsconfig.json"
   },
   "dependencies": {
     "@xterm/addon-fit": "0.11.0",
@@ -23,5 +25,15 @@
     "express": "5.2.1",
     "node-pty": "1.1.0",
     "ws": "8.21.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/busboy": "1.5.4",
+    "@types/express": "5.0.6",
+    "@types/node": "22.20.1",
+    "@types/ws": "8.18.1",
+    "eslint": "10.6.0",
+    "globals": "17.7.0",
+    "typescript": "7.0.2"
   }
 }

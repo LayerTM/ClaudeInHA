@@ -777,7 +777,7 @@ test('chat_health: a streaming read delivered before a late error counts as reco
   // indicator). Only a turn where the user gets the apology (no streamed content)
   // is truly degraded. Delta-based so prior reads in the suite don't matter.
   const health = async () => (await (await fetch(`${BASE}/api/status`, { headers: { Authorization: `Bearer ${TOKEN}` } })).json()).chat_health;
-  const before = await health();
+  const healthBefore = await health();
   const { status, events } = await postNDJSON(
     { prompt: 'STREAMERR', stream: true },
     { 'X-Claude-Caller': 'user.delivered' },
@@ -785,9 +785,9 @@ test('chat_health: a streaming read delivered before a late error counts as reco
   assert.equal(status, 200);
   assert.ok(events.some((e) => e.type === 'delta' && e.text && e.text.length > 0), 'the client received streamed answer content before the error');
   assert.equal(events.at(-1).type, 'done', 'ends with a friendly done, not a fatal error line');
-  const after = await health();
-  assert.equal(after.degraded, before.degraded, 'a delivered-then-late-error turn does NOT increment degraded');
-  assert.equal(after.recovered, before.recovered + 1, 'it counts as recovered (absorbed transient)');
+  const healthAfter = await health();
+  assert.equal(healthAfter.degraded, healthBefore.degraded, 'a delivered-then-late-error turn does NOT increment degraded');
+  assert.equal(healthAfter.recovered, healthBefore.recovered + 1, 'it counts as recovered (absorbed transient)');
 });
 
 test('stream: a timed-out read also ends with a friendly done line, never a fatal error line', async () => {
