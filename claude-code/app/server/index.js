@@ -74,7 +74,9 @@ server.on('upgrade', (req, socket, head) => {
   }
   // Interactive echo must never wait on Nagle/delayed-ACK — that is the classic
   // "mushy remote shell" latency (up to ~40ms per keystroke). Ship immediately.
-  socket.setNoDelay(true);
+  // The upgrade socket is a net.Socket at runtime (plain-HTTP server); the http
+  // 'upgrade' event types it as the base Duplex, which lacks setNoDelay.
+  /** @type {import('node:net').Socket} */ (socket).setNoDelay(true);
   wss.handleUpgrade(req, socket, head, (ws) => terminal.attach(ws));
 });
 

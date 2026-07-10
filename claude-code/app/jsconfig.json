@@ -1,0 +1,25 @@
+{
+  // Lenient JS type-check (`tsc --noEmit --checkJs`) for the prompt server.
+  // Goal: catch REAL type errors — bad property access, wrong arg counts,
+  // obvious undefined — WITHOUT requiring JSDoc annotations. strict:false keeps
+  // it green on the (currently untyped) hand-written code; tighten later as
+  // types are added. Only OUR server/ code is checked.
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "module": "commonjs",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    // Never type-check dependency JS. Their .d.ts declarations are still used;
+    // this stops checkJs from following requires into untyped package source
+    // (e.g. the userland `punycode` JS that @types/node references transitively).
+    "maxNodeModuleJsDepth": 0,
+    "types": ["node"]
+  },
+  "include": ["server/**/*.js"],
+  "exclude": ["node_modules"]
+}

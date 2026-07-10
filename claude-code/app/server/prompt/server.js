@@ -263,12 +263,12 @@ function fileStore(file) {
 async function resizeSnapshot(srcFile, workDir, execImpl = execFile) {
   const out = path.join(workDir, `snap-${crypto.randomBytes(9).toString('hex')}.jpg`);
   try {
-    await new Promise((resolve, reject) => {
+    await /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
       // `1024x1024>` = shrink to fit only if larger; never upscale. execImpl
       // passes args literally (no shell), so the `>` is a plain argument.
       execImpl('magick', [srcFile, '-resize', '1024x1024>', '-quality', '85', out],
         { timeout: 15000 }, (err) => (err ? reject(err) : resolve()));
-    });
+    }));
     if ((await fsp.stat(out)).size === 0) throw new Error('empty output');
     await fsp.chmod(out, 0o600);
     await fsp.rm(srcFile, { force: true });
@@ -705,8 +705,8 @@ function createPromptApp({
       // streaming-read failure (a transient error surviving retry, OR a timeout)
       // ends with a friendly `done` carrying the degrade body. The NDJSON headers
       // are already sent, so there is no HTTP status to set. (Writes never stream.)
-      const streamDone = (body) => {
-        try { res.write(`${JSON.stringify({ type: 'done', ...body })}\n`); } catch { /* client gone */ }
+      const streamDone = (payload) => {
+        try { res.write(`${JSON.stringify({ type: 'done', ...payload })}\n`); } catch { /* client gone */ }
         try { res.end(); } catch { /* client gone */ }
       };
       const failStream = (err) => {

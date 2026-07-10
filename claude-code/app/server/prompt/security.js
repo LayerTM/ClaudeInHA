@@ -35,6 +35,7 @@ function tokenMatches(presented, expected) {
 // Every control character except \n and \t: C0 (minus \t\n), DEL, C1.
 // Built from codepoints so no literal control bytes live in this source file.
 const CONTROL_CHARS_RE = new RegExp(
+  // eslint-disable-next-line no-control-regex -- intentional: matches C0/C1 control chars so sanitizePrompt can strip them (log/prompt-injection defense)
   '[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u009F]', 'g',
 );
 

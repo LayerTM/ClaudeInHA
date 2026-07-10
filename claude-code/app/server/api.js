@@ -38,7 +38,7 @@ async function claudeVersion() {
 }
 
 function sanitizeFilename(name) {
-  const base = path.basename(name || 'file').replace(/[^\w.\-]+/g, '_').replace(/^\.+/, '_');
+  const base = path.basename(name || 'file').replace(/[^\w.-]+/g, '_').replace(/^\.+/, '_');
   return base.slice(0, 120) || 'file';
 }
 
@@ -66,8 +66,8 @@ function createRouter({ uploadDir }) {
   });
 
   router.get('/capture', async (req, res) => {
-    const windowIndex = Number.parseInt(req.query.window ?? '0', 10);
-    const lines = Math.min(Number.parseInt(req.query.lines ?? '0', 10) || 0, MAX_CAPTURE_LINES);
+    const windowIndex = Number.parseInt(String(req.query.window ?? '0'), 10);
+    const lines = Math.min(Number.parseInt(String(req.query.lines ?? '0'), 10) || 0, MAX_CAPTURE_LINES);
     if (!Number.isInteger(windowIndex) || windowIndex < 0) {
       return res.status(400).json({ error: 'invalid window' });
     }
@@ -105,11 +105,11 @@ function createRouter({ uploadDir }) {
 
   router.post('/cli/update', async (req, res) => {
     const target = typeof req.body?.target === 'string' ? req.body.target.trim() : '';
-    if (target && !/^(?:stable|latest|[0-9][\w.\-]*)$/.test(target)) {
+    if (target && !/^(?:stable|latest|[0-9][\w.-]*)$/.test(target)) {
       return res.status(400).json({ error: 'invalid target' });
     }
     const before = await claudeVersion();
-    let output = '';
+    let output; // assigned on both the try (success) and catch (failure) paths below
     let failed = false;
     try {
       const args = target ? [target] : [];

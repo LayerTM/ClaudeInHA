@@ -68,7 +68,7 @@
     document.body.appendChild(ta);
     ta.select();
     ta.setSelectionRange(0, text.length);
-    let ok = false;
+    let ok; // set on both branches of the try/catch below
     try { ok = document.execCommand('copy'); } catch { ok = false; }
     ta.remove();
     return ok;

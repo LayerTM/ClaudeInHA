@@ -117,7 +117,9 @@ async function announceDiscovery(token) {
     try {
       const info = await supervisorRequest('/addons/self/info');
       if (!info.ok) throw new Error(`self/info HTTP ${info.status}`);
-      const host = (await info.json()).data?.hostname;
+      // Supervisor JSON is untyped (Response.json() is `unknown`); read the one
+      // field we need off an `any` view.
+      const host = /** @type {any} */ (await info.json()).data?.hostname;
       if (!host) throw new Error('no hostname in self/info');
       const res = await supervisorRequest('/discovery', {
         method: 'POST',
@@ -195,13 +197,13 @@ async function start() {
   });
 
   const server = http.createServer(app);
-  await new Promise((resolve, reject) => {
+  await /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(PORT, '0.0.0.0', () => {
       server.removeListener('error', reject);
       resolve();
     });
-  });
+  }));
   // Keep a persistent error handler so a post-bind socket error is logged, not
   // thrown as an uncaught exception that would take the shared console down.
   server.on('error', (err) => log(`server error: ${err.message}`));
