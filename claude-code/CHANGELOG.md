@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.36.2] — 2026-07-10
+
+### Changed
+- **Chat-drafted automations now target your specific devices, not a whole area.** When Claude
+  drafts (or edits) an automation, it lists the exact devices the rule should act on instead of a
+  whole area, room, or floor. The automation stays scoped to just those devices and won't silently
+  start controlling other devices later added to the same area. Drafting only — nothing runs until
+  you confirm.
+
 ## [1.36.1] — 2026-07-10
 
 ### Documentation
