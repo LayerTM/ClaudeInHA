@@ -149,12 +149,29 @@ function finish(prompt, wantsProposal) {
       };
   }
 
+  // The system prompt the server threaded in via --append-system-prompt. Read
+  // once here so the edit-automation echo below and the language/voice reflection
+  // further down can both inspect it.
+  const sysIdx = args.indexOf('--append-system-prompt');
+  const sysPrompt = sysIdx !== -1 ? args[sysIdx + 1] : '';
+
   // A MKAUTO prompt makes the model draft an automation config. BADAUTO makes
   // it malformed so the test can prove validateAutomationDraft rejects it. The
   // valid draft carries secret-shaped values in alias + an action's data so the
   // test proves redactDeep reaches every field of the automation too.
   let automation;
-  if (wantsProposal && prompt.includes('MKAUTO')) {
+  if (wantsProposal && sysPrompt.includes('MODIFYING an EXISTING')) {
+    // Edit mode: the server embedded the EXISTING automation's config in the
+    // system prompt. Echo its alias back through the SAME automation field so a
+    // test can prove the current config actually reached the model.
+    const existingAlias = ((sysPrompt.match(/"alias"\s*:\s*"([^"]+)"/)) || [])[1] || 'edited automation';
+    automation = {
+      alias: existingAlias,
+      triggers: [{ trigger: 'state', entity_id: 'person.me', to: 'home' }],
+      actions: [{ action: 'light.turn_on', target: { entity_id: 'light.living_room' } }],
+      mode: 'single',
+    };
+  } else if (wantsProposal && prompt.includes('MKAUTO')) {
     automation = prompt.includes('BADAUTO')
       ? { alias: '', triggers: 'not-an-array', actions: [] }
       : {
@@ -182,18 +199,19 @@ function finish(prompt, wantsProposal) {
   // LONGSTREAM pads the answer well past the server's stream safety window so a
   // test can observe genuine mid-generation deltas (not just a single tail flush).
   const filler = prompt.includes('LONGSTREAM') ? ` ${'lorem ipsum dolor '.repeat(18)}` : '';
-  // Reflect the language subtag the server threaded into --append-system-prompt
-  //, so a test can prove the model is told which language to answer in.
-  const sysIdx = args.indexOf('--append-system-prompt');
-  const sysPrompt = sysIdx !== -1 ? args[sysIdx + 1] : '';
+  // Reflect the language subtag the server threaded into --append-system-prompt,
+  // so a test can prove the model is told which language to answer in.
   const sysLang = ((sysPrompt.match(/language is "([^"]+)"/)) || [])[1] || '';
   // Reflect whether the voice-brevity directive was appended (surface=voice).
   const sysVoice = sysPrompt.includes('spoken aloud') ? 1 : 0;
+  // Reflect whether the modify-existing-automation directive was appended
+  // (edit_automation present), so a test can prove it is absent on ordinary reads.
+  const sysEdit = sysPrompt.includes('MODIFYING an EXISTING') ? 1 : 0;
   // Reflect the --model the server chose (voice turns get the faster voice model).
   const mIdx = args.indexOf('--model');
   const usedModel = mIdx !== -1 ? args[mIdx + 1] : '';
   const structured = wantsProposal
-    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}${filler}; syslang=${sysLang}; voice=${sysVoice}; model=${usedModel}`, proposal, automation: automation || null }
+    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}${filler}; syslang=${sysLang}; voice=${sysVoice}; edit=${sysEdit}; model=${usedModel}`, proposal, automation: automation || null }
     // write mode: reflect what actually reached the child via stdin, so the test
     // can prove the untrusted client prompt is absent and the intents present.
     : { text: `stdin_has_inject=${prompt.includes('INJECTED')} stdin_has_intent=${prompt.includes('HassTurnOff')}` };

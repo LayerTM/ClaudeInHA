@@ -513,6 +513,46 @@ test('read: an ordinary turn has no automation field (additive/absent)', async (
   assert.ok(!('automation' in json), 'non-automation turns omit the field entirely');
 });
 
+test('read: an edit_automation request feeds the existing config to the model and returns the modified draft, audited', async () => {
+  // The integration sends the automation's CURRENT config; the model applies the
+  // requested change and returns the FULL updated config in the same field.
+  const existing = {
+    alias: 'Porch Light At Sundown',
+    triggers: [{ trigger: 'sun', event: 'sunset' }],
+    actions: [{ action: 'light.turn_on', target: { entity_id: 'light.porch' } }],
+    mode: 'single',
+  };
+  const { status, json } = await post(
+    { prompt: 'also dim it to 40 percent', edit_automation: existing },
+    { 'X-Claude-Caller': 'user.editauto' },
+  );
+  assert.equal(status, 200);
+  // The model was told it is MODIFYING an existing automation (the stub reflects
+  // the appended edit directive back into its text).
+  assert.match(json.text, /edit=1\b/, `the edit directive was appended, got: ${json.text}`);
+  // The EXISTING config reached the model: the stub echoed the distinctive alias
+  // from the embedded config back through the SAME automation field.
+  assert.ok(json.automation, 'the modified automation config rides the same field');
+  assert.equal(json.automation.alias, 'Porch Light At Sundown', 'the existing config (its alias) reached the model');
+  const line = await waitForAuditLine('user.editauto');
+  assert.match(line, /\bedit=1\b/, `audit flags the modify turn, got: ${line}`);
+});
+
+test('read: a malformed edit_automation (string / array / null) is rejected with 400', async () => {
+  assert.equal((await post({ prompt: 'hi', edit_automation: 'nope' }, { 'X-Claude-Caller': 'user.edit.str' })).status, 400);
+  assert.equal((await post({ prompt: 'hi', edit_automation: [1, 2] }, { 'X-Claude-Caller': 'user.edit.arr' })).status, 400);
+  assert.equal((await post({ prompt: 'hi', edit_automation: null }, { 'X-Claude-Caller': 'user.edit.null' })).status, 400);
+});
+
+test('read: a normal read WITHOUT edit_automation gets no edit directive (backward compatible)', async () => {
+  const { status, json } = await post({ prompt: 'hello there' }, { 'X-Claude-Caller': 'user.noedit' });
+  assert.equal(status, 200);
+  assert.match(json.text, /edit=0\b/, `no edit directive is appended for an ordinary read, got: ${json.text}`);
+  assert.ok(!('automation' in json), 'an ordinary read carries no automation field');
+  const line = await waitForAuditLine('user.noedit');
+  assert.ok(!/\bedit=1\b/.test(line), `audit does not flag an ordinary read as a modify turn, got: ${line}`);
+});
+
 test('read: conversation memory feeds prior turns into the next prompt', async () => {
   const c = { 'X-Claude-Caller': 'user.mem' };
   const first = await post({ prompt: 'what is the kitchen temperature', conversation_id: 'mem-1' }, c);

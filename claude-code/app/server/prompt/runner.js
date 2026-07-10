@@ -214,6 +214,44 @@ function voiceDirective(surface) {
     + ' hear, with no markdown, lists, code, tables, or URLs.';
 }
 
+// Serialized existing-config ceiling for the edit directive. A config bigger than
+// this is not embedded at all (see below) so the appended prompt fragment can
+// never blow up — the model context window and the wall-clock timeout are the
+// real bounds.
+const EDIT_CONFIG_MAX_BYTES = 8 * 1024;
+// Modify-an-existing-automation directive (read-only). When the integration sends
+// the EXISTING automation's current config in `editAutomation`, the model is told
+// it is MODIFYING that automation rather than drafting a new one: apply only the
+// user's requested change and return the FULL updated config in the SAME
+// "automation" field, preserving every trigger/condition/action the user did not
+// touch. The current config is embedded as JSON so the model edits the real thing.
+// Returns '' (no directive — ordinary drafting behaviour is unchanged) when:
+//   - editAutomation is absent / not a plain object / an empty object,
+//   - JSON serialization fails, or
+//   - the serialized config exceeds EDIT_CONFIG_MAX_BYTES (too large to embed
+//     safely — we never emit an oversized prompt fragment; the model just drafts).
+function editDirective(editAutomation) {
+  if (!editAutomation || typeof editAutomation !== 'object' || Array.isArray(editAutomation)
+      || Object.keys(editAutomation).length === 0) {
+    return '';
+  }
+  let json;
+  try {
+    json = JSON.stringify(editAutomation);
+  } catch {
+    return '';
+  }
+  if (!json || Buffer.byteLength(json, 'utf8') > EDIT_CONFIG_MAX_BYTES) return '';
+  return ' The user is asking to MODIFY an EXISTING Home Assistant automation, not to'
+    + ' create a new one — this supersedes any earlier instruction that editing'
+    + ' existing automations is unsupported. You are MODIFYING an EXISTING automation:'
+    + ' apply ONLY the change the user asked for and return the FULL updated automation'
+    + ' config in the "automation" field, PRESERVING every trigger, condition and action'
+    + ' the user did not ask to change (copy them through unchanged). Do not drop,'
+    + ' reorder or rewrite the parts the user did not mention, and do not create a'
+    + ` second automation. The existing automation config is: ${json}`;
+}
+
 // The stdin content for a write run. IMPORTANT: the untrusted client prompt is
 // NEVER included here — only the server-validated intents. This removes the
 // injection vector entirely: there is no untrusted channel into the privileged
@@ -334,7 +372,7 @@ function shutdown() {
  */
 function runClaude({
   bin, prompt, mode, intents, mcpConfigPath, model, cwd, signal, history, imagePath, onText, timeoutMs,
-  language, surface,
+  language, surface, editAutomation,
 }) {
   return new Promise((resolve) => {
     // A caller may cap THIS run below the module ceiling (e.g. a retry gets only
@@ -364,7 +402,9 @@ function runClaude({
       '--json-schema', read ? READ_SCHEMA : WRITE_SCHEMA,
       '--append-system-prompt',
       (read ? READ_SYSTEM_PROMPT : WRITE_SYSTEM_PROMPT)
-        + languageDirective(language) + (read ? voiceDirective(surface) : ''),
+        + languageDirective(language)
+        + (read ? voiceDirective(surface) : '')
+        + (read ? editDirective(editAutomation) : ''),
       // Accepted (though no longer documented) by CLI 2.1.200; bounds agentic
       // loops as a second ceiling next to the wall-clock timeout.
       '--max-turns', String(MAX_TURNS),

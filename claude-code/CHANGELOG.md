@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.36.0] — 2026-07-10
+
+### Added
+- **Edit an existing automation from chat.** You can now ask Claude to change an automation you
+  already have — not just create a new one. When the companion integration sends the automation's
+  current configuration along with your request, Claude modifies that automation and returns the
+  **full updated configuration** for you to confirm, keeping every trigger, condition, and action
+  you didn't ask to change untouched. As before, nothing is saved until you confirm, and the
+  integration re-validates the result before writing it. Ordinary chats and new-automation drafting
+  are unaffected.
+
 ## [1.35.1] — 2026-07-09
 
 ### Housekeeping
