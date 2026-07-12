@@ -124,6 +124,20 @@ OPT
 run alerts-co2-offline.json "14:00"
 if notified; then fail "co2 off (0) + offline off should be silent (got: $(msg))"; else pass "silent when co2/offline checks are disabled"; fi
 
+# --- 7. Quiet hours: critical (offline) is still sent; non-critical (CO2) is
+#        withheld, then fires once the quiet window ends. Guards the exact
+#        critical/quiet-hours safety behaviour the alerts advertise. ---
+rm -f "${work}/alerts-state.json"   # fresh dedupe memory for this scenario
+printf '%s\n' '{"proactive_alerts": true, "alert_quiet_hours": "13:00-15:00", "alert_offline": true, "alert_offline_entities": ["sensor.nas", "device_tracker.ucg_fiber"], "alert_co2_above": 1400}' > "${work}/options.json"
+run alerts-co2-offline.json "14:00"   # inside the quiet window
+m="$(msg)"
+case "${m}" in *"Offline: NAS"*) pass "quiet hours: critical offline still sent";;  *) fail "quiet: critical offline must still send (got: ${m})";; esac
+case "${m}" in *"High CO2"*) fail "quiet: non-critical CO2 must be withheld (got: ${m})";;  *) pass "quiet hours: non-critical CO2 withheld";; esac
+run alerts-co2-offline.json "16:00"   # after the quiet window, same state
+m="$(msg)"
+case "${m}" in *"High CO2: Bedroom CO2 (1850 ppm)"*) pass "withheld CO2 fires once quiet hours end";;  *) fail "CO2 must fire after quiet ends (got: ${m})";; esac
+case "${m}" in *"Offline: NAS"*) fail "already-sent offline must not re-fire after quiet (got: ${m})";;  *) pass "critical offline deduped after quiet ends";; esac
+
 echo
 if [ "${fails}" -eq 0 ]; then
     echo "PASS: all cc-alerts checks passed"
