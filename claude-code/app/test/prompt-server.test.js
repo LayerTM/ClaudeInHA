@@ -406,6 +406,50 @@ test('status: exposes prompt_timeout_ms and the daily budget (for the integratio
     `budget {limit,spent}, got ${JSON.stringify(body.budget)}`);
 });
 
+test('status: alerts is null when the proactive-alerts state file is absent', async () => {
+  // proactive_alerts never ran (no alerts-state.json) → the field is present but
+  // null, so the integration can cleanly render "no data" rather than a zero count.
+  const file = path.join(TMP, 'alerts-state.json');
+  if (fs.existsSync(file)) fs.rmSync(file);
+  const res = await fetch(`${BASE}/api/status`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+  const body = await res.json();
+  assert.equal(body.alerts, null, 'absent alerts-state.json → alerts:null');
+});
+
+test('status: alerts reflects the persisted active-anomaly set (active/critical/items)', async () => {
+  // cc-alerts (a separate deterministic service) persists the active set to
+  // <dataDir>/alerts-state.json; /api/status surfaces it so the integration can
+  // offer an "active home alerts" sensor with per-alert details.
+  const items = [
+    { key: 'co2:sensor.x', critical: false, line: 'High CO2: X (1850 ppm)' },
+    { key: 'offline:device_tracker.y', critical: true, line: 'Offline: Y' },
+  ];
+  fs.writeFileSync(
+    path.join(TMP, 'alerts-state.json'),
+    JSON.stringify({ active: items.map((i) => i.key), items }),
+  );
+  const res = await fetch(`${BASE}/api/status`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+  const body = await res.json();
+  assert.equal(body.alerts.active, 2, 'active counts the currently-active anomalies');
+  assert.equal(body.alerts.critical, 1, 'critical counts the critical:true ones');
+  assert.deepEqual(body.alerts.items, items, 'items carries the full anomaly objects');
+});
+
+test('status: alerts is null for an old-format state file (no items key)', async () => {
+  // A pre-1.39.0 alerts-state.json is {active:[keys]} with no `items`. That must
+  // read as null (→ sensor "unavailable" = no data yet), NOT a false {active:0}
+  // "all clear" — otherwise a still-active alert would briefly look resolved in the
+  // ~2 min after upgrade, before cc-alerts rewrites the file in the new format.
+  fs.writeFileSync(
+    path.join(TMP, 'alerts-state.json'),
+    JSON.stringify({ active: ['leak:binary_sensor.kitchen'] }),
+  );
+  const res = await fetch(`${BASE}/api/status`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+  const body = await res.json();
+  assert.equal(body.alerts, null, 'old-format {active:[...]} without items → alerts:null');
+  fs.rmSync(path.join(TMP, 'alerts-state.json'));
+});
+
 test('usage: authed report from ha-usage --json', async () => {
   const noTok = await fetch(`${BASE}/api/usage`);
   assert.equal(noTok.status, 401);

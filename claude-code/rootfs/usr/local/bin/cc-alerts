@@ -178,13 +178,17 @@ run_cycle() {
         | ($newly | map(select(.critical or ($quiet | not))))            as $to_notify
         | ($newly | map(select(($quiet) and (.critical | not)) | .key))  as $suppressed
         | { notify: ($to_notify | map(.line)),
-            active: (($anom | map(.key)) - $suppressed) }' 2>/dev/null)"
+            active: (($anom | map(.key)) - $suppressed),
+            # items: the SAME active set as above, but the full anomaly objects
+            # (key/critical/line) instead of bare keys — persisted so the prompt
+            # server can serve them on /api/status without re-running detection.
+            items: ($anom | map(select(.key as $k | ($suppressed | index($k)) | not))) }' 2>/dev/null)"
     [ -n "${result}" ] || return 0
 
     # Persist the new active set (0600 — no secrets, but keep it tidy/private).
     local tmp
     tmp="$(mktemp)"
-    if printf '%s\n' "${result}" | jq -c '{active: .active}' > "${tmp}" 2>/dev/null; then
+    if printf '%s\n' "${result}" | jq -c '{active: .active, items: .items}' > "${tmp}" 2>/dev/null; then
         chmod 600 "${tmp}"
         mv "${tmp}" "${STATE}"
     else

@@ -20,6 +20,9 @@ jobs:
       - name: Run tests
         working-directory: claude-code/app
         run: npm test
+      - name: Run alerts loop tests (bash + jq)
+        working-directory: claude-code/app
+        run: npm run test:alerts
 
   lint-js:
     name: JS lint & types

@@ -308,7 +308,7 @@ async function fetchSnapshot(entity, haToken, workDir, fetchImpl = fetch) {
 
 function createPromptApp({
   token, claudeBin, usageBin, mcpConfigPath, model, voiceModel = '', dailyBudgetUsd = 0, haToken,
-  workDir, addonVersion, redact, audit, stateDir = null,
+  workDir, addonVersion, redact, audit, stateDir = null, dataDir = null,
 }) {
   const app = express();
   app.disable('x-powered-by');
@@ -389,6 +389,35 @@ function createPromptApp({
     return usageInFlight;
   }
 
+  // Current proactive-alerts set for /api/status. The deterministic alerts loop
+  // (cc-alerts, a SEPARATE service) persists the active anomalies to
+  // <dataDir>/alerts-state.json — note the /data root, not the prompt server's own
+  // claude-prompt subdir. Read fresh each call (tiny file). These lines carry the
+  // user's OWN home entity names/values (their home data, NOT chat/model content),
+  // surfaced so the integration can offer an "active home alerts" sensor; hence no
+  // redaction. Absent/unreadable/malformed → null (e.g. proactive alerts never ran).
+  // NOTE the two `active`s are different shapes across the file boundary: the state
+  // file's `.active` is the array of anomaly KEYS (cc-alerts' dedup memory); the
+  // response's `alerts.active` below is a COUNT, computed from `.items` so it can
+  // never disagree with the item list.
+  function alertsSnapshot() {
+    if (!dataDir) return null;
+    try {
+      const s = JSON.parse(fs.readFileSync(path.join(dataDir, 'alerts-state.json'), 'utf8'));
+      // Old-format file (pre-1.39.0: {active:[keys]} with no `items`) → "no data
+      // yet" (null → sensor unavailable), NOT a false "0 active alerts". This only
+      // shows for the ~2 min after a 1.39.0 upgrade until cc-alerts' first cycle
+      // rewrites the file with items. A genuine new-format empty set is `items:[]`.
+      if (!Array.isArray(s.items)) return null;
+      const { items } = s;
+      return {
+        active: items.length,
+        critical: items.reduce((n, i) => n + (i && i.critical === true ? 1 : 0), 0),
+        items,
+      };
+    } catch { return null; }
+  }
+
   // 1. IP guard — the internal Supervisor network plus loopback only.
   app.use((req, res, next) => {
     if (!ipAllowed(req.socket.remoteAddress)) {
@@ -430,6 +459,10 @@ function createPromptApp({
       prompt_timeout_ms: TIMEOUT_MS,
       // Daily chat spend cap for a budget sensor (limit 0 = unlimited).
       budget: { limit: budget.limit, spent: Number(budget.spent().toFixed(4)) },
+      // Current proactive-alerts set (or null when the alerts loop hasn't run) —
+      // the user's own home entity names/values, so the integration can offer an
+      // active-alerts sensor. See alertsSnapshot() above.
+      alerts: alertsSnapshot(),
     });
   });
 
