@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.37.0] — 2026-07-12
+
+### Added
+- **Two new proactive alerts: high CO2 and a watched device going offline.** The deterministic
+  alerts loop (no Claude, no plan usage, no prompt-injection surface) now also watches for:
+  - **High CO2** (`alert_co2_above`, default 1400 ppm; 0 = off) — any `carbon_dioxide` sensor
+    reading above the threshold, so you're told when a room's air needs freshening. Non-critical,
+    so it respects quiet hours.
+  - **A watched device or your internet gateway going offline** (`alert_offline`, on by default) —
+    any entity you list in `alert_offline_entities` that reports `unavailable`/`unknown`, or (for a
+    `device_tracker`) `not_home`, is flagged as down. This is **critical** and always sent, even
+    during quiet hours. It defaults to watching your internet gateway
+    (`device_tracker.ucg_fiber`), so "the router/internet is down" is caught out of the box — add
+    any critical device (a NAS, a camera, a second router) to the list to watch it too.
+  Both dedupe like the existing alerts: you're notified only when something *newly* goes wrong, and
+  it can alert again once the problem clears and returns.
+
 ## [1.36.2] — 2026-07-10
 
 ### Changed

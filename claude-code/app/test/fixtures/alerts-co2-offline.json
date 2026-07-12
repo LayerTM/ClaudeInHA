@@ -1,0 +1,32 @@
+[
+  {
+    "entity_id": "sensor.bedroom_co2",
+    "state": "1850",
+    "attributes": { "device_class": "carbon_dioxide", "friendly_name": "Bedroom CO2", "unit_of_measurement": "ppm" }
+  },
+  {
+    "entity_id": "sensor.office_co2",
+    "state": "620",
+    "attributes": { "device_class": "carbon_dioxide", "friendly_name": "Office CO2", "unit_of_measurement": "ppm" }
+  },
+  {
+    "entity_id": "device_tracker.ucg_fiber",
+    "state": "not_home",
+    "attributes": { "friendly_name": "UniFi Gateway", "source_type": "router" }
+  },
+  {
+    "entity_id": "sensor.nas",
+    "state": "unavailable",
+    "attributes": { "friendly_name": "NAS" }
+  },
+  {
+    "entity_id": "device_tracker.phone",
+    "state": "home",
+    "attributes": { "friendly_name": "My Phone" }
+  },
+  {
+    "entity_id": "binary_sensor.garden_leak",
+    "state": "unavailable",
+    "attributes": { "device_class": "moisture", "friendly_name": "Garden leak sensor" }
+  }
+]

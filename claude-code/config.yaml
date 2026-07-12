@@ -1,5 +1,5 @@
 name: "Claude Code"
-version: "1.36.2"
+version: "1.37.0"
 slug: claude-code
 description: "Claude Code AI assistant embedded in Home Assistant — web console with tabs, clipboard, file attachments, browser testing, and a bundled HA skill pack"
 url: "https://github.com/LayerTM/ClaudeInHA"
@@ -72,6 +72,10 @@ options:
   alert_temp_enabled: false
   alert_temp_low: 5
   alert_temp_high: 45
+  alert_co2_above: 1400
+  alert_offline: true
+  alert_offline_entities:
+    - "device_tracker.ucg_fiber"
   alert_quiet_hours: ""
   prompt_api: true
   api_token: ""
@@ -114,6 +118,10 @@ schema:
   alert_temp_enabled: bool
   alert_temp_low: "float?"
   alert_temp_high: "float?"
+  alert_co2_above: "int(0,)?"
+  alert_offline: bool
+  alert_offline_entities:
+    - "str"
   alert_quiet_hours: "str?"
   prompt_api: bool
   api_token: "password"
