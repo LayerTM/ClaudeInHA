@@ -51,15 +51,26 @@
     <div id="overlay" class="hidden"><div id="overlay-text"></div></div>
   </main>
 
+  <div id="menu-context" class="menu hidden">
+    <button data-ctx="copy">Copy selection</button>
+    <button data-ctx="paste">Paste</button>
+  </div>
+
   <footer id="keybar" class="hidden">
     <button data-seq="&#27;">Esc</button>
     <button data-seq="&#9;">Tab</button>
     <button data-seq="&#27;[Z">⇧Tab</button>
     <button data-seq="&#3;">^C</button>
+    <button class="mod" data-mod="ctrl">Ctrl</button>
+    <button class="mod" data-mod="alt">Alt</button>
     <button data-seq="&#27;[A">↑</button>
     <button data-seq="&#27;[B">↓</button>
     <button data-seq="&#27;[D">←</button>
     <button data-seq="&#27;[C">→</button>
+    <button data-seq="&#27;[H">Home</button>
+    <button data-seq="&#27;[F">End</button>
+    <button data-seq="&#27;[5~">PgUp</button>
+    <button data-seq="&#27;[6~">PgDn</button>
     <button data-seq="/">/</button>
     <button data-seq="@">@</button>
   </footer>

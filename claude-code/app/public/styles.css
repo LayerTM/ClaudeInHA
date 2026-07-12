@@ -187,6 +187,27 @@ body {
   padding: 8px 8px 4px 10px;
 }
 #terminal, #terminal .xterm { height: 100%; }
+/* Relative so the bell flash overlay can pin to the terminal (xterm's own
+   children position against the inner .xterm, so this is layout-neutral). */
+#terminal { position: relative; }
+
+/* Visual bell (xterm 6 has no bellStyle): a terracotta ring that fades once.
+   pointer-events:none + a pseudo-element keep the terminal fully interactive
+   and never obscure text. */
+#terminal.bell-flash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 2px var(--accent), inset 0 0 26px rgba(217, 119, 87, 0.35);
+  animation: bell-flash 0.45s ease-out forwards;
+}
+@keyframes bell-flash {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
 
 /* Held until the terminal is fitted and the webfont has settled (app.js), so
    the 80x24 default and any font swap never flash on screen. */
@@ -260,6 +281,13 @@ body.booting #term-wrap { visibility: hidden; }
   cursor: pointer;
 }
 #keybar button:active { background: var(--bg-hover); }
+/* Sticky Ctrl/Alt: armed = filled terracotta until the next key consumes it. */
+#keybar button.mod.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
 
 /* ---------- toasts ---------- */
 #toast-area {

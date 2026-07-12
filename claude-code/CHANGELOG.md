@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.38.0] — 2026-07-12
+
+### Added
+- **Right-click Copy / Paste in the console.** Right-clicking the terminal now opens a small
+  Copy selection / Paste menu instead of the browser's own back/reload/inspect menu — the console
+  feels like a real terminal, not a web page. Paste uses the same clipboard handling (and manual
+  fallback) as the 📋 button.
+- **Visible + background bell.** When the terminal rings its bell (for example when Claude is
+  waiting on a prompt), the console briefly flashes. If the tab is in the background you also get a
+  notification and a 🔔 marker in the tab title, so you don't miss it.
+- **Bigger on-screen key bar for phones.** The mobile key bar gains sticky **Ctrl** and **Alt**
+  keys — tap one, then the next key (from the on-screen keyboard or the bar) is sent with that
+  modifier, so you can finally do Ctrl+D, Ctrl+R, Ctrl+L, Alt+B and friends without a physical
+  keyboard. It also adds **Home**, **End**, **PgUp** and **PgDn** buttons. The bar scrolls
+  sideways when it runs out of room.
+
 ## [1.37.0] — 2026-07-12
 
 ### Added
