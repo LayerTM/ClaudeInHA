@@ -1,0 +1,7 @@
+[
+  {
+    "entity_id": "device_tracker.watched_router",
+    "state": "home",
+    "attributes": { "friendly_name": "Watched Router" }
+  }
+]

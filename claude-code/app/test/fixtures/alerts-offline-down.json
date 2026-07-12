@@ -1,0 +1,7 @@
+[
+  {
+    "entity_id": "device_tracker.garage_pi",
+    "state": "not_home",
+    "attributes": { "friendly_name": "Garage Pi" }
+  }
+]

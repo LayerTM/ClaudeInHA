@@ -158,7 +158,10 @@ Any listed entity that reports `unavailable` or `unknown` — or, for a
 camera) — avoid a person's phone tracker, or you'll get an *Offline* alert every
 time they leave home. **To remove** a watched device, delete its line (keep the gateway if you still want
 internet-down detection, or set `alert_offline: false` to switch the whole check
-off). Changes take effect on the next cycle (within
+off). Setting `alert_offline_entities: []` (an explicit empty list) while leaving
+`alert_offline: true` watches **nothing** — an explicit way to disable offline
+alerts without turning `alert_offline` off (an *absent* list, by contrast, falls
+back to watching the default gateway). Changes take effect on the next cycle (within
 `proactive_alerts_interval_minutes`) — just save the options, no restart needed.
 
 ## The companion integration (Prompt API)

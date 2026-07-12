@@ -1,0 +1,7 @@
+[
+  {
+    "entity_id": "device_tracker.ucg_fiber",
+    "state": "not_home",
+    "attributes": { "friendly_name": "UniFi Gateway", "source_type": "router" }
+  }
+]

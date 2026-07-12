@@ -1,0 +1,7 @@
+[
+  {
+    "entity_id": "sensor.threshold_co2",
+    "state": "1400",
+    "attributes": { "device_class": "carbon_dioxide", "friendly_name": "Threshold CO2", "unit_of_measurement": "ppm" }
+  }
+]
