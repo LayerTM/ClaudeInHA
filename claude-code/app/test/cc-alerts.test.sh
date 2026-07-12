@@ -84,6 +84,46 @@ case "${m}" in *"WATER LEAK"*) pass "re-alert contains the leak";;       *) fail
 case "${m}" in *"Low battery"*) fail "battery should still be deduped on re-alert";; *) pass "battery stays deduped on re-alert";; esac
 case "${m}" in *"Open at night"*) fail "door should still be deduped on re-alert";;  *) pass "door stays deduped on re-alert";; esac
 
+# --- 4. CO2 + offline/network checks ---
+# Reconfigure: enable the high-CO2 check (>1400 ppm) and watch two entities for
+# going offline (the default internet gateway plus a NAS sensor). Fresh state so
+# the diff for this block is easy to reason about.
+rm -f "${work}/alerts-state.json"
+cat > "${work}/options.json" <<'OPT'
+{
+  "proactive_alerts": true,
+  "alert_co2_above": 1400,
+  "alert_offline": true,
+  "alert_offline_entities": ["device_tracker.ucg_fiber", "sensor.nas"]
+}
+OPT
+
+run alerts-co2-offline.json "14:00"
+if notified; then pass "notified on co2/offline cycle"; else fail "expected a co2/offline notification"; fi
+m="$(msg)"
+case "${m}" in *"High CO2: Bedroom CO2 (1850 ppm)"*) pass "reports high CO2 above threshold";; *) fail "missing high-CO2 line";; esac
+case "${m}" in *"Office CO2"*) fail "CO2 below threshold should not alert";;             *) pass "ignores CO2 below threshold";; esac
+case "${m}" in *"Offline: UniFi Gateway"*) pass "reports device_tracker not_home as offline";; *) fail "missing offline gateway (not_home) line";; esac
+case "${m}" in *"Offline: NAS"*) pass "reports unavailable watched entity as offline";; *) fail "missing offline NAS (unavailable) line";; esac
+case "${m}" in *"My Phone"*) fail "a device_tracker that is home should not alert";;     *) pass "ignores device_tracker that is home";; esac
+case "${m}" in *"Garden leak"*) fail "unavailable entity not on the watch list should not alert";; *) pass "ignores unavailable entity not on the watch list";; esac
+
+# --- 5. Dedupe: same CO2/offline state again → nothing new ---
+run alerts-co2-offline.json "14:00"
+if notified; then fail "dedupe: expected NO co2/offline re-notify on unchanged state (got: $(msg))"; else pass "dedupe: co2/offline stay quiet while still active"; fi
+
+# --- 6. Options off → silent even with a triggering fixture ---
+rm -f "${work}/alerts-state.json"
+cat > "${work}/options.json" <<'OPT'
+{
+  "proactive_alerts": true,
+  "alert_co2_above": 0,
+  "alert_offline": false
+}
+OPT
+run alerts-co2-offline.json "14:00"
+if notified; then fail "co2 off (0) + offline off should be silent (got: $(msg))"; else pass "silent when co2/offline checks are disabled"; fi
+
 echo
 if [ "${fails}" -eq 0 ]; then
     echo "PASS: all cc-alerts checks passed"

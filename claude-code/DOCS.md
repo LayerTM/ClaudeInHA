@@ -73,7 +73,7 @@ reconciled on every start.
 | `upload_retention_days` | Auto-delete attached files after N days (0 = keep). |
 | `remote_control` | Adds a tab running `claude remote-control`: drive this session from the Claude mobile app / claude.ai. Requires a full `/login` (subscription); `oauth_token` and API keys are not sufficient. |
 | `monitoring_interval_hours` | Opt-in proactive monitoring: every N hours Claude reviews the error log and config and notifies you only if it finds something (0 = off). |
-| `proactive_alerts` + `alert_*` | Opt-in **deterministic** anomaly alerts (no Claude, no plan usage): notify on a water leak, door/window open at night, low battery, or temperature out of band. See *Proactive alerts* below. |
+| `proactive_alerts` + `alert_*` | Opt-in **deterministic** anomaly alerts (no Claude, no plan usage): notify on a water leak, door/window open at night, low battery, temperature out of band, high CO2, or a watched device/internet gateway going offline. See *Proactive alerts* below. |
 | `prompt_api` | Serve the secure Prompt API for the companion **Claude** (`claude_ha`) integration (on by default). See *The companion integration* below. |
 | `api_token` | Optional fixed bearer token for the Prompt API. Leave empty — the add-on generates one and hands it to the integration via discovery. |
 | `prompt_ha_token` | Optional HA token used only by Prompt-API sessions to read state through the MCP Server integration. Best practice: a dedicated non-admin user's token. Falls back to `ha_token`. |
@@ -106,6 +106,8 @@ It watches for:
 - **Open at night** (`alert_open_at_night`, on) — a door, window, garage, or opening left `on` during the night window (`alert_night_start`–`alert_night_end`, default 23:00–06:00).
 - **Low battery** (`alert_battery_below`, default 15%; 0 = off) — any `battery` entity below the threshold.
 - **Temperature out of band** (`alert_temp_enabled`, off by default) — a `temperature` sensor below `alert_temp_low` (5) or above `alert_temp_high` (45). Off by default because sensible bands vary.
+- **High CO2** (`alert_co2_above`, default 1400 ppm; 0 = off) — any `carbon_dioxide` sensor reading above the threshold, so you know when a room needs airing out. Non-critical (held back during quiet hours).
+- **Offline / network** (`alert_offline`, on) — any entity you list in `alert_offline_entities` that reports `unavailable`/`unknown`, or (for a `device_tracker`) `not_home`. **Critical**: always sent, even during quiet hours. Defaults to watching your internet gateway (`device_tracker.ucg_fiber`), so "the internet/router is down" is caught out of the box.
 
 **Dedupe:** you are notified only when an entity *newly* enters an anomaly. A
 still-open door won't re-notify every cycle — the active anomalies are remembered
@@ -113,14 +115,51 @@ in `/data/alerts-state.json` and dropped when they clear, so the same entity can
 alert again the next time the problem reappears.
 
 **Quiet hours** (`alert_quiet_hours`, e.g. `22:00-07:00`, empty = off): during
-this window non-critical alerts (battery, temperature, open-at-night) are held
-back and stay pending until quiet hours end; critical water-leak alerts are
-**always** sent.
+this window non-critical alerts (battery, temperature, open-at-night, high CO2)
+are held back and stay pending until quiet hours end; critical alerts — water
+leak and a watched device going offline — are **always** sent.
 
 All new anomalies from one cycle are batched into a single notification titled
 *Claude · Home alert*. As with the monitor and digest, set `HA_NOTIFY_SERVICE`
 in Environment Variables to push to your phone; otherwise it lands in the HA
 notification bell. Activity is logged to `/data/alerts.log`.
+
+### Adding, changing, or removing an alert
+
+Every alert is just an option you set in the add-on's **Configuration** tab — no
+automations and no code. Because the whole feature is deterministic (fixed bash +
+jq rules, no model), it costs **nothing in plan usage** and has **no
+prompt-injection surface**. First turn the feature on with `proactive_alerts:
+true`, then enable, disable, or tune each check:
+
+| Alert | Option(s) | Turn off | Tune |
+|-------|-----------|----------|------|
+| Water leak | `alert_water_leak` | `false` | — (critical, always sent) |
+| Open at night | `alert_open_at_night`, `alert_night_start`, `alert_night_end` | `alert_open_at_night: false` | change the night window |
+| Low battery | `alert_battery_below` | `0` | raise/lower the % threshold |
+| Temperature | `alert_temp_enabled`, `alert_temp_low`, `alert_temp_high` | `alert_temp_enabled: false` | set your low/high band |
+| High CO2 | `alert_co2_above` | `0` | set the ppm threshold (default 1400) |
+| Offline / network | `alert_offline`, `alert_offline_entities` | `alert_offline: false` | edit the watched-entity list |
+
+**Adding a device to the offline watch.** To be alerted when a critical device
+drops off — your NAS, a camera, a second router — add its `entity_id` to
+`alert_offline_entities`:
+
+```yaml
+alert_offline_entities:
+  - device_tracker.ucg_fiber   # your internet gateway (the default)
+  - sensor.nas_status
+  - camera.front_door
+```
+
+Any listed entity that reports `unavailable` or `unknown` — or, for a
+`device_tracker`, `not_home` — raises a critical *Offline: …* alert. For a
+`device_tracker`, watch **always-present infrastructure** (a gateway, NAS, or
+camera) — avoid a person's phone tracker, or you'll get an *Offline* alert every
+time they leave home. **To remove** a watched device, delete its line (keep the gateway if you still want
+internet-down detection, or set `alert_offline: false` to switch the whole check
+off). Changes take effect on the next cycle (within
+`proactive_alerts_interval_minutes`) — just save the options, no restart needed.
 
 ## The companion integration (Prompt API)
 

@@ -2,8 +2,9 @@
 # Proactive anomaly alerts (opt-in, DETERMINISTIC — no Claude/LLM call, no plan
 # usage). Every proactive_alerts_interval_minutes we fetch all HA states from the
 # Supervisor API ourselves and run a handful of fixed, rule-based checks (low
-# battery, water leak, door/window open at night, temperature out of band). When
-# an entity NEWLY enters an anomaly we push one batched ha-notify; a still-active
+# battery, water leak, door/window open at night, temperature out of band, high
+# CO2, and a watched device/internet gateway going offline). When an entity NEWLY
+# enters an anomaly we push one batched ha-notify; a still-active
 # anomaly is remembered in /data/alerts-state.json so it doesn't re-notify every
 # cycle, and is dropped when it clears so it can alert again next time.
 #
@@ -52,6 +53,12 @@ night_end="$(jqopt '.alert_night_end' '06:00')"
 temp_enabled="$(jqopt '.alert_temp_enabled' false)"
 temp_low="$(jqopt '.alert_temp_low' 5)"
 temp_high="$(jqopt '.alert_temp_high' 45)"
+co2_above="$(jqopt '.alert_co2_above' 1400)"         # 0 = off, non-critical
+offline_enabled="$(jqopt '.alert_offline' true)"     # CRITICAL, always sent
+# Which entities to watch for going offline (a JSON list). Defaults to the
+# internet gateway so "router/internet down" is caught out of the box.
+offline_entities="$(jq -c '.alert_offline_entities // empty' "${OPTIONS}" 2>/dev/null)"
+[ -n "${offline_entities}" ] || offline_entities='["device_tracker.ucg_fiber"]'
 quiet="$(jqopt '.alert_quiet_hours' '')"             # "" = off, else "HH:MM-HH:MM"
 
 # --- Time-window helpers ----------------------------------------------------
@@ -103,31 +110,55 @@ run_cycle() {
         --argjson nopen "${is_night}" \
         --argjson tenab "${temp_enabled}" \
         --argjson tlow "${temp_low}" \
-        --argjson thigh "${temp_high}" '
+        --argjson thigh "${temp_high}" \
+        --argjson co2 "${co2_above}" \
+        --argjson offen "${offline_enabled}" \
+        --argjson watch "${offline_entities}" '
         [ .[]
           | (.attributes.device_class // "") as $dc
           | (.state // "") as $st
-          | (((.state | tonumber?) // null)) as $num
+          | (.entity_id) as $eid
           | (.attributes.friendly_name // .entity_id) as $name
-          | select($st != "unavailable" and $st != "unknown" and $st != "")
           | (
-              ( if ($batt > 0) and ($dc == "battery") and ($num != null) and ($num < $batt)
-                then {key:("battery:" + .entity_id), critical:false,
-                      line:("Low battery: " + $name + " (" + ($num|tostring) + "%)")}
+              # Offline / network watch. Runs on EVERY entity — including the
+              # unavailable/unknown ones the value checks below skip — because a
+              # watched device dropping off is exactly the anomaly. For a
+              # device_tracker, "not_home" also counts as down (e.g. the internet
+              # gateway). Critical: always sent, even during quiet hours.
+              ( if $offen and (($watch | index($eid)) != null)
+                   and ( $st == "unavailable" or $st == "unknown"
+                         or ($st == "not_home" and ($eid | startswith("device_tracker."))) )
+                then {key:("offline:" + $eid), critical:true,
+                      line:("Offline: " + $name)}
                 else empty end ),
-              ( if $water and ($dc == "moisture") and ($st == "on")
-                then {key:("leak:" + .entity_id), critical:true,
-                      line:("WATER LEAK detected: " + $name)}
-                else empty end ),
-              ( if $nopen and ($st == "on")
-                   and ($dc == "door" or $dc == "window" or $dc == "garage_door" or $dc == "opening")
-                then {key:("night_open:" + .entity_id), critical:false,
-                      line:("Open at night: " + $name)}
-                else empty end ),
-              ( if $tenab and ($dc == "temperature") and ($num != null) and ($num < $tlow or $num > $thigh)
-                then {key:("temp:" + .entity_id), critical:false,
-                      line:("Temperature out of range: " + $name + " (" + ($num|tostring) + "°)")}
-                else empty end )
+              # Value-based checks only make sense on an entity reporting a real
+              # reading, so they skip unavailable/unknown/empty states.
+              ( select($st != "unavailable" and $st != "unknown" and $st != "")
+                | (((.state | tonumber?) // null)) as $num
+                | (
+                    ( if ($batt > 0) and ($dc == "battery") and ($num != null) and ($num < $batt)
+                      then {key:("battery:" + .entity_id), critical:false,
+                            line:("Low battery: " + $name + " (" + ($num|tostring) + "%)")}
+                      else empty end ),
+                    ( if $water and ($dc == "moisture") and ($st == "on")
+                      then {key:("leak:" + .entity_id), critical:true,
+                            line:("WATER LEAK detected: " + $name)}
+                      else empty end ),
+                    ( if $nopen and ($st == "on")
+                         and ($dc == "door" or $dc == "window" or $dc == "garage_door" or $dc == "opening")
+                      then {key:("night_open:" + .entity_id), critical:false,
+                            line:("Open at night: " + $name)}
+                      else empty end ),
+                    ( if $tenab and ($dc == "temperature") and ($num != null) and ($num < $tlow or $num > $thigh)
+                      then {key:("temp:" + .entity_id), critical:false,
+                            line:("Temperature out of range: " + $name + " (" + ($num|tostring) + "°)")}
+                      else empty end ),
+                    ( if ($co2 > 0) and ($dc == "carbon_dioxide") and ($num != null) and ($num > $co2)
+                      then {key:("co2:" + .entity_id), critical:false,
+                            line:("High CO2: " + $name + " (" + ($num|tostring) + " ppm)")}
+                      else empty end )
+                  )
+              )
             )
         ]' 2>/dev/null)"
     [ -n "${anomalies_json}" ] || anomalies_json="[]"
