@@ -18,7 +18,7 @@
   const $ = (id) => document.getElementById(id);
   const els = {
     tabs: $('tabs'), tabAdd: $('tab-add'),
-    copy: $('btn-copy'), copyMenu: $('menu-copy'),
+    copy: $('btn-copy'), copyMenu: $('menu-copy'), ctxMenu: $('menu-context'),
     tray: $('btn-tray'), trayMenu: $('menu-tray'), trayBadge: $('tray-badge'),
     paste: $('btn-paste'), attach: $('btn-attach'), update: $('btn-update'),
     fontDec: $('btn-font-dec'), fontInc: $('btn-font-inc'),
@@ -259,7 +259,10 @@
   els.terminal.addEventListener('mouseup', maybeCopySelection);
   els.terminal.addEventListener('touchend', maybeCopySelection);
 
-  term.onData((d) => send({ t: 'in', d }));
+  // withMods() applies any armed sticky Ctrl/Alt from the key bar (defined in
+  // the key-bar section below) to what the OS keyboard sends; it is a no-op
+  // when no modifier is armed.
+  term.onData((d) => send({ t: 'in', d: withMods(d) }));
   // onBinary carries raw bytes that must not round-trip through UTF-8 JSON —
   // ship them as a binary frame (server writes them latin1-preserving).
   term.onBinary((d) => {
@@ -268,6 +271,32 @@
     }
   });
   term.onResize(({ cols, rows }) => send({ t: 'resize', cols, rows }));
+
+  // xterm 6 dropped the `bellStyle` option — BEL (\x07) now only surfaces via
+  // onBell, so the app has to react. Give it a brief border flash, and — when
+  // the tab is backgrounded — a toast plus a title badge so a prompt that rings
+  // for attention (e.g. a permission ask) isn't missed behind another tab.
+  const baseTitle = document.title;
+  let bellPending = false;
+  let bellFlashTimer = 0;
+  term.onBell(() => {
+    els.terminal.classList.remove('bell-flash');
+    void els.terminal.offsetWidth; // reflow so the flash restarts on rapid bells
+    els.terminal.classList.add('bell-flash');
+    clearTimeout(bellFlashTimer);
+    bellFlashTimer = setTimeout(() => els.terminal.classList.remove('bell-flash'), 450);
+    if (document.hidden) {
+      toast('🔔 Terminal bell');
+      bellPending = true;
+      document.title = `🔔 ${baseTitle}`;
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && bellPending) {
+      bellPending = false;
+      document.title = baseTitle;
+    }
+  });
 
   // Sizing & reveal — instant, reactive, no timers. The terminal stays hidden
   // (body.booting) until it has both (a) been fitted to a real-sized container
@@ -494,6 +523,7 @@
   function closeMenus() {
     els.copyMenu.classList.add('hidden');
     els.trayMenu.classList.add('hidden');
+    els.ctxMenu.classList.add('hidden');
   }
 
   // Menus are position:fixed (the scrollable toolbar would clip absolute
@@ -513,14 +543,20 @@
   els.tray.addEventListener('click', (e) => { e.stopPropagation(); renderTray(); toggleMenu(els.trayMenu, els.tray); });
   document.addEventListener('click', closeMenus);
 
+  // Copy the current terminal selection, with the same clipboard cascade +
+  // dialog fallback the copy menu uses. Reused by the right-click menu.
+  function copySelectionInteractive() {
+    const sel = term.getSelection();
+    if (!sel) { toast('Nothing selected — use Shift+drag', { error: true }); return; }
+    if (!copyGesture(sel)) showCopyDialog(sel);
+  }
+
   els.copyMenu.addEventListener('click', async (e) => {
     const kind = e.target?.dataset?.copy;
     if (!kind) return;
     closeMenus();
     if (kind === 'selection') {
-      const sel = term.getSelection();
-      if (!sel) { toast('Nothing selected — use Shift+drag', { error: true }); return; }
-      if (!copyGesture(sel)) showCopyDialog(sel);
+      copySelectionInteractive();
       return;
     }
     const lines = kind === 'visible' ? 0 : kind === 'recent' ? 1000 : 50000;
@@ -540,7 +576,10 @@
 
   /* ---------------- paste ---------------- */
 
-  els.paste.addEventListener('click', async () => {
+  // Read the system clipboard and paste into the terminal; on HTTP / WebView /
+  // permission-denied contexts where that is blocked, fall back to the paste
+  // dialog. Shared by the 📋 button and the right-click menu.
+  async function doPaste() {
     if (navigator.clipboard?.readText) {
       try {
         const text = await navigator.clipboard.readText();
@@ -550,7 +589,8 @@
     els.pasteInput.value = '';
     els.dlgPaste.showModal();
     els.pasteInput.focus();
-  });
+  }
+  els.paste.addEventListener('click', doPaste);
 
   $('paste-ok').addEventListener('click', () => {
     const text = els.pasteInput.value;
@@ -559,6 +599,38 @@
     term.focus();
   });
   $('paste-cancel').addEventListener('click', () => els.dlgPaste.close());
+
+  /* ---------------- right-click menu ---------------- */
+
+  // Anchor the shared `.menu` component at a point (the cursor) and keep it on
+  // screen. Unlike the toolbar menus it is positioned by left/top, not right.
+  function openContextMenu(x, y) {
+    closeMenus();
+    const m = els.ctxMenu;
+    m.classList.remove('hidden');
+    const w = m.offsetWidth || 210;
+    const h = m.offsetHeight || 80;
+    m.style.right = 'auto';
+    m.style.left = `${Math.max(4, Math.min(x, window.innerWidth - w - 4))}px`;
+    m.style.top = `${Math.max(4, Math.min(y, window.innerHeight - h - 4))}px`;
+  }
+
+  els.terminal.addEventListener('contextmenu', (e) => {
+    // The browser's own Back/Reload/Inspect/Print menu is the #1 tell that this
+    // is a web page, not a terminal — replace it with Copy/Paste. On touch-first
+    // devices leave the native long-press selection callout alone.
+    if (window.matchMedia?.('(pointer: coarse)')?.matches) return;
+    e.preventDefault();
+    openContextMenu(e.clientX, e.clientY);
+  });
+
+  els.ctxMenu.addEventListener('click', (e) => {
+    const kind = e.target?.dataset?.ctx;
+    if (!kind) return;
+    closeMenus();
+    if (kind === 'copy') copySelectionInteractive();
+    else if (kind === 'paste') doPaste();
+  });
 
   /* ---------------- attachments ---------------- */
 
@@ -689,10 +761,61 @@
     scheduleFit();
   });
 
+  // Sticky modifiers: on a phone there is no physical Ctrl/Alt, so tapping the
+  // Ctrl or Alt key-bar button arms that modifier for the NEXT key — typed on
+  // the OS keyboard (via term.onData → withMods) or tapped on the key bar — then
+  // it auto-releases. This is how touch reaches Ctrl+D/R/L/U/W/K, Alt+B/F, etc.
+  const mods = { ctrl: false, alt: false };
+  const modButtons = Array.from(els.keybar.querySelectorAll('[data-mod]'));
+
+  function renderMods() {
+    modButtons.forEach((b) => b.classList.toggle('active', !!mods[b.dataset.mod]));
+  }
+  function clearMods() {
+    if (!mods.ctrl && !mods.alt) return;
+    mods.ctrl = false;
+    mods.alt = false;
+    renderMods();
+  }
+  function toggleMod(which) {
+    mods[which] = !mods[which];
+    renderMods();
+  }
+
+  // Ctrl on a printable char → its C0 control code (Ctrl+A = 0x01 … Ctrl+_ =
+  // 0x1f, covering @ A–Z [ \ ] ^ _ and, via toUpperCase, a–z). Chars with no
+  // control mapping pass through unchanged.
+  function ctrlSeq(ch) {
+    const code = ch.toUpperCase().charCodeAt(0);
+    return code >= 0x40 && code <= 0x5f ? String.fromCharCode(code & 0x1f) : ch;
+  }
+
+  // Apply the armed sticky modifier(s) to input. Alt prefixes with ESC (meta);
+  // Ctrl maps to a control code. Only single printable chars are transformed —
+  // escape sequences (arrows, Home, …) and multi-char input pass through — but
+  // any input consumes the modifier (one-shot, like macOS sticky keys).
+  function withMods(seq) {
+    if (!mods.ctrl && !mods.alt) return seq;
+    let out = seq;
+    if (seq.length === 1 && seq >= ' ') {
+      if (mods.ctrl) out = ctrlSeq(out);
+      if (mods.alt) out = `\x1b${out}`;
+    }
+    clearMods();
+    return out;
+  }
+
   els.keybar.addEventListener('click', (e) => {
-    const seq = e.target?.dataset?.seq;
-    if (seq) {
-      send({ t: 'in', d: seq });
+    const btn = e.target?.closest?.('button');
+    if (!btn || !els.keybar.contains(btn)) return;
+    if (btn.dataset.mod) {
+      toggleMod(btn.dataset.mod);
+      term.focus();
+      return;
+    }
+    const seq = btn.dataset.seq;
+    if (seq != null) {
+      send({ t: 'in', d: withMods(seq) });
       term.focus();
     }
   });
