@@ -138,6 +138,61 @@ m="$(msg)"
 case "${m}" in *"High CO2: Bedroom CO2 (1850 ppm)"*) pass "withheld CO2 fires once quiet hours end";;  *) fail "CO2 must fire after quiet ends (got: ${m})";; esac
 case "${m}" in *"Offline: NAS"*) fail "already-sent offline must not re-fire after quiet (got: ${m})";;  *) pass "critical offline deduped after quiet ends";; esac
 
+# --- 8. Default gateway watch-list, out of the box. With alert_offline on but
+#        NO alert_offline_entities set, the built-in default
+#        (["device_tracker.ucg_fiber"]) must be injected and catch the gateway
+#        going not_home. ---
+rm -f "${work}/alerts-state.json"
+printf '%s\n' '{"proactive_alerts": true, "alert_offline": true}' > "${work}/options.json"
+run alerts-offline-default-gateway.json "14:00"
+case "$(msg)" in *"Offline: UniFi Gateway"*) pass "default watch-list catches the gateway with no entities configured";; *) fail "default gateway watch missed the offline gateway (got: $(msg))";; esac
+
+# --- 8b. Explicit empty list watches NOTHING. `[]` is truthy to jq, so the
+#         default gateway is NOT re-injected (the `// empty` fallback is only for
+#         an ABSENT list) — an explicit way to disable offline without flipping
+#         alert_offline off. ---
+rm -f "${work}/alerts-state.json"
+printf '%s\n' '{"proactive_alerts": true, "alert_offline": true, "alert_offline_entities": []}' > "${work}/options.json"
+run alerts-offline-default-gateway.json "14:00"
+if notified; then fail "explicit empty alert_offline_entities must watch nothing (got: $(msg))"; else pass "explicit empty alert_offline_entities watches nothing"; fi
+
+# --- 9. CO2 exactly AT the threshold stays silent (the check is strict `>`, not
+#        `>=`). Guards against a future `>=` regression. ---
+rm -f "${work}/alerts-state.json"
+printf '%s\n' '{"proactive_alerts": true, "alert_co2_above": 1400, "alert_offline": false}' > "${work}/options.json"
+run alerts-co2-threshold.json "14:00"
+if notified; then fail "CO2 exactly at the threshold must stay silent (strict >), got: $(msg)"; else pass "CO2 at the exact threshold does not alert"; fi
+
+# --- 10. Offline guard: `not_home` only counts for device_trackers. A watched
+#         NON-device_tracker that is not_home must NOT be flagged offline, while
+#         the same non-tracker reporting unavailable still IS. ---
+rm -f "${work}/alerts-state.json"
+printf '%s\n' '{"proactive_alerts": true, "alert_offline": true, "alert_offline_entities": ["sensor.foo", "sensor.bar"], "alert_co2_above": 0}' > "${work}/options.json"
+run alerts-offline-non-tracker.json "14:00"
+m="$(msg)"
+case "${m}" in *"Foo Sensor"*) fail "not_home on a non-device_tracker must not flag offline (got: ${m})";; *) pass "non-device_tracker not_home is not treated as offline";; esac
+case "${m}" in *"Offline: Bar Sensor"*) pass "non-device_tracker reporting unavailable still flags offline";; *) fail "unavailable non-tracker should still flag offline (got: ${m})";; esac
+
+# --- 11. A WATCHED device_tracker that is home stays silent. Distinct from the
+#         existing unwatched-exclusion case: this one IS on the watch list but is
+#         healthy, so it must not alert. ---
+rm -f "${work}/alerts-state.json"
+printf '%s\n' '{"proactive_alerts": true, "alert_offline": true, "alert_offline_entities": ["device_tracker.watched_router"], "alert_co2_above": 0}' > "${work}/options.json"
+run alerts-tracker-home.json "14:00"
+if notified; then fail "a watched device_tracker that is home must not alert (got: $(msg))"; else pass "a watched device_tracker at home stays silent"; fi
+
+# --- 12. Offline clear-then-re-alert: a watched device_tracker goes not_home
+#         (alerts), returns home (goes quiet), then drops again (re-alerts) —
+#         the same clear/re-alert cycle the water-leak test proves. ---
+rm -f "${work}/alerts-state.json"
+printf '%s\n' '{"proactive_alerts": true, "alert_offline": true, "alert_offline_entities": ["device_tracker.garage_pi"], "alert_co2_above": 0}' > "${work}/options.json"
+run alerts-offline-down.json "14:00"
+case "$(msg)" in *"Offline: Garage Pi"*) pass "offline alerts when the watched device drops";; *) fail "expected an offline alert when the device dropped (got: $(msg))";; esac
+run alerts-offline-up.json "14:00"
+if notified; then fail "offline must go quiet when the device returns home (got: $(msg))"; else pass "offline clears silently when the device returns home"; fi
+run alerts-offline-down.json "14:00"
+case "$(msg)" in *"Offline: Garage Pi"*) pass "offline re-alerts after the device returns and drops again";; *) fail "expected offline to re-alert after clearing (got: $(msg))";; esac
+
 echo
 if [ "${fails}" -eq 0 ]; then
     echo "PASS: all cc-alerts checks passed"

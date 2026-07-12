@@ -1,0 +1,12 @@
+[
+  {
+    "entity_id": "sensor.foo",
+    "state": "not_home",
+    "attributes": { "friendly_name": "Foo Sensor" }
+  },
+  {
+    "entity_id": "sensor.bar",
+    "state": "unavailable",
+    "attributes": { "friendly_name": "Bar Sensor" }
+  }
+]
