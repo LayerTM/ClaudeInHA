@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.39.0] — 2026-07-12
+
+### Added
+- The proactive-alerts status is now published on the local status API, so the companion Home
+  Assistant integration can offer an "active home alerts" sensor (with per-alert details) your own
+  automations can react to. No effect if proactive alerts are off.
+
 ## [1.38.0] — 2026-07-12
 
 ### Added

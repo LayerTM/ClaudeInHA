@@ -108,6 +108,25 @@ case "${m}" in *"Offline: NAS"*) pass "reports unavailable watched entity as off
 case "${m}" in *"My Phone"*) fail "a device_tracker that is home should not alert";;     *) pass "ignores device_tracker that is home";; esac
 case "${m}" in *"Garden leak"*) fail "unavailable entity not on the watch list should not alert";; *) pass "ignores unavailable entity not on the watch list";; esac
 
+# --- 4b. Persisted state now ALSO carries the full anomaly objects (.items) for
+#         exactly the active set, so the prompt server can serve them on
+#         /api/status without re-running detection. Same set as .active, just full
+#         {key,critical,line} objects instead of bare keys. ---
+state="${work}/alerts-state.json"
+if [ -s "${state}" ]; then pass "state file persisted"; else fail "expected a persisted alerts-state.json"; fi
+ni="$(jq '.items | length' "${state}" 2>/dev/null)"
+na="$(jq '.active | length' "${state}" 2>/dev/null)"
+if [ -n "${ni}" ] && [ "${ni}" = "${na}" ] && [ "${ni}" -ge 1 ] 2>/dev/null; then
+    pass ".items length matches .active length (${ni})"
+else
+    fail ".items length must equal .active length (items=${ni} active=${na})"
+fi
+if jq -e 'all(.items[]; has("key") and has("critical") and has("line")) and (([.items[].key] | sort) == (.active | sort))' "${state}" >/dev/null 2>&1; then
+    pass ".items are full {key,critical,line} objects whose keys match .active"
+else
+    fail ".items must be full {key,critical,line} objects consistent with .active (got: $(cat "${state}"))"
+fi
+
 # --- 5. Dedupe: same CO2/offline state again → nothing new ---
 run alerts-co2-offline.json "14:00"
 if notified; then fail "dedupe: expected NO co2/offline re-notify on unchanged state (got: $(msg))"; else pass "dedupe: co2/offline stay quiet while still active"; fi

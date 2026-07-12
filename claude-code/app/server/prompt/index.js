@@ -194,6 +194,9 @@ async function start() {
     // Durable state (budget spend + chat-health window) lives alongside the MCP
     // config in the existing 0700 claude-prompt dir, so it survives restarts.
     stateDir: path.join(DATA_DIR, 'claude-prompt'),
+    // The /data root, where the separate cc-alerts service writes alerts-state.json.
+    // The server reads that file to publish the active-alerts set on /api/status.
+    dataDir: DATA_DIR,
   });
 
   const server = http.createServer(app);
