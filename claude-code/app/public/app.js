@@ -131,7 +131,7 @@
       b.title = 'Copy';
       b.addEventListener('click', () => {
         closeMenus();
-        if (!copyGesture(text)) showCopyDialog(text);
+        if (copyGesture(text)) term.focus(); else showCopyDialog(text);
       });
       els.trayMenu.appendChild(b);
     });
@@ -597,7 +597,11 @@
   function copySelectionInteractive() {
     const sel = term.getSelection();
     if (!sel) { toast('Nothing selected — drag to select first', { error: true }); return; }
-    if (!copyGesture(sel)) showCopyDialog(sel);
+    // The ⧉ menu and right-click both run closeMenus() first, which blurs focus to
+    // <body> before legacyCopy can save/restore it — so refocus the terminal here so
+    // typing keeps working after a menu/right-click copy.
+    if (copyGesture(sel)) { term.focus(); return; }
+    showCopyDialog(sel);
   }
 
   els.copyMenu.addEventListener('click', async (e) => {
