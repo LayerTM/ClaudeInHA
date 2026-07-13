@@ -18,5 +18,15 @@
     "entity_id": "sensor.broken_humidity",
     "state": "unavailable",
     "attributes": { "device_class": "humidity", "friendly_name": "Broken humidity" }
+  },
+  {
+    "entity_id": "sensor.edge_high_humidity",
+    "state": "70",
+    "attributes": { "device_class": "humidity", "friendly_name": "Edge high humidity", "unit_of_measurement": "%" }
+  },
+  {
+    "entity_id": "sensor.edge_low_humidity",
+    "state": "25",
+    "attributes": { "device_class": "humidity", "friendly_name": "Edge low humidity", "unit_of_measurement": "%" }
   }
 ]

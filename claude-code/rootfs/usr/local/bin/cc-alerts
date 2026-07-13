@@ -173,7 +173,7 @@ run_cycle() {
                       else empty end ),
                     ( if $henab and ($dc == "humidity") and ($num != null) and ($num < $hlow or $num > $hhigh)
                       then {key:("humidity:" + .entity_id), critical:false,
-                            line:("Humidity out of range: " + $name + " (" + .state + "%)")}
+                            line:("Humidity out of range: " + $name + " (" + ($num|tostring) + "%)")}
                       else empty end )
                   )
               )

@@ -224,6 +224,9 @@ case "${m}" in *"Humidity out of range: Bathroom humidity (85%)"*) pass "reports
 case "${m}" in *"Humidity out of range: Cellar humidity (18%)"*) pass "reports humidity below low";; *) fail "missing humidity below-low line (got: ${m})";; esac
 case "${m}" in *"Living room humidity"*) fail "in-band humidity should not alert (got: ${m})";; *) pass "ignores in-band humidity";; esac
 case "${m}" in *"Broken humidity"*) fail "unavailable humidity sensor should be ignored (got: ${m})";; *) pass "ignores unavailable humidity sensor";; esac
+# Boundary: exactly at the low/high threshold stays silent (strict < / >, guards a <= / >= mutation).
+case "${m}" in *"Edge high humidity"*) fail "humidity exactly at high threshold must stay silent (got: ${m})";; *) pass "humidity at high boundary stays silent (strict >)";; esac
+case "${m}" in *"Edge low humidity"*) fail "humidity exactly at low threshold must stay silent (got: ${m})";; *) pass "humidity at low boundary stays silent (strict <)";; esac
 
 # --- 13b. Humidity disabled → silent even with out-of-band sensors. ---
 rm -f "${work}/alerts-state.json"
@@ -235,11 +238,13 @@ if notified; then fail "humidity disabled must stay silent (got: $(msg))"; else 
 #         a listed room temp out of band flags while an UNLISTED device temp (a
 #         NAS CPU at 62°) stays silent — killing device-temp false positives. ---
 rm -f "${work}/alerts-state.json"
-printf '%s\n' '{"proactive_alerts": true, "alert_temp_enabled": true, "alert_temp_low": 5, "alert_temp_high": 45, "alert_temp_entities": ["sensor.room_temp"], "alert_co2_above": 0, "alert_offline": false}' > "${work}/options.json"
+printf '%s\n' '{"proactive_alerts": true, "alert_temp_enabled": true, "alert_temp_low": 5, "alert_temp_high": 45, "alert_temp_entities": ["sensor.room_temp", "sensor.listed_ok_temp"], "alert_co2_above": 0, "alert_offline": false}' > "${work}/options.json"
 run alerts-temp-scope.json "14:00"
 m="$(msg)"
 case "${m}" in *"Temperature out of range: Living room temp (2°)"*) pass "scoped temp: listed room sensor flags out of band";; *) fail "scoped temp: listed room sensor should flag (got: ${m})";; esac
 case "${m}" in *"NAS CPU temp"*) fail "scoped temp: unlisted device temp must stay silent (got: ${m})";; *) pass "scoped temp: unlisted device temp stays silent";; esac
+# A LISTED but in-band sensor stays silent — the scope list doesn't force-flag, the band still applies.
+case "${m}" in *"Listed OK temp"*) fail "scoped temp: listed but in-band sensor must stay silent (got: ${m})";; *) pass "scoped temp: listed in-band sensor stays silent";; esac
 
 # --- 14b. Empty alert_temp_entities = legacy behaviour: BOTH the room sensor and
 #          the device temp flag (no scoping). ---
