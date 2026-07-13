@@ -9,11 +9,12 @@
   focused so your next keystroke still goes to the shell.
 
 ### Changed
-- **Copy a selection reliably, even over plain HTTP.** Select with **Shift+drag** (or copy the
-  current selection with **Cmd+C** / **Ctrl+Shift+C** / **Ctrl+Insert**) and it goes straight to the
-  clipboard — where before it could only reach the 📥 tray. A line that wraps onto several rows
-  copies as one line. A plain drag without Shift still routes to the tray. On a phone, use the ⧉
-  menu to copy the visible screen / recent output / full history — no selection needed.
+- **Copy a selection reliably, even over plain HTTP.** Hold a modifier and drag to select —
+  **Option+drag on macOS**, **Shift+drag on Windows/Linux** — or copy the current selection with
+  **Cmd+C** / **Ctrl+Shift+C** / **Ctrl+Insert**, and it goes straight to the clipboard, where before
+  it could only reach the 📥 tray. A line that wraps onto several rows copies as one line. A plain
+  drag (no modifier) still routes to the tray. On a phone, use the ⧉ menu to copy the visible
+  screen / recent output / full history — no selection needed.
 
 ## [1.40.0] — 2026-07-13
 

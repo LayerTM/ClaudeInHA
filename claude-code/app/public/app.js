@@ -61,6 +61,11 @@
   /* ---------------- clipboard cascade ---------------- */
 
   function legacyCopy(text) {
+    // Selecting + removing our throwaway textarea otherwise leaves focus on <body>,
+    // so the next keystroke after ANY copy path (select-to-copy, the ⧉ menu,
+    // right-click, the tray) would go nowhere. Save focus here and restore it — one
+    // place covers every caller, and it restores to whoever actually had it.
+    const prevFocus = document.activeElement;
     const ta = document.createElement('textarea');
     ta.value = text;
     ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
@@ -71,6 +76,7 @@
     let ok; // set on both branches of the try/catch below
     try { ok = document.execCommand('copy'); } catch { ok = false; }
     ta.remove();
+    if (prevFocus && typeof prevFocus.focus === 'function') prevFocus.focus();
     return ok;
   }
 
@@ -177,6 +183,12 @@
     rescaleOverlappingGlyphs: true,
     allowTransparency: false,
     macOptionIsMeta: true,
+    // With tmux mouse-on, xterm only makes a LOCAL selection when a drag "forces"
+    // it. On Windows/Linux that's Shift+drag (built in); on macOS xterm ignores
+    // Shift and instead needs Option(Alt)+drag AND this option (default false) — so
+    // set it, or a Mac user can't select-to-copy at all. Coexists with
+    // macOptionIsMeta (that's keyboard Option-as-Meta; this is mouse Option+drag).
+    macOptionClickForcesSelection: true,
     allowProposedApi: true,
     // "Terracotta Noir": near-black cool canvas so Claude's colored output and
     // the terracotta cursor read as vivid jewel tones, not muddy pastels.
@@ -252,12 +264,9 @@
   // than failing silently — a silent miss would look exactly like "copy still doesn't
   // work", which is the whole thing this is meant to fix.
   const copySelection = (sel) => {
-    const ok = copyGesture(sel);
-    // legacyCopy() focuses a throwaway <textarea> to run execCommand and then removes
-    // it, leaving focus on <body> — so restore focus to the terminal, or the very next
-    // keystroke after a select-to-copy would go nowhere ("copy broke my typing").
-    term.focus();
-    if (ok) return;
+    // legacyCopy() restores focus itself now, so every copy path (this, the ⧉ menu,
+    // right-click, tray) keeps the terminal usable after a copy.
+    if (copyGesture(sel)) return;
     pulseTray();
     toast('Saved to tray 📥 — automatic copy unavailable here', { ms: 3500 });
   };
