@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.41.0] — 2026-07-13
+
+### Added
+- **Room humidity alerts.** Proactive alerts can now warn you when a humidity sensor drifts out of
+  band — turn on `alert_humidity_enabled` and set `alert_humidity_low` (25%) / `alert_humidity_high`
+  (70%) to catch a damp bathroom or cellar, or an over-dry room. Non-critical, held back during quiet
+  hours like the other value checks.
+
+### Changed
+- **Temperature alerts can be scoped to specific sensors.** New `alert_temp_entities` — list just your
+  room temperature sensors and the check ignores everything else, so device temperatures (a NAS or
+  switch CPU happily running at 45–75°) no longer trigger false *Temperature out of range* alerts.
+  Leave the list empty to keep checking every temperature sensor as before.
+
 ## [1.40.1] — 2026-07-13
 
 ### Fixed

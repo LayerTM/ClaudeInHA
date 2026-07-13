@@ -1,0 +1,17 @@
+[
+  {
+    "entity_id": "sensor.room_temp",
+    "state": "2",
+    "attributes": { "device_class": "temperature", "friendly_name": "Living room temp", "unit_of_measurement": "°C" }
+  },
+  {
+    "entity_id": "sensor.nas_cpu_temp",
+    "state": "62",
+    "attributes": { "device_class": "temperature", "friendly_name": "NAS CPU temp", "unit_of_measurement": "°C" }
+  },
+  {
+    "entity_id": "sensor.listed_ok_temp",
+    "state": "22",
+    "attributes": { "device_class": "temperature", "friendly_name": "Listed OK temp", "unit_of_measurement": "°C" }
+  }
+]

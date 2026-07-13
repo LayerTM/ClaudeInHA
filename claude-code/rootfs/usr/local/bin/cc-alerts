@@ -53,7 +53,16 @@ night_end="$(jqopt '.alert_night_end' '06:00')"
 temp_enabled="$(jqopt '.alert_temp_enabled' false)"
 temp_low="$(jqopt '.alert_temp_low' 5)"
 temp_high="$(jqopt '.alert_temp_high' 45)"
+# Optional opt-in scoping for the temperature check (a JSON list). When set to a
+# NON-empty list only those entities are flagged out of band — so device temps
+# (NAS/switch CPUs) don't false-trigger. An empty/absent list keeps the legacy
+# behaviour of checking every temperature sensor.
+temp_entities="$(jq -c '.alert_temp_entities // empty' "${OPTIONS}" 2>/dev/null)"
+[ -n "${temp_entities}" ] || temp_entities='[]'
 co2_above="$(jqopt '.alert_co2_above' 1400)"         # 0 = off, non-critical
+humidity_enabled="$(jqopt '.alert_humidity_enabled' false)"
+humidity_low="$(jqopt '.alert_humidity_low' 25)"
+humidity_high="$(jqopt '.alert_humidity_high' 70)"
 offline_enabled="$(jqopt '.alert_offline' true)"     # CRITICAL, always sent
 # Which entities to watch for going offline (a JSON list). Defaults to the
 # internet gateway so "router/internet down" is caught out of the box.
@@ -111,7 +120,11 @@ run_cycle() {
         --argjson tenab "${temp_enabled}" \
         --argjson tlow "${temp_low}" \
         --argjson thigh "${temp_high}" \
+        --argjson tents "${temp_entities}" \
         --argjson co2 "${co2_above}" \
+        --argjson henab "${humidity_enabled}" \
+        --argjson hlow "${humidity_low}" \
+        --argjson hhigh "${humidity_high}" \
         --argjson offen "${offline_enabled}" \
         --argjson watch "${offline_entities}" '
         [ .[]
@@ -150,12 +163,17 @@ run_cycle() {
                             line:("Open at night: " + $name)}
                       else empty end ),
                     ( if $tenab and ($dc == "temperature") and ($num != null) and ($num < $tlow or $num > $thigh)
+                         and (($tents | length) == 0 or (($tents | index($eid)) != null))
                       then {key:("temp:" + .entity_id), critical:false,
                             line:("Temperature out of range: " + $name + " (" + ($num|tostring) + "°)")}
                       else empty end ),
                     ( if ($co2 > 0) and ($dc == "carbon_dioxide") and ($num != null) and ($num > $co2)
                       then {key:("co2:" + .entity_id), critical:false,
                             line:("High CO2: " + $name + " (" + ($num|tostring) + " ppm)")}
+                      else empty end ),
+                    ( if $henab and ($dc == "humidity") and ($num != null) and ($num < $hlow or $num > $hhigh)
+                      then {key:("humidity:" + .entity_id), critical:false,
+                            line:("Humidity out of range: " + $name + " (" + ($num|tostring) + "%)")}
                       else empty end )
                   )
               )

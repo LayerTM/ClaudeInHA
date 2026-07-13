@@ -1,0 +1,32 @@
+[
+  {
+    "entity_id": "sensor.bathroom_humidity",
+    "state": "85",
+    "attributes": { "device_class": "humidity", "friendly_name": "Bathroom humidity", "unit_of_measurement": "%" }
+  },
+  {
+    "entity_id": "sensor.cellar_humidity",
+    "state": "18",
+    "attributes": { "device_class": "humidity", "friendly_name": "Cellar humidity", "unit_of_measurement": "%" }
+  },
+  {
+    "entity_id": "sensor.living_humidity",
+    "state": "45",
+    "attributes": { "device_class": "humidity", "friendly_name": "Living room humidity", "unit_of_measurement": "%" }
+  },
+  {
+    "entity_id": "sensor.broken_humidity",
+    "state": "unavailable",
+    "attributes": { "device_class": "humidity", "friendly_name": "Broken humidity" }
+  },
+  {
+    "entity_id": "sensor.edge_high_humidity",
+    "state": "70",
+    "attributes": { "device_class": "humidity", "friendly_name": "Edge high humidity", "unit_of_measurement": "%" }
+  },
+  {
+    "entity_id": "sensor.edge_low_humidity",
+    "state": "25",
+    "attributes": { "device_class": "humidity", "friendly_name": "Edge low humidity", "unit_of_measurement": "%" }
+  }
+]
