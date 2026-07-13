@@ -20,7 +20,7 @@ Runs the full [Claude Code CLI](https://code.claude.com/docs) inside Home Assist
 ## The console
 
 - **Tabs** — ✳ Claude plus any number of shell tabs (+). Exiting Claude shows a restart menu; the session never dies with it.
-- **Copy** — select with Shift+drag (copies automatically), or use the ⧉ menu to copy the visible screen / recent output / full history without selecting anything. When the browser blocks clipboard access (plain HTTP, Android app), copies land in the 📥 tray — tap an entry to copy it.
+- **Copy** — select text with the mouse and it copies automatically, or press **Cmd+C** / **Ctrl+Shift+C** for the current selection (plain Ctrl+C still interrupts the running program). A wrapped line copies as one line. The ⧉ menu also copies the visible screen / recent output / full history without selecting. In the rare case the browser blocks clipboard access entirely, copies land in the 📥 tray — tap an entry to copy it. (Because selection is native, mouse clicks aren't forwarded into full-screen terminal apps like htop; the mouse wheel still scrolls.)
 - **Paste** — Ctrl+Shift+V / Cmd+V, or the 📋 button.
 - **Attach files & images** — drag & drop anywhere, paste an image from the clipboard, or use 📎 (opens camera/gallery on phones). The file is saved under `/data/uploads` and its path is typed into the prompt.
 - **Update Claude** — ⬆ button, or `update-claude` in a shell tab (`update-claude 2.1.150` installs a specific version). Only the Claude session restarts; the add-on keeps running. With **Auto-Update** enabled the CLI also updates at every add-on start.
@@ -235,7 +235,7 @@ Everything that matters lives in `/data` and survives restarts and updates: logi
 
 - **Blank screen** — check the add-on log; restart the add-on.
 - **401 / frozen after long idle** — the ingress session expires after 15 minutes without traffic; the console reloads automatically, or refresh the page.
-- **Copy does not reach the clipboard** — expected on plain-HTTP setups and in the Android app: use the 📥 tray (one tap) or serve HA over HTTPS.
+- **Copy does not reach the clipboard** — rare now (selecting text copies in the pointer gesture, which works over plain HTTP too). If a browser blocks the clipboard even inside a gesture, the text is still saved to the 📥 tray — one tap to copy — and serving HA over HTTPS avoids it entirely.
 - **`bypass_permissions` refuses to start** — the add-on sets `IS_SANDBOX=1` automatically; if a CLI update ever breaks this, run `claude install <previous-version> --force` in a shell tab and report an issue.
 
 ## Support

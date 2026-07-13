@@ -247,17 +247,52 @@
     return true;
   });
 
-  // Auto-copy selection on pointer release (user gesture → execCommand works).
-  const maybeCopySelection = () => {
-    setTimeout(() => {
-      if (term.hasSelection()) {
-        const sel = term.getSelection();
-        if (sel.trim()) copyText(sel, { gesture: true, silent: false });
-      }
-    }, 0);
+  // Copy the selection via the in-gesture cascade. copyGesture already saves to the
+  // tray, so if even execCommand can't reach the clipboard we say so out loud rather
+  // than failing silently — a silent miss would look exactly like "copy still doesn't
+  // work", which is the whole thing this is meant to fix.
+  const copySelection = (sel) => {
+    if (copyGesture(sel)) return;
+    pulseTray();
+    toast('Saved to tray 📥 — automatic copy unavailable here', { ms: 3500 });
+  };
+
+  // Auto-copy the selection on pointer release. Done SYNCHRONOUSLY inside the
+  // mouseup/touchend gesture (no setTimeout): a deferred copy loses the user
+  // activation, so on plain HTTP — where navigator.clipboard is unavailable — the
+  // execCommand('copy') fallback would fail and the text would only reach the tray.
+  // xterm updates its selection model synchronously during the pointer events, so
+  // hasSelection()/getSelection() are already current here. getSelection() rejoins
+  // wrapped lines, so a line that spilled onto several rows copies as one line.
+  const maybeCopySelection = (e) => {
+    if (e && e.button) return; // left button / touch only — right-click keeps its selection
+    if (!term.hasSelection()) return;
+    const sel = term.getSelection();
+    if (sel.trim()) copySelection(sel);
   };
   els.terminal.addEventListener('mouseup', maybeCopySelection);
   els.terminal.addEventListener('touchend', maybeCopySelection);
+
+  // Keyboard copy of the selection, like a local terminal — synchronously inside
+  // the keydown so it works over plain HTTP too. Cmd+C on macOS (only when there IS
+  // a selection; otherwise it passes through), Ctrl+Shift+C and Ctrl+Insert
+  // elsewhere. Plain Ctrl+C is NEVER intercepted — it must reach the shell as SIGINT.
+  const isMac = /Mac|iP(hone|ad|od)/i.test(
+    (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '',
+  );
+  term.attachCustomKeyEventHandler((e) => {
+    if (e.type !== 'keydown' || !term.hasSelection()) return true;
+    const isC = e.key === 'c' || e.key === 'C';
+    const copyCombo = (isMac && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && isC)
+      || (e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey && isC)
+      || (e.ctrlKey && !e.shiftKey && !e.metaKey && !e.altKey && e.key === 'Insert');
+    if (!copyCombo) return true;
+    const sel = term.getSelection();
+    if (!sel) return true;
+    e.preventDefault();
+    copySelection(sel);
+    return false;
+  });
 
   // withMods() applies any armed sticky Ctrl/Alt from the key bar (defined in
   // the key-bar section below) to what the OS keyboard sends; it is a no-op
@@ -547,7 +582,7 @@
   // dialog fallback the copy menu uses. Reused by the right-click menu.
   function copySelectionInteractive() {
     const sel = term.getSelection();
-    if (!sel) { toast('Nothing selected — use Shift+drag', { error: true }); return; }
+    if (!sel) { toast('Nothing selected — drag to select first', { error: true }); return; }
     if (!copyGesture(sel)) showCopyDialog(sel);
   }
 
