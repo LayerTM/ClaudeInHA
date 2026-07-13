@@ -73,7 +73,7 @@ reconciled on every start.
 | `upload_retention_days` | Auto-delete attached files after N days (0 = keep). |
 | `remote_control` | Adds a tab running `claude remote-control`: drive this session from the Claude mobile app / claude.ai. Requires a full `/login` (subscription); `oauth_token` and API keys are not sufficient. |
 | `monitoring_interval_hours` | Opt-in proactive monitoring: every N hours Claude reviews the error log and config and notifies you only if it finds something (0 = off). |
-| `proactive_alerts` + `alert_*` | Opt-in **deterministic** anomaly alerts (no Claude, no plan usage): notify on a water leak, door/window open at night, low battery, temperature out of band, high CO2, or a watched device/internet gateway going offline. See *Proactive alerts* below. |
+| `proactive_alerts` + `alert_*` | Opt-in **deterministic** anomaly alerts (no Claude, no plan usage): notify on a water leak, door/window open at night, low battery, temperature out of band, high CO2, humidity out of band, or a watched device/internet gateway going offline. See *Proactive alerts* below. |
 | `prompt_api` | Serve the secure Prompt API for the companion **Claude** (`claude_ha`) integration (on by default). See *The companion integration* below. |
 | `api_token` | Optional fixed bearer token for the Prompt API. Leave empty — the add-on generates one and hands it to the integration via discovery. |
 | `prompt_ha_token` | Optional HA token used only by Prompt-API sessions to read state through the MCP Server integration. Best practice: a dedicated non-admin user's token. Falls back to `ha_token`. |
@@ -105,8 +105,9 @@ It watches for:
 - **Water leak** (`alert_water_leak`, on) — any `moisture`/leak sensor turning on. **Critical**: always sent, even during quiet hours.
 - **Open at night** (`alert_open_at_night`, on) — a door, window, garage, or opening left `on` during the night window (`alert_night_start`–`alert_night_end`, default 23:00–06:00).
 - **Low battery** (`alert_battery_below`, default 15%; 0 = off) — any `battery` entity below the threshold.
-- **Temperature out of band** (`alert_temp_enabled`, off by default) — a `temperature` sensor below `alert_temp_low` (5) or above `alert_temp_high` (45). Off by default because sensible bands vary.
+- **Temperature out of band** (`alert_temp_enabled`, off by default) — a `temperature` sensor below `alert_temp_low` (5) or above `alert_temp_high` (45). Off by default because sensible bands vary. By default it checks **every** `temperature` sensor — including device temperatures (a NAS or switch CPU running at 45–75°), which would false-trigger. Set `alert_temp_entities` to a list of just your **room** temperature sensors to scope the check to those (see below).
 - **High CO2** (`alert_co2_above`, default 1400 ppm; 0 = off) — any `carbon_dioxide` sensor reading above the threshold, so you know when a room needs airing out. Non-critical (held back during quiet hours).
+- **Humidity out of band** (`alert_humidity_enabled`, off by default) — a `humidity` sensor below `alert_humidity_low` (25%) or above `alert_humidity_high` (70%), so you catch a damp bathroom/cellar or over-dry room. Non-critical (held back during quiet hours).
 - **Offline / network** (`alert_offline`, on) — any entity you list in `alert_offline_entities` that reports `unavailable`/`unknown`, or (for a `device_tracker`) `not_home`. **Critical**: always sent, even during quiet hours. Defaults to watching your internet gateway (`device_tracker.ucg_fiber`), so "the internet/router is down" is caught out of the box.
 
 **Dedupe:** you are notified only when an entity *newly* enters an anomaly. A
@@ -137,8 +138,9 @@ true`, then enable, disable, or tune each check:
 | Water leak | `alert_water_leak` | `false` | — (critical, always sent) |
 | Open at night | `alert_open_at_night`, `alert_night_start`, `alert_night_end` | `alert_open_at_night: false` | change the night window |
 | Low battery | `alert_battery_below` | `0` | raise/lower the % threshold |
-| Temperature | `alert_temp_enabled`, `alert_temp_low`, `alert_temp_high` | `alert_temp_enabled: false` | set your low/high band |
+| Temperature | `alert_temp_enabled`, `alert_temp_low`, `alert_temp_high`, `alert_temp_entities` | `alert_temp_enabled: false` | set your low/high band; scope to specific sensors with `alert_temp_entities` |
 | High CO2 | `alert_co2_above` | `0` | set the ppm threshold (default 1400) |
+| Humidity | `alert_humidity_enabled`, `alert_humidity_low`, `alert_humidity_high` | `alert_humidity_enabled: false` | set your low/high %RH band |
 | Offline / network | `alert_offline`, `alert_offline_entities` | `alert_offline: false` | edit the watched-entity list |
 
 **Adding a device to the offline watch.** To be alerted when a critical device
@@ -163,6 +165,22 @@ off). Setting `alert_offline_entities: []` (an explicit empty list) while leavin
 alerts without turning `alert_offline` off (an *absent* list, by contrast, falls
 back to watching the default gateway). Changes take effect on the next cycle (within
 `proactive_alerts_interval_minutes`) — just save the options, no restart needed.
+
+**Scoping the temperature check.** The temperature alert checks every
+`temperature` sensor by default, which includes **device** temperatures — a NAS,
+a switch, or a CPU sensor happily running at 45–75° — that would trip a false
+*Temperature out of range* alert. List just your **room** temperature sensors in
+`alert_temp_entities` to check only those:
+
+```yaml
+alert_temp_entities:
+  - sensor.living_room_temperature
+  - sensor.bedroom_temperature
+```
+
+When the list is non-empty, only the entities on it are checked; every other
+temperature sensor (including device temps) is ignored. Leave it empty (or unset)
+to keep the legacy behaviour of checking **all** temperature sensors.
 
 ## The companion integration (Prompt API)
 

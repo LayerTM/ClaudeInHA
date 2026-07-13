@@ -212,6 +212,44 @@ if notified; then fail "offline must go quiet when the device returns home (got:
 run alerts-offline-down.json "14:00"
 case "$(msg)" in *"Offline: Garage Pi"*) pass "offline re-alerts after the device returns and drops again";; *) fail "expected offline to re-alert after clearing (got: $(msg))";; esac
 
+# --- 13. Room humidity alert (mirror of CO2). Below-low and above-high both
+#         flag with the right line; the in-band sensor stays silent; an
+#         unavailable humidity sensor is ignored. ---
+rm -f "${work}/alerts-state.json"
+printf '%s\n' '{"proactive_alerts": true, "alert_humidity_enabled": true, "alert_humidity_low": 25, "alert_humidity_high": 70, "alert_co2_above": 0, "alert_offline": false}' > "${work}/options.json"
+run alerts-humidity.json "14:00"
+if notified; then pass "notified on humidity cycle"; else fail "expected a humidity notification"; fi
+m="$(msg)"
+case "${m}" in *"Humidity out of range: Bathroom humidity (85%)"*) pass "reports humidity above high";; *) fail "missing humidity above-high line (got: ${m})";; esac
+case "${m}" in *"Humidity out of range: Cellar humidity (18%)"*) pass "reports humidity below low";; *) fail "missing humidity below-low line (got: ${m})";; esac
+case "${m}" in *"Living room humidity"*) fail "in-band humidity should not alert (got: ${m})";; *) pass "ignores in-band humidity";; esac
+case "${m}" in *"Broken humidity"*) fail "unavailable humidity sensor should be ignored (got: ${m})";; *) pass "ignores unavailable humidity sensor";; esac
+
+# --- 13b. Humidity disabled → silent even with out-of-band sensors. ---
+rm -f "${work}/alerts-state.json"
+printf '%s\n' '{"proactive_alerts": true, "alert_humidity_enabled": false, "alert_co2_above": 0, "alert_offline": false}' > "${work}/options.json"
+run alerts-humidity.json "14:00"
+if notified; then fail "humidity disabled must stay silent (got: $(msg))"; else pass "silent when humidity check is disabled"; fi
+
+# --- 14. Temperature scoping via alert_temp_entities. With a room sensor listed,
+#         a listed room temp out of band flags while an UNLISTED device temp (a
+#         NAS CPU at 62°) stays silent — killing device-temp false positives. ---
+rm -f "${work}/alerts-state.json"
+printf '%s\n' '{"proactive_alerts": true, "alert_temp_enabled": true, "alert_temp_low": 5, "alert_temp_high": 45, "alert_temp_entities": ["sensor.room_temp"], "alert_co2_above": 0, "alert_offline": false}' > "${work}/options.json"
+run alerts-temp-scope.json "14:00"
+m="$(msg)"
+case "${m}" in *"Temperature out of range: Living room temp (2°)"*) pass "scoped temp: listed room sensor flags out of band";; *) fail "scoped temp: listed room sensor should flag (got: ${m})";; esac
+case "${m}" in *"NAS CPU temp"*) fail "scoped temp: unlisted device temp must stay silent (got: ${m})";; *) pass "scoped temp: unlisted device temp stays silent";; esac
+
+# --- 14b. Empty alert_temp_entities = legacy behaviour: BOTH the room sensor and
+#          the device temp flag (no scoping). ---
+rm -f "${work}/alerts-state.json"
+printf '%s\n' '{"proactive_alerts": true, "alert_temp_enabled": true, "alert_temp_low": 5, "alert_temp_high": 45, "alert_temp_entities": [], "alert_co2_above": 0, "alert_offline": false}' > "${work}/options.json"
+run alerts-temp-scope.json "14:00"
+m="$(msg)"
+case "${m}" in *"Temperature out of range: Living room temp (2°)"*) pass "empty list (legacy): room sensor flags";; *) fail "empty list: room sensor should flag (got: ${m})";; esac
+case "${m}" in *"Temperature out of range: NAS CPU temp (62°)"*) pass "empty list (legacy): device temp also flags";; *) fail "empty list: device temp should also flag (got: ${m})";; esac
+
 echo
 if [ "${fails}" -eq 0 ]; then
     echo "PASS: all cc-alerts checks passed"
