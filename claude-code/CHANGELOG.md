@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.40.0] — 2026-07-13
+
+### Changed
+- **Copying from the console now works like a local terminal.** Select text with the mouse and it
+  copies straight to your clipboard — reliably, even over plain HTTP, where before a selection could
+  only reach the 📥 tray. A long line that wraps onto several rows copies as a single line. You can
+  also copy the selection from the keyboard with **Cmd+C** (or **Ctrl+Shift+C**); plain Ctrl+C still
+  interrupts the running program as usual.
+  - Trade-off: mouse clicks *inside* full-screen terminal apps (htop, a mouse-driven editor) are no
+    longer forwarded to them. Mouse-wheel scrolling and everything else are unchanged.
+
 ## [1.39.0] — 2026-07-12
 
 ### Added
