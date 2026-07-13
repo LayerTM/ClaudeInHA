@@ -252,7 +252,12 @@
   // than failing silently — a silent miss would look exactly like "copy still doesn't
   // work", which is the whole thing this is meant to fix.
   const copySelection = (sel) => {
-    if (copyGesture(sel)) return;
+    const ok = copyGesture(sel);
+    // legacyCopy() focuses a throwaway <textarea> to run execCommand and then removes
+    // it, leaving focus on <body> — so restore focus to the terminal, or the very next
+    // keystroke after a select-to-copy would go nowhere ("copy broke my typing").
+    term.focus();
+    if (ok) return;
     pulseTray();
     toast('Saved to tray 📥 — automatic copy unavailable here', { ms: 3500 });
   };
