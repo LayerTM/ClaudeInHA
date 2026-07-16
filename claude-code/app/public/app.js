@@ -22,6 +22,7 @@
     copy: $('btn-copy'), copyMenu: $('menu-copy'), ctxMenu: $('menu-context'),
     tray: $('btn-tray'), trayMenu: $('menu-tray'), trayBadge: $('tray-badge'),
     actions: $('btn-actions'), actionsMenu: $('menu-actions'),
+    alerts: $('btn-alerts'), alertsMenu: $('menu-alerts'),
     paste: $('btn-paste'), attach: $('btn-attach'), update: $('btn-update'),
     fontDec: $('btn-font-dec'), fontInc: $('btn-font-inc'),
     keys: $('btn-keys'), kiosk: $('btn-kiosk'), help: $('btn-help'),
@@ -571,6 +572,7 @@
     els.trayMenu.classList.add('hidden');
     els.ctxMenu.classList.add('hidden');
     els.actionsMenu.classList.add('hidden');
+    els.alertsMenu.classList.add('hidden');
   }
 
   // Menus are position:fixed (the scrollable toolbar would clip absolute
@@ -589,7 +591,70 @@
   els.copy.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(els.copyMenu, els.copy); });
   els.tray.addEventListener('click', (e) => { e.stopPropagation(); renderTray(); toggleMenu(els.trayMenu, els.tray); });
   els.actions.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(els.actionsMenu, els.actions); });
+  els.alerts.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const opening = els.alertsMenu.classList.contains('hidden');
+    toggleMenu(els.alertsMenu, els.alerts);
+    if (opening) renderAlerts();
+  });
   document.addEventListener('click', closeMenus);
+
+  // Alerts & notifications viewer. Fetches /api/alerts each time the 🔔 menu
+  // opens and renders it with textContent only (never innerHTML) — notification
+  // messages come from HA and must never be injected as markup.
+  async function renderAlerts() {
+    const m = els.alertsMenu;
+    const note = (txt, cls) => {
+      const d = document.createElement('div');
+      d.className = cls || 'menu-note';
+      d.textContent = txt;
+      m.appendChild(d);
+    };
+    let data;
+    try {
+      const r = await fetch(api('alerts'));
+      if (!r.ok) throw new Error(String(r.status));
+      data = await r.json();
+    } catch {
+      m.innerHTML = '';
+      note("Couldn't load alerts");
+      return;
+    }
+    m.innerHTML = '';
+    note(data.enabled
+      ? `Proactive alerts on · every ${data.intervalMinutes}m`
+      : 'Proactive alerts off');
+    const active = Array.isArray(data.active) ? data.active : [];
+    if (active.length) {
+      note('Active', 'menu-section');
+      active.forEach((a) => {
+        const d = document.createElement('div');
+        d.className = `alert-row${a.critical ? ' crit' : ''}`;
+        d.textContent = a.line || a.key || '';
+        m.appendChild(d);
+      });
+    } else if (data.enabled) {
+      note('✓ No active alerts');
+    }
+    const notifs = Array.isArray(data.notifications) ? data.notifications : [];
+    if (notifs.length) {
+      note('Notifications', 'menu-section');
+      notifs.slice(0, 10).forEach((n) => {
+        const d = document.createElement('div');
+        d.className = 'alert-row';
+        if (n.title) {
+          const b = document.createElement('b');
+          b.textContent = `${n.title} `;
+          d.appendChild(b);
+        }
+        d.appendChild(document.createTextNode((n.message || '').replace(/\s+/g, ' ').slice(0, 160)));
+        m.appendChild(d);
+      });
+    }
+    if (!active.length && !notifs.length && !data.enabled) {
+      note('Turn on Proactive alerts in the add-on options to be warned about leaks, low batteries, doors left open at night, and more.');
+    }
+  }
 
   // Quick prompts: insert the chosen prompt text into the terminal WITHOUT a
   // trailing newline, so the user reviews it and presses Enter to send. Nothing

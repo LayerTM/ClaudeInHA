@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.44.0] — 2026-07-16
+
+### Added
+- **Alerts & notifications at a glance (🔔).** A new 🔔 button in the toolbar shows, in one place:
+  whether proactive alerts are on (and how often they run), any **currently-active** alerts (a water
+  leak, a low battery, a door left open at night — criticals stand out in red), and the messages
+  sitting in your Home Assistant notification bell (where Claude posts by default). Read-only — it
+  just surfaces what's already happening, so you can see it without leaving the console.
+
 ## [1.43.1] — 2026-07-16
 
 ### Fixed
