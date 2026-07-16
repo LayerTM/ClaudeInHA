@@ -55,7 +55,19 @@ function attach(ws) {
   clients.add(ws);
 
   const start = async () => {
-    await tmux.ensureMain();
+    // Wait briefly for the client's first resize so the persistent tmux session
+    // (and the window Claude renders into) is created at the browser's real
+    // width — otherwise Claude draws its first status line at the 80-col default
+    // and caches it. ~2s cap so a client that never sends a size still starts.
+    for (let i = 0; i < 100 && !pendingResize && alive; i += 1) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    if (!alive) return;
+
+    await tmux.ensureMain(
+      pendingResize ? pendingResize.cols : 0,
+      pendingResize ? pendingResize.rows : 0,
+    );
     if (!alive) return;
 
     term = pty.spawn('tmux', ['new-session', '-A', '-t', tmux.MAIN, '-s', view], {

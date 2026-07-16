@@ -39,12 +39,19 @@ async function hasSession(name) {
 
 // Serialized: concurrent first connections must not both run new-session.
 let ensureMainInFlight = null;
-function ensureMain() {
+// Create the persistent session at the connecting client's real size (when
+// known) instead of the 80x24 default a detached session is otherwise born
+// with. Claude launches into this window immediately and caches its status line
+// + layout, refreshing them only slowly — so if the window starts at 80 the
+// status bar stays truncated for minutes. Born at the browser's width, the very
+// first render is already correct.
+function ensureMain(cols, rows) {
   if (!ensureMainInFlight) {
     ensureMainInFlight = (async () => {
       if (await hasSession(MAIN)) return;
+      const size = (cols > 0 && rows > 0) ? ['-x', String(cols), '-y', String(rows)] : [];
       try {
-        await run(['new-session', '-d', '-s', MAIN, '-n', 'claude', '-c', workdir(), '/usr/local/bin/start-claude']);
+        await run(['new-session', '-d', '-s', MAIN, ...size, '-n', 'claude', '-c', workdir(), '/usr/local/bin/start-claude']);
       } catch (err) {
         if (!/duplicate session/.test(String(err.stderr || ''))) throw err;
       }

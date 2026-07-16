@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.46.3] — 2026-07-16
+
+### Fixed
+- **Status line really is full-width from the first paint now.** 1.46.2 had Claude
+  wait for the browser before starting, but the terminal session was still *born*
+  at the 80-column default and only resized a beat later — so Claude's first render
+  (and its cached status line) could still land at 80. The persistent terminal
+  session is now created at the browser's real width to begin with, so the status
+  line is correct from the very first paint.
+
 ## [1.46.2] — 2026-07-16
 
 ### Fixed
