@@ -65,6 +65,46 @@ function createRouter({ uploadDir }) {
     });
   });
 
+  // Alerts & notifications viewer: the currently-active proactive alerts (from
+  // the cc-alerts state file), plus what's sitting in the HA notification bell
+  // (where ha-notify posts by default), plus whether proactive alerts are on.
+  // Every source is best-effort — a missing file or an unreachable Supervisor
+  // just yields empty, never an error.
+  router.get('/alerts', async (req, res) => {
+    const out = { enabled: false, intervalMinutes: 15, active: [], notifications: [] };
+    try {
+      const opts = JSON.parse(await fsp.readFile('/data/options.json', 'utf8'));
+      out.enabled = opts.proactive_alerts === true;
+      out.intervalMinutes = Number(opts.proactive_alerts_interval_minutes) || 15;
+    } catch { /* options unreadable — keep defaults */ }
+    try {
+      const st = JSON.parse(await fsp.readFile('/data/alerts-state.json', 'utf8'));
+      if (Array.isArray(st.items)) out.active = st.items;
+    } catch { /* no alert state yet */ }
+    try {
+      const token = process.env.SUPERVISOR_TOKEN;
+      if (token) {
+        const r = await fetch('http://supervisor/core/api/states', {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (r.ok) {
+          const states = await r.json();
+          out.notifications = (Array.isArray(states) ? states : [])
+            .filter((s) => s && typeof s.entity_id === 'string'
+              && s.entity_id.startsWith('persistent_notification.'))
+            .map((s) => ({
+              title: (s.attributes && s.attributes.title) || '',
+              message: (s.attributes && s.attributes.message) || '',
+              created: (s.attributes && s.attributes.created_at) || s.last_changed || '',
+            }))
+            .sort((a, b) => String(b.created).localeCompare(String(a.created)));
+        }
+      }
+    } catch { /* Supervisor unreachable — notifications stay empty */ }
+    res.json(out);
+  });
+
   router.get('/capture', async (req, res) => {
     const windowIndex = Number.parseInt(String(req.query.window ?? '0'), 10);
     const lines = Math.min(Number.parseInt(String(req.query.lines ?? '0'), 10) || 0, MAX_CAPTURE_LINES);
