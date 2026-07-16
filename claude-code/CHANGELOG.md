@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.41.1] — 2026-07-16
+
+### Fixed
+- **The console no longer gets stuck on an endless spinner (or downloads its own page as a file) in
+  Safari.** The add-on used to let the browser cache its console page for an hour. After a Home
+  Assistant restart, Safari/WebKit could replay that cached page in a broken way and download it
+  instead of showing it — leaving a blank panel that spun forever, and a plain page reload wouldn't
+  fix it (it kept using the bad cached copy). The console page is now served un-cached, so it always
+  loads fresh and this can't get stuck again. (Chrome was unaffected; other browsers benefit too.)
+
 ## [1.41.0] — 2026-07-13
 
 ### Added
