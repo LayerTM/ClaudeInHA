@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.42.0] — 2026-07-16
+
+### Added
+- **Search the terminal.** Press Cmd+F (or Ctrl+Shift+F), or the 🔍 button, to find text anywhere
+  in the scrollback — jump between matches with Enter / Shift+Enter, with every match highlighted
+  and the current one picked out in terracotta. A live counter shows your position (e.g. "3 / 17").
+  Esc closes it. On phones, tap 🔍 on the key bar. (Plain Ctrl+F stays with the shell — it's
+  forward-char in the shell and page-forward in less/vim.)
+
 ## [1.41.1] — 2026-07-16
 
 ### Fixed

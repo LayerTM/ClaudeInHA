@@ -22,6 +22,7 @@
     <nav id="tabs" aria-label="Sessions"></nav>
     <button id="tab-add" class="btn" title="New shell tab">+</button>
     <span class="spacer"></span>
+    <button id="btn-search" class="btn" title="Find in terminal (Cmd+F / Ctrl+Shift+F)">🔍</button>
     <div class="menu-wrap">
       <button id="btn-copy" class="btn" title="Copy">⧉</button>
       <div id="menu-copy" class="menu hidden">
@@ -49,6 +50,15 @@
     <div id="terminal"></div>
     <div id="drop-hint" class="hidden">Drop files to attach</div>
     <div id="overlay" class="hidden"><div id="overlay-text"></div></div>
+    <!-- Find-in-scrollback bar: pinned top-right, position:absolute so it never
+         perturbs the xterm fit. Hidden until Cmd+F / Ctrl+Shift+F or the 🔍 button. -->
+    <div id="search-bar" class="hidden" role="search">
+      <input id="search-input" type="text" placeholder="Find" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Find in terminal">
+      <span id="search-count" class="search-count"></span>
+      <button id="search-prev" class="search-btn" title="Previous match (Shift+Enter)">↑</button>
+      <button id="search-next" class="search-btn" title="Next match (Enter)">↓</button>
+      <button id="search-close" class="search-btn" title="Close (Esc)">✕</button>
+    </div>
   </main>
 
   <div id="menu-context" class="menu hidden">
@@ -73,6 +83,7 @@
     <button data-seq="&#27;[6~">PgDn</button>
     <button data-seq="/">/</button>
     <button data-seq="@">@</button>
+    <button data-act="search" title="Find in terminal">🔍</button>
   </footer>
 
   <div id="toast-area"></div>
@@ -131,6 +142,7 @@
   <script src="vendor/addon-fit.js" defer></script>
   <script src="vendor/addon-unicode11.js" defer></script>
   <script src="vendor/addon-web-links.js" defer></script>
+  <script src="vendor/addon-search.js" defer></script>
   <script src="vendor/addon-webgl.js" defer></script>
   <script src="app.js" defer></script>
 </body>
