@@ -85,7 +85,25 @@ show_menu() {
     esac
 }
 
+# Wait for a browser client to attach before launching Claude, so its status
+# line and overall layout render at the real terminal width. The tmux window is
+# born at the 80-column default and the browser's view session only attaches a
+# moment later (a race in the server), and Claude caches its status line and
+# refreshes it slowly — so a first render at 80 leaves the bottom status bar
+# truncated for minutes. Block until a client is attached (the window then
+# carries the browser's real width), then launch. Times out after ~12s so a
+# headless / never-viewed session still starts.
+wait_for_terminal_client() {
+    [ -n "${TMUX:-}" ] || return 0
+    local i
+    for ((i = 0; i < 60; i++)); do
+        [ -n "$(tmux list-clients 2>/dev/null)" ] && return 0
+        sleep 0.2
+    done
+}
+
 while true; do
+    wait_for_terminal_client
     run_claude
     show_menu
 done
