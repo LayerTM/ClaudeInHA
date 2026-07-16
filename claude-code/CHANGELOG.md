@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.46.2] — 2026-07-16
+
+### Fixed
+- **Status line is full-width the moment the console opens — no more couple-minute
+  truncated stretch after a restart.** 1.46.1 fixed how the width is detected, but
+  Claude still drew its *first* status line at the terminal's 80-column startup
+  default (before the browser had sized the terminal) and only refreshed minutes
+  later. The Claude session now waits for the browser to attach — so the terminal
+  already carries the real width — before it starts, so the status line is correct
+  from the very first render.
+
 ## [1.46.1] — 2026-07-16
 
 ### Fixed
