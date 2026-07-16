@@ -30,7 +30,7 @@
     searchCount: $('search-count'), searchPrev: $('search-prev'),
     searchNext: $('search-next'), searchClose: $('search-close'),
     terminal: $('terminal'), dropHint: $('drop-hint'),
-    overlay: $('overlay'), overlayText: $('overlay-text'),
+    overlay: $('overlay'), overlayText: $('overlay-text'), reconnectNow: $('reconnect-now'),
     keybar: $('keybar'), toastArea: $('toast-area'),
     fileInput: $('file-input'),
     dlgPaste: $('dlg-paste'), pasteInput: $('paste-input'),
@@ -432,15 +432,30 @@
   function hideOverlay() { els.overlay.classList.add('hidden'); }
 
   let reconnectTimer = null;
+  let reconnectAttempts = 0;
 
   function scheduleReconnect() {
     if (reconnectTimer) return;
+    reconnectAttempts += 1;
+    // After a few backed-off tries a bare "Reconnecting…" can read as frozen —
+    // soften the wording so a longer outage clearly still means "working on it".
+    if (reconnectAttempts >= 3) showOverlay('Still trying to reconnect…');
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
       connect();
     }, state.reconnectDelay);
     state.reconnectDelay = Math.min(state.reconnectDelay * 2, 10000);
   }
+
+  // Manual retry — skip whatever backoff is pending and reconnect right now, so
+  // the user never waits out the (up to 10s) delay after a blip.
+  els.reconnectNow.addEventListener('click', () => {
+    reconnectAttempts = 0;
+    state.reconnectDelay = 1000;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    showOverlay('Reconnecting…');
+    connect();
+  });
 
   function connect() {
     // Never allow parallel sockets — duplicate output and reconnect storms.
@@ -459,6 +474,7 @@
       state.wsAlive = true;
       state.reconnectDelay = 1000;
       state.missedPongs = 0;
+      reconnectAttempts = 0;
       hideOverlay();
       fitToContainer();
       send({ t: 'resize', cols: term.cols, rows: term.rows });
