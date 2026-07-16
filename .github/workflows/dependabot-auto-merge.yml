@@ -1,0 +1,36 @@
+name: Dependabot auto-merge
+
+# Automatically merges Dependabot pull requests for non-major updates once all
+# required status checks pass. Major version bumps are left for manual review.
+#
+# Safe use of pull_request_target: this job never checks out or executes the
+# PR's code — it only reads Dependabot's metadata and enables auto-merge, which
+# then waits for the branch-protection required checks before merging.
+
+on: pull_request_target
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        # Pinned to an immutable commit SHA (this job runs with write scope in a
+        # pull_request_target context). The version comment lets Dependabot's
+        # github-actions updater keep the pin current.
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+
+      - name: Enable auto-merge for known minor/patch updates
+        # Fail-closed allowlist: only explicitly-recognized minor/patch updates
+        # auto-merge. Majors — and any PR whose update-type can't be determined —
+        # fall through to manual review instead of merging by default.
+        if: ${{ contains(fromJSON('["version-update:semver-minor", "version-update:semver-patch"]'), steps.metadata.outputs.update-type) }}
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

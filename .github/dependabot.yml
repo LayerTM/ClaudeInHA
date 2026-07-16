@@ -1,0 +1,45 @@
+version: 2
+updates:
+  # All GitHub Actions referenced by the workflows under .github/workflows/.
+  # Minor & patch bumps are grouped into one PR; majors get their own PR so
+  # they are reviewed (and never auto-merged) — same policy as npm below.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
+    labels: ["dependencies"]
+    groups:
+      github-actions:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # npm dependencies for the web console (express / ws / node-pty / busboy /
+  # @xterm / eslint / tsc). Minor & patch bumps are grouped into one PR; majors
+  # get their own PR so they are reviewed (and never auto-merged).
+  - package-ecosystem: npm
+    directory: "/claude-code/app"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps"
+    labels: ["dependencies"]
+    groups:
+      npm-app:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # npm dependencies for the ha-shot screenshot helper (playwright-core drives
+  # the system Chromium). Separate manifest + lockfile from the console app.
+  - package-ecosystem: npm
+    directory: "/claude-code/ha-tools"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps"
+    labels: ["dependencies"]
+    groups:
+      npm-ha-tools:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
