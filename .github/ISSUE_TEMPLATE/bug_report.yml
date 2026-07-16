@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a problem with the Claude Code add-on
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please do **not** paste your
+        Anthropic API key, Home Assistant long-lived access tokens, or any other
+        secrets. Redact them from any logs before pasting.
+  - type: checkboxes
+    attributes:
+      label: Checklist
+      options:
+        - label: I am running a supported Home Assistant version (Supervised / HA OS).
+          required: true
+        - label: I am on the latest version of the Claude Code add-on.
+          required: true
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+  - type: input
+    id: addon_version
+    attributes:
+      label: Add-on version
+      description: Shown on the add-on page (Settings → Add-ons → Claude Code).
+      placeholder: "1.45.0"
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.7.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install_type
+    attributes:
+      label: Installation type
+      options:
+        - Home Assistant OS
+        - Home Assistant Supervised
+        - Other / not sure
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser & OS (if the problem is in the web console)
+      description: The console is browser-based, so some issues are browser-specific.
+      placeholder: "Safari 18 on macOS / Chrome on Android"
+    validations:
+      required: false
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Add-on log (Settings → Add-ons → Claude Code → Log), secrets removed.
+      render: text
+    validations:
+      required: false

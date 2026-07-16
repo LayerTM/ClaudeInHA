@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/LayerTM/ClaudeInHA/security/advisories/new
+    about: Please report security issues privately, not as a public issue.
+  - name: Claude integration (Home Assistant)
+    url: https://github.com/LayerTM/claude-ha
+    about: Issues with the companion Home Assistant integration belong in its repository.
