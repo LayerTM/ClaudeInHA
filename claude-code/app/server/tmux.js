@@ -92,6 +92,16 @@ async function respawnClaude() {
   await run(['respawn-window', '-k', '-t', `${MAIN}:${CLAUDE_WINDOW}`, '/usr/local/bin/start-claude']);
 }
 
+// Force Claude to re-run its statusLine command by sending a redraw (Ctrl+L) to
+// the Claude window. Claude renders the status line once and caches it,
+// refreshing only slowly — so if it drew it before the terminal reached the
+// browser's width, the bottom bar stays truncated. A redraw makes Claude
+// re-render at the current width. Harmless: Ctrl+L only repaints; it preserves
+// the input line and scrollback.
+async function redrawClaude() {
+  await run(['send-keys', '-t', `${MAIN}:${CLAUDE_WINDOW}`, 'C-l']);
+}
+
 async function capturePane(index, lines) {
   const args = ['capture-pane', '-p', '-J', '-t', `${MAIN}:${index}`];
   if (lines > 0) args.push('-S', `-${lines}`);
@@ -148,6 +158,7 @@ module.exports = {
   newShellWindow,
   killWindow,
   respawnClaude,
+  redrawClaude,
   capturePane,
   selectWindow,
   killSession,

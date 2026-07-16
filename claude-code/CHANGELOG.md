@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.46.4] — 2026-07-16
+
+### Fixed
+- **Status line renders full-width right after the console opens — the reliable
+  fix.** Claude renders its status line once and caches it, refreshing only
+  slowly, so if it drew it before the terminal reached the browser's width the
+  bottom bar stayed truncated for a couple of minutes. The console now nudges
+  Claude to redraw (Ctrl+L) a few times just after a session opens — and after a
+  window resize — which forces it to re-render the status line at the real width
+  immediately (input and scrollback are untouched). The 1.46.1–1.46.3 changes
+  narrowed the startup race but couldn't fully close it; this closes it.
+
 ## [1.46.3] — 2026-07-16
 
 ### Fixed
