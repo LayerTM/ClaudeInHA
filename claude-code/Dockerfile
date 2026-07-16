@@ -33,8 +33,8 @@ RUN apt-get update \
         xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Node.js LTS from official dist tarballs (deterministic, arch-aware)
-ARG NODE_VERSION=24.18.0
+# Node.js from official dist tarballs (latest, deterministic, arch-aware)
+ARG NODE_VERSION=26.5.0
 RUN arch="$(dpkg --print-architecture)" \
     && case "${arch}" in \
          amd64) node_arch="x64" ;; \
@@ -104,13 +104,13 @@ RUN pip install --no-cache-dir --break-system-packages \
 
 # --- Playwright MCP (baked, pinned) ---
 # Uses the system Chromium via --executable-path at runtime; no browser download.
-ARG PLAYWRIGHT_MCP_VERSION=0.0.77
+ARG PLAYWRIGHT_MCP_VERSION=0.0.78
 RUN npm install -g "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
     && npm cache clean --force
 
 # --- ccstatusline (the rich status line the desktop Claude Code uses) ---
 # Bundled so no runtime npx download is needed; wired as Claude's statusLine.
-ARG CCSTATUSLINE_VERSION=2.2.22
+ARG CCSTATUSLINE_VERSION=2.2.23
 RUN npm install -g "ccstatusline@${CCSTATUSLINE_VERSION}" \
     && npm cache clean --force
 

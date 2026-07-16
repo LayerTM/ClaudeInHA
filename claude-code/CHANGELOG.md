@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.46.0] — 2026-07-16
+
+### Changed
+- **Everything updated to the latest.** The add-on now runs on **Node 26** (up from Node 24) on the
+  current Home Assistant base image, with the bundled tooling (Playwright MCP, ccstatusline) and the
+  console's build/type dependencies refreshed to their newest releases. Verified end-to-end with a
+  full image build — including the native terminal backend recompiled and pty-spawn-tested on Node 26.
+  No behaviour change; this is a keep-current maintenance refresh.
+
 ## [1.45.0] — 2026-07-16
 
 ### Changed
