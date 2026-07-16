@@ -9,6 +9,7 @@ const tmux = require('./tmux');
 const { createRouter } = require('./api');
 const terminal = require('./terminal');
 const promptServer = require('./prompt');
+const { stampAssetVersion } = require('./shell');
 
 const PORT = Number(process.env.CLAUDE_CONSOLE_PORT || 8099);
 const UPLOAD_DIR = process.env.UPLOAD_DIR || '/data/uploads';
@@ -51,23 +52,23 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 // cache — and WITHOUT a version key a fresh (no-store) shell would pair with a
 // STALE cached script after an update, so new markup meets old code: dead
 // buttons / broken UI until the asset cache TTL (~1h) expires. Stamping
-// ?v=<version> makes every release a distinct cache key, so a fresh shell
-// always fetches matching assets while an unchanged version still hits cache.
+// ?v=<version> (see shell.js) makes every release a distinct cache key, so a
+// fresh shell always fetches matching assets while an unchanged version still
+// hits cache.
 const ASSET_VERSION = process.env.ADDON_VERSION || String(Date.now());
 const INDEX_HTML = path.join(PUBLIC_DIR, 'index.html');
-const VERSIONABLE = /\b(href|src)="((?:styles\.css|app\.js|vendor\/[\w-]+\.(?:js|css)))"/g;
 
 async function serveIndex(req, res) {
   let html;
   try {
     html = await fsp.readFile(INDEX_HTML, 'utf8');
-  } catch {
+  } catch (err) {
+    console.error('serveIndex: failed to read index.html:', err.message);
     res.status(500).send('index unavailable');
     return;
   }
-  html = html.replace(VERSIONABLE, (_m, attr, url) => `${attr}="${url}?v=${ASSET_VERSION}"`);
   res.setHeader('Cache-Control', 'no-store');
-  res.type('html').send(html);
+  res.type('html').send(stampAssetVersion(html, ASSET_VERSION));
 }
 app.get(['/', '/index.html'], serveIndex);
 

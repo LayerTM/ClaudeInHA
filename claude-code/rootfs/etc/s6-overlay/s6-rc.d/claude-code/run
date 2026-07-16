@@ -253,7 +253,10 @@ export CLAUDE_PROMPT_OPTIONS=/data/options.json
 export CLAUDE_PROMPT_BIN=/data/home/.local/bin/claude
 export CLAUDE_PROMPT_USAGE_BIN=/usr/local/bin/ha-usage
 export CLAUDE_PROMPT_HA_MCP_URL="http://homeassistant:8123/api/mcp"
-export ADDON_VERSION="$(bashio::addon.version 2>/dev/null || echo unknown)"
+# Time-based fallback (not a fixed "unknown") so asset cache-busting still gets a
+# fresh key if bashio::addon.version ever fails — a fixed string would freeze the
+# cache key and defeat busting for the whole outage.
+export ADDON_VERSION="$(bashio::addon.version 2>/dev/null || echo "unknown-$(date +%s)")"
 
 # --- Proactive monitoring (opt-in via monitoring_interval_hours > 0) ---
 # Periodically asks Claude to review the HA error log/config and pushes a short
