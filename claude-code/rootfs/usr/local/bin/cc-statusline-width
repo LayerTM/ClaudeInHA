@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Give ccstatusline the real terminal width.
+#
+# When Claude Code spawns ccstatusline as the statusLine command, ccstatusline's
+# own width detection is unreliable: its stdout is a pipe, Claude's environment
+# carries no COLUMNS, and its fallback — walking up the process tree to find the
+# controlling pty — can miss it. It then drops to an 80-column default and
+# truncates every status line (each segment ends in "…"), which looks like the
+# bottom status bar is broken.
+#
+# Claude runs inside tmux, which authoritatively knows the pane width and keeps
+# it current on every resize. Read the width from tmux and hand it to
+# ccstatusline via its CCSTATUSLINE_WIDTH override (which it honours before any
+# probing). If tmux is unavailable, fall through to ccstatusline's own
+# detection — this wrapper is never worse than calling ccstatusline directly.
+set -u
+
+if [ -z "${CCSTATUSLINE_WIDTH:-}" ] && [ -n "${TMUX:-}" ]; then
+    # TMUX_PANE (inherited from Claude) makes tmux report *this* pane's width.
+    width="$(tmux display -p '#{pane_width}' 2>/dev/null)"
+    case "${width}" in
+        '' | *[!0-9]*) : ;;                      # not a positive integer — ignore
+        *) export CCSTATUSLINE_WIDTH="${width}" ;;
+    esac
+fi
+
+exec /usr/local/bin/ccstatusline "$@"

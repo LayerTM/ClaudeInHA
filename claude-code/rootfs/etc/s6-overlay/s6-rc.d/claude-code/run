@@ -165,15 +165,19 @@ fi
 settings_file=/data/home/.claude/settings.json
 [ -f "${settings_file}" ] || echo '{}' > "${settings_file}"
 cur_sl_cmd="$(jq -r '.statusLine.command // ""' "${settings_file}" 2>/dev/null)"
-# Seed when absent, and migrate our own previous default (the 1.2.x cc-statusline
-# script, now removed) to ccstatusline. Any other (user-custom) command is left
-# untouched.
-if [ -z "${cur_sl_cmd}" ] || [ "${cur_sl_cmd}" = "/usr/local/bin/cc-statusline" ]; then
+# Seed when absent, and migrate our own earlier defaults — the removed 1.2.x
+# cc-statusline script and the 1.43–1.46 bare ccstatusline command — to the
+# width-aware wrapper (cc-statusline-width, which feeds ccstatusline the real
+# tmux pane width so the status line stops truncating at 80 columns). Any other
+# (user-custom) command is left untouched.
+if [ -z "${cur_sl_cmd}" ] \
+   || [ "${cur_sl_cmd}" = "/usr/local/bin/cc-statusline" ] \
+   || [ "${cur_sl_cmd}" = "/usr/local/bin/ccstatusline" ]; then
     tmp_settings="$(mktemp)"
-    if jq '.statusLine = {type: "command", command: "/usr/local/bin/ccstatusline", padding: 0}' \
+    if jq '.statusLine = {type: "command", command: "/usr/local/bin/cc-statusline-width", padding: 0}' \
           "${settings_file}" > "${tmp_settings}" 2>/dev/null; then
         mv "${tmp_settings}" "${settings_file}"
-        bashio::log.info "Status line configured (ccstatusline)"
+        bashio::log.info "Status line configured (ccstatusline, width-aware)"
     else
         rm -f "${tmp_settings}"
     fi

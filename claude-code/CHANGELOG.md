@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.46.1] — 2026-07-16
+
+### Fixed
+- **Bottom status line no longer renders truncated.** After the Node 26 refresh
+  (1.46.0), the status line at the bottom of the console could show cut off at
+  ~80 columns — *Model: … | Thinking: …* trailing off in ellipses — even on a
+  wide window. The status-line tool's own terminal-width detection is unreliable
+  when Claude Code spawns it (piped output, no `COLUMNS`), so it fell back to 80.
+  It now reads the true pane width from tmux, so the full status line shows again
+  and tracks the window as you resize.
+
 ## [1.46.0] — 2026-07-16
 
 ### Changed
