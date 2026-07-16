@@ -50,6 +50,18 @@ function attach(ws) {
   let pendingResize = null;
   const pendingInput = [];
 
+  // Debounced status-line redraw: a resize changes the terminal width, but
+  // Claude keeps showing its cached (old-width) status line until it next
+  // re-runs the command. Nudge a redraw shortly after the resize settles.
+  let statusRedrawTimer = null;
+  const nudgeStatusRedraw = () => {
+    if (statusRedrawTimer) clearTimeout(statusRedrawTimer);
+    statusRedrawTimer = setTimeout(() => {
+      statusRedrawTimer = null;
+      if (alive) tmux.redrawClaude().catch(() => {});
+    }, 500);
+  };
+
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
   clients.add(ws);
@@ -127,6 +139,15 @@ function attach(ws) {
     });
 
     await broadcastTabs();
+
+    // Claude renders its status line once and caches it, refreshing only slowly;
+    // if it drew it before the terminal reached the browser's width (or while it
+    // was still launching), the bottom bar stays truncated for minutes. Nudge a
+    // redraw a few times over the first ~20s so it re-renders at the real width
+    // no matter when it finished launching.
+    for (const delay of [3000, 9000, 20000]) {
+      setTimeout(() => { if (alive) tmux.redrawClaude().catch(() => {}); }, delay).unref();
+    }
   };
 
   ws.on('message', (raw, isBinary) => {
@@ -158,7 +179,7 @@ function attach(ws) {
             // Remember the latest size even before the pty exists, so start()
             // can spawn/resize to it instead of dropping it.
             pendingResize = { cols: msg.cols, rows: msg.rows };
-            if (term) term.resize(msg.cols, msg.rows);
+            if (term) { term.resize(msg.cols, msg.rows); nudgeStatusRedraw(); }
           }
           break;
         case 'select':
@@ -183,6 +204,7 @@ function attach(ws) {
     alive = false;
     clients.delete(ws);
     if (drainTimer) clearInterval(drainTimer);
+    if (statusRedrawTimer) clearTimeout(statusRedrawTimer);
     if (term) {
       try { term.kill(); } catch { /* already dead */ }
     }
