@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.43.1] — 2026-07-16
+
+### Fixed
+- **New console features work immediately after an update — no stale-cache glitches.** The console
+  page reloads fresh every time (since 1.41.1), but its scripts and styles were still cached for an
+  hour, so right after an update a fresh page could load against an *old* cached script — leaving new
+  buttons dead or the layout broken until the cache expired (or you hard-refreshed). Scripts and
+  styles are now stamped with the add-on version, so every update loads a matching, fresh set right
+  away while unchanged versions still load instantly from cache. (This is what made the new 💡 quick
+  prompts appear unresponsive right after 1.43.0 on an already-open console.)
+
 ## [1.43.0] — 2026-07-16
 
 ### Added
