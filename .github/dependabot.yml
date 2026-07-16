@@ -1,8 +1,14 @@
+# Dependabot configuration.
+#
+# Groups intentionally omit `update-types`: with patterns:["*"], adding an
+# update-types filter silently suppresses major-version PRs upstream
+# (dependabot/dependabot-core#14202 — open). Majors therefore group in with
+# minor/patch, and the dependabot-auto-merge workflow's fail-closed guard holds
+# any group PR containing a major for manual review; minor/patch-only groups
+# auto-merge.
 version: 2
 updates:
   # All GitHub Actions referenced by the workflows under .github/workflows/.
-  # Minor & patch bumps are grouped into one PR; majors get their own PR so
-  # they are reviewed (and never auto-merged) — same policy as npm below.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
@@ -13,11 +19,9 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
 
   # npm dependencies for the web console (express / ws / node-pty / busboy /
-  # @xterm / eslint / tsc). Minor & patch bumps are grouped into one PR; majors
-  # get their own PR so they are reviewed (and never auto-merged).
+  # @xterm / eslint / tsc).
   - package-ecosystem: npm
     directory: "/claude-code/app"
     schedule:
@@ -28,7 +32,6 @@ updates:
     groups:
       npm-app:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
 
   # npm dependencies for the ha-shot screenshot helper (playwright-core drives
   # the system Chromium). Separate manifest + lockfile from the console app.
@@ -42,4 +45,3 @@ updates:
     groups:
       npm-ha-tools:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
