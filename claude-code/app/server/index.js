@@ -45,7 +45,23 @@ app.use((req, res, next) => {
 
 // Frontend
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
-app.use(express.static(PUBLIC_DIR, { index: 'index.html', maxAge: '1h' }));
+app.use(express.static(PUBLIC_DIR, {
+  index: 'index.html',
+  maxAge: '1h',
+  setHeaders(res, filePath) {
+    // The HTML app-shell must never be cached behind HA ingress. Ingress serves
+    // it Content-Encoding: deflate WITHOUT Vary and adds X-Content-Type-Options:
+    // nosniff; if the browser replays a stale cached copy, Safari/WebKit can't
+    // re-inflate it and — with nosniff blocking any fallback — DOWNLOADS the
+    // document instead of rendering it, leaving the ingress iframe blank (endless
+    // spinner). A restart/auto-update just refreshes that poisoned entry, so a
+    // page reload never recovers. Assets keep their long cache; only the entry
+    // document is forced to revalidate every load.
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-store');
+    }
+  },
+}));
 
 // Vendor assets served straight from installed packages
 const VENDOR = {
