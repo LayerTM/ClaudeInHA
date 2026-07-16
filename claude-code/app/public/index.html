@@ -64,7 +64,13 @@
   <main id="term-wrap">
     <div id="terminal"></div>
     <div id="drop-hint" class="hidden">Drop files to attach</div>
-    <div id="overlay" class="hidden"><div id="overlay-text"></div></div>
+    <div id="overlay" class="hidden">
+      <div id="overlay-box">
+        <div class="spinner" aria-hidden="true"></div>
+        <div id="overlay-text"></div>
+        <button id="reconnect-now" class="btn">Reconnect now</button>
+      </div>
+    </div>
     <!-- Find-in-scrollback bar: pinned top-right, position:absolute so it never
          perturbs the xterm fit. Hidden until Cmd+F / Ctrl+Shift+F or the 🔍 button. -->
     <div id="search-bar" class="hidden" role="search">

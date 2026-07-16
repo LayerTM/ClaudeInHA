@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.45.0] — 2026-07-16
+
+### Changed
+- **Clearer reconnecting screen.** When the console briefly loses its connection (phone sleeps, Wi-Fi
+  blips), the "Reconnecting…" overlay now shows a spinner so it's obviously working — not frozen —
+  and a **Reconnect now** button so you can retry immediately instead of waiting out the back-off. If
+  an outage drags on, the message softens to "Still trying to reconnect…" so it never reads as stuck.
+  (Automatic reconnection already worked; this just makes the state obvious and gives you a manual
+  nudge.)
+
 ## [1.44.0] — 2026-07-16
 
 ### Added

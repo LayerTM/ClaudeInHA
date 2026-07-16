@@ -269,13 +269,29 @@ body.booting #term-wrap { visibility: hidden; }
   justify-content: center;
   z-index: 40;
 }
-#overlay-text {
+#overlay-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px 22px;
-  font-size: 15px;
+  border-radius: 12px;
+  padding: 20px 26px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
 }
+#overlay-text { font-size: 15px; color: var(--fg); }
+#reconnect-now { font-size: 13px; padding: 6px 14px; }
+.spinner {
+  width: 26px;
+  height: 26px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }
 
 /* ---------- find bar ---------- */
 /* Floating find-in-scrollback overlay pinned inside the terminal area. Absolute
