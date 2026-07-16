@@ -70,6 +70,7 @@ const VENDOR = {
   '/vendor/addon-fit.js': '@xterm/addon-fit/lib/addon-fit.js',
   '/vendor/addon-unicode11.js': '@xterm/addon-unicode11/lib/addon-unicode11.js',
   '/vendor/addon-web-links.js': '@xterm/addon-web-links/lib/addon-web-links.js',
+  '/vendor/addon-search.js': '@xterm/addon-search/lib/addon-search.js',
   '/vendor/addon-webgl.js': '@xterm/addon-webgl/lib/addon-webgl.js',
 };
 for (const [route, mod] of Object.entries(VENDOR)) {

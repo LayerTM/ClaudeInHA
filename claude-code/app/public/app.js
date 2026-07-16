@@ -11,6 +11,7 @@
   const Unicode11Addon = window.Unicode11Addon?.Unicode11Addon || window.Unicode11Addon;
   const WebLinksAddon = window.WebLinksAddon?.WebLinksAddon || window.WebLinksAddon;
   const WebglAddon = window.WebglAddon?.WebglAddon || window.WebglAddon;
+  const SearchAddon = window.SearchAddon?.SearchAddon || window.SearchAddon;
 
   const BASE = new URL('.', location.href);
   const api = (p) => new URL(`api/${p}`, BASE).toString();
@@ -23,6 +24,9 @@
     paste: $('btn-paste'), attach: $('btn-attach'), update: $('btn-update'),
     fontDec: $('btn-font-dec'), fontInc: $('btn-font-inc'),
     keys: $('btn-keys'), kiosk: $('btn-kiosk'), help: $('btn-help'),
+    search: $('btn-search'), searchBar: $('search-bar'), searchInput: $('search-input'),
+    searchCount: $('search-count'), searchPrev: $('search-prev'),
+    searchNext: $('search-next'), searchClose: $('search-close'),
     terminal: $('terminal'), dropHint: $('drop-hint'),
     overlay: $('overlay'), overlayText: $('overlay-text'),
     keybar: $('keybar'), toastArea: $('toast-area'),
@@ -240,6 +244,12 @@
     /* WebGL unavailable (old WebView) — DOM renderer is the default fallback */
   }
 
+  // Find-in-scrollback engine. It highlights every match (decorations) and
+  // tracks the active one; the overlay bar (wired in the "find" section below)
+  // is pure chrome. Loading it here keeps all the addons together.
+  const search = new SearchAddon();
+  term.loadAddon(search);
+
   // OSC 52: Claude's own copy path. Never reject — swallow so nothing leaks
   // as text; deliver via cascade (clipboard on HTTPS, tray on HTTP).
   term.parser.registerOscHandler(52, (data) => {
@@ -287,26 +297,12 @@
   els.terminal.addEventListener('mouseup', maybeCopySelection);
   els.terminal.addEventListener('touchend', maybeCopySelection);
 
-  // Keyboard copy of the selection, like a local terminal — synchronously inside
-  // the keydown so it works over plain HTTP too. Cmd+C on macOS (only when there IS
-  // a selection; otherwise it passes through), Ctrl+Shift+C and Ctrl+Insert
-  // elsewhere. Plain Ctrl+C is NEVER intercepted — it must reach the shell as SIGINT.
+  // Shared by the keyboard-copy and find-in-scrollback logic. xterm allows only
+  // ONE custom key-event handler, so both live in the single handler registered
+  // further down (after the find helpers are defined).
   const isMac = /Mac|iP(hone|ad|od)/i.test(
     (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '',
   );
-  term.attachCustomKeyEventHandler((e) => {
-    if (e.type !== 'keydown' || !term.hasSelection()) return true;
-    const isC = e.key === 'c' || e.key === 'C';
-    const copyCombo = (isMac && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && isC)
-      || (e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey && isC)
-      || (e.ctrlKey && !e.shiftKey && !e.metaKey && !e.altKey && e.key === 'Insert');
-    if (!copyCombo) return true;
-    const sel = term.getSelection();
-    if (!sel) return true;
-    e.preventDefault();
-    copySelection(sel);
-    return false;
-  });
 
   // withMods() applies any armed sticky Ctrl/Alt from the key bar (defined in
   // the key-bar section below) to what the OS keyboard sends; it is a no-op
@@ -866,11 +862,147 @@
       term.focus();
       return;
     }
+    // Non-key actions on the bar (the 🔍 find entry) carry data-act, not a seq.
+    if (btn.dataset.act === 'search') {
+      openSearch();
+      return;
+    }
     const seq = btn.dataset.seq;
     if (seq != null) {
       send({ t: 'in', d: withMods(seq) });
       term.focus();
     }
+  });
+
+  /* ---------------- find in scrollback ---------------- */
+
+  // Match highlight colours, drawn as terminal decorations. Backgrounds must be
+  // solid #RRGGBB (the addon rejects alpha here), so these are the terracotta
+  // selection tones flattened onto the near-black canvas: every match gets a
+  // dim wash, the active one the vivid terracotta accent so it stands apart.
+  const SEARCH_OPTS = {
+    caseSensitive: false,
+    wholeWord: false,
+    regex: false,
+    decorations: {
+      matchBackground: '#5a3a2e',
+      matchBorder: '#8a5136',
+      matchOverviewRuler: '#a05c46',
+      activeMatchBackground: '#d97757',
+      activeMatchBorder: '#f2b49f',
+      activeMatchColorOverviewRuler: '#f2b49f',
+    },
+  };
+
+  // onDidChangeResults reports the active index (−1 past the highlight cap) and
+  // the total; mirror it into the "3 / 17" counter.
+  let searchResults = { resultIndex: -1, resultCount: 0 };
+  search.onDidChangeResults((r) => {
+    searchResults = r;
+    renderSearchCount();
+  });
+
+  function renderSearchCount() {
+    const { resultIndex, resultCount } = searchResults;
+    if (!resultCount) {
+      els.searchCount.textContent = els.searchInput.value ? 'No results' : '';
+    } else if (resultIndex >= 0) {
+      els.searchCount.textContent = `${resultIndex + 1} / ${resultCount}`;
+    } else {
+      // Past the highlight threshold the addon stops tracking the active index.
+      els.searchCount.textContent = `${resultCount}+`;
+    }
+  }
+
+  // findNext/findPrevious wrap around at the ends (addon default). Incremental
+  // grows the current selection while typing so the view doesn't jump on each
+  // keystroke; the explicit prev/next always step.
+  function findNext() {
+    if (els.searchInput.value) search.findNext(els.searchInput.value, SEARCH_OPTS);
+  }
+  function findPrevious() {
+    if (els.searchInput.value) search.findPrevious(els.searchInput.value, SEARCH_OPTS);
+  }
+  function searchIncremental() {
+    const q = els.searchInput.value;
+    if (!q) { search.clearDecorations(); renderSearchCount(); return; }
+    search.findNext(q, { ...SEARCH_OPTS, incremental: true });
+  }
+
+  function openSearch() {
+    els.searchBar.classList.remove('hidden');
+    els.searchInput.focus();
+    els.searchInput.select();
+    // Reopening with a term still in the box restores its highlights.
+    if (els.searchInput.value) searchIncremental();
+  }
+  function closeSearch() {
+    clearTimeout(searchDebounce);
+    els.searchBar.classList.add('hidden');
+    search.clearDecorations();
+    searchResults = { resultIndex: -1, resultCount: 0 };
+    renderSearchCount();
+    term.focus();
+  }
+
+  // Terminal-safe "open find" combo: Cmd+F on macOS (the OS owns Cmd, so a shell/TUI
+  // never sees it — we only replace the browser's own Find), or Ctrl+Shift+F anywhere
+  // (the GNOME-Terminal / VS Code convention). Plain Ctrl+F is deliberately NOT a find
+  // key: it's forward-char in readline and page-forward in less/vim/man.
+  const findCombo = (e) => !e.altKey && (e.key === 'f' || e.key === 'F')
+    && ((isMac && e.metaKey && !e.ctrlKey && !e.shiftKey) || (e.ctrlKey && e.shiftKey && !e.metaKey));
+
+  let searchDebounce = 0;
+  els.searchInput.addEventListener('input', () => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(searchIncremental, 120);
+  });
+  els.searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (e.shiftKey) findPrevious(); else findNext();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeSearch();
+    } else if (findCombo(e)) {
+      // Re-pressing the find combo while the bar is open just re-selects the query
+      // (and keeps the browser's own Find from popping up over ours).
+      e.preventDefault();
+      els.searchInput.select();
+    }
+  });
+
+  els.search.addEventListener('click', openSearch);
+  els.searchPrev.addEventListener('click', () => { findPrevious(); els.searchInput.focus(); });
+  els.searchNext.addEventListener('click', () => { findNext(); els.searchInput.focus(); });
+  els.searchClose.addEventListener('click', closeSearch);
+
+  // The single custom key-event handler (xterm supports only one). It runs before
+  // xterm turns a key into input: (1) the terminal-safe find combo opens the search
+  // bar; (2) the copy combo copies the current selection — synchronously inside the
+  // keydown so it works over plain HTTP too. Everything else — including plain Ctrl+C
+  // (SIGINT) and plain Ctrl+F — falls straight through untouched.
+  term.attachCustomKeyEventHandler((e) => {
+    if (e.type !== 'keydown') return true;
+    // (1) Find — Cmd+F (macOS) / Ctrl+Shift+F opens our search bar.
+    if (findCombo(e)) {
+      e.preventDefault();
+      openSearch();
+      return false;
+    }
+    // (2) Copy the selection — Cmd+C on macOS (only when there IS a selection;
+    // otherwise it passes through), Ctrl+Shift+C and Ctrl+Insert elsewhere.
+    if (!term.hasSelection()) return true;
+    const isC = e.key === 'c' || e.key === 'C';
+    const copyCombo = (isMac && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && isC)
+      || (e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey && isC)
+      || (e.ctrlKey && !e.shiftKey && !e.metaKey && !e.altKey && e.key === 'Insert');
+    if (!copyCombo) return true;
+    const sel = term.getSelection();
+    if (!sel) return true;
+    e.preventDefault();
+    copySelection(sel);
+    return false;
   });
 
   /* ---------------- kiosk / fullscreen ---------------- */
