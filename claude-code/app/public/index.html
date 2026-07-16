@@ -24,6 +24,17 @@
     <span class="spacer"></span>
     <button id="btn-search" class="btn" title="Find in terminal (Cmd+F / Ctrl+Shift+F)">🔍</button>
     <div class="menu-wrap">
+      <button id="btn-actions" class="btn" title="Quick prompts">💡</button>
+      <div id="menu-actions" class="menu hidden">
+        <div class="menu-note">Insert a prompt — review it, then press Enter</div>
+        <button data-prompt="What has changed in my home in the last 24 hours?">🕒 What changed today?</button>
+        <button data-prompt="Take a screenshot of my Home Assistant dashboard and tell me if anything looks wrong or out of place.">📸 Check my dashboard</button>
+        <button data-prompt="Check my Home Assistant configuration for errors or warnings and summarise anything that needs attention.">🩺 Check config health</button>
+        <button data-prompt="List any devices that are currently offline or unavailable, and any with a low battery.">🔋 Offline / low battery?</button>
+        <button data-prompt="Summarise the most recent errors and warnings in the Home Assistant log.">📋 Recent log errors</button>
+      </div>
+    </div>
+    <div class="menu-wrap">
       <button id="btn-copy" class="btn" title="Copy">⧉</button>
       <div id="menu-copy" class="menu hidden">
         <button data-copy="selection">Copy selection</button>

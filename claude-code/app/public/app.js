@@ -21,6 +21,7 @@
     tabs: $('tabs'), tabAdd: $('tab-add'),
     copy: $('btn-copy'), copyMenu: $('menu-copy'), ctxMenu: $('menu-context'),
     tray: $('btn-tray'), trayMenu: $('menu-tray'), trayBadge: $('tray-badge'),
+    actions: $('btn-actions'), actionsMenu: $('menu-actions'),
     paste: $('btn-paste'), attach: $('btn-attach'), update: $('btn-update'),
     fontDec: $('btn-font-dec'), fontInc: $('btn-font-inc'),
     keys: $('btn-keys'), kiosk: $('btn-kiosk'), help: $('btn-help'),
@@ -569,6 +570,7 @@
     els.copyMenu.classList.add('hidden');
     els.trayMenu.classList.add('hidden');
     els.ctxMenu.classList.add('hidden');
+    els.actionsMenu.classList.add('hidden');
   }
 
   // Menus are position:fixed (the scrollable toolbar would clip absolute
@@ -586,7 +588,19 @@
 
   els.copy.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(els.copyMenu, els.copy); });
   els.tray.addEventListener('click', (e) => { e.stopPropagation(); renderTray(); toggleMenu(els.trayMenu, els.tray); });
+  els.actions.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(els.actionsMenu, els.actions); });
   document.addEventListener('click', closeMenus);
+
+  // Quick prompts: insert the chosen prompt text into the terminal WITHOUT a
+  // trailing newline, so the user reviews it and presses Enter to send. Nothing
+  // ever auto-executes. Same insert path as attached-file paths (send t:'in').
+  els.actionsMenu.addEventListener('click', (e) => {
+    const prompt = e.target?.dataset?.prompt;
+    if (!prompt) return;
+    closeMenus();
+    send({ t: 'in', d: prompt });
+    term.focus();
+  });
 
   // Copy the current terminal selection, with the same clipboard cascade +
   // dialog fallback the copy menu uses. Reused by the right-click menu.

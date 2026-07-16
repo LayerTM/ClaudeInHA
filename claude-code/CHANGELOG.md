@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.43.0] — 2026-07-16
+
+### Added
+- **Quick prompts (💡).** A new 💡 button in the toolbar drops down a short list of ready-made
+  prompts — *What changed today?*, *Check my dashboard*, *Check config health*, *Offline / low
+  battery?*, *Recent log errors* — for one-tap common questions (handy on a phone). Tapping one
+  **inserts** the prompt into the console without sending it, so you can review or tweak it and press
+  Enter yourself. Nothing ever runs automatically.
+
 ## [1.42.0] — 2026-07-16
 
 ### Added
