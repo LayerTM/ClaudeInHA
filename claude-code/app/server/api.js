@@ -13,6 +13,25 @@ const { broadcastTabs } = require('./terminal');
 const CLAUDE_BIN = '/data/home/.local/bin/claude';
 const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1 GiB hard cap
 const MAX_CAPTURE_LINES = 50000;
+const MAX_QUICK_PROMPTS = 20;
+// Overridable so the API can be unit-tested against fixture files.
+const OPTIONS_PATH = process.env.CC_OPTIONS_PATH || '/data/options.json';
+const ALERTS_STATE_PATH = process.env.CC_ALERTS_STATE_PATH || '/data/alerts-state.json';
+
+// The user's own quick prompts (add-on option `quick_prompts`), for the 💡 menu.
+// Best-effort: unreadable/absent options just yield none, never an error.
+async function readQuickPrompts() {
+  try {
+    const opts = JSON.parse(await fsp.readFile(OPTIONS_PATH, 'utf8'));
+    if (!Array.isArray(opts.quick_prompts)) return [];
+    return opts.quick_prompts
+      .filter((p) => typeof p === 'string' && p.trim())
+      .map((p) => p.trim())
+      .slice(0, MAX_QUICK_PROMPTS);
+  } catch {
+    return [];
+  }
+}
 
 function exec(cmd, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -53,15 +72,17 @@ function createRouter({ uploadDir }) {
   router.get('/health', (req, res) => res.json({ ok: true }));
 
   router.get('/status', async (req, res) => {
-    const [version, tabs] = await Promise.all([
+    const [version, tabs, quickPrompts] = await Promise.all([
       claudeVersion(),
       tmux.listWindows().catch(() => []),
+      readQuickPrompts(),
     ]);
     res.json({
       claudeVersion: version,
       tabs,
       uploadDir,
       remoteControl: process.env.REMOTE_CONTROL === 'true',
+      quickPrompts,
     });
   });
 
@@ -73,12 +94,12 @@ function createRouter({ uploadDir }) {
   router.get('/alerts', async (req, res) => {
     const out = { enabled: false, intervalMinutes: 15, active: [], notifications: [] };
     try {
-      const opts = JSON.parse(await fsp.readFile('/data/options.json', 'utf8'));
+      const opts = JSON.parse(await fsp.readFile(OPTIONS_PATH, 'utf8'));
       out.enabled = opts.proactive_alerts === true;
       out.intervalMinutes = Number(opts.proactive_alerts_interval_minutes) || 15;
     } catch { /* options unreadable — keep defaults */ }
     try {
-      const st = JSON.parse(await fsp.readFile('/data/alerts-state.json', 'utf8'));
+      const st = JSON.parse(await fsp.readFile(ALERTS_STATE_PATH, 'utf8'));
       if (Array.isArray(st.items)) out.active = st.items;
     } catch { /* no alert state yet */ }
     try {
@@ -102,6 +123,25 @@ function createRouter({ uploadDir }) {
         }
       }
     } catch { /* Supervisor unreachable — notifications stay empty */ }
+    res.json(out);
+  });
+
+  // Lightweight active-alert summary for the toolbar badge — just the count of
+  // currently-active alerts and whether any is critical, from the local state
+  // file. No Supervisor call, so it is cheap enough to poll every minute.
+  router.get('/alerts/summary', async (req, res) => {
+    const out = { enabled: false, count: 0, critical: false };
+    try {
+      const opts = JSON.parse(await fsp.readFile(OPTIONS_PATH, 'utf8'));
+      out.enabled = opts.proactive_alerts === true;
+    } catch { /* options unreadable — keep defaults */ }
+    try {
+      const st = JSON.parse(await fsp.readFile(ALERTS_STATE_PATH, 'utf8'));
+      if (Array.isArray(st.items)) {
+        out.count = st.items.length;
+        out.critical = st.items.some((it) => it && it.critical === true);
+      }
+    } catch { /* no alert state yet */ }
     res.json(out);
   });
 
