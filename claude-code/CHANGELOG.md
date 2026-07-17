@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.47.1] — 2026-07-17
+
+### Fixed
+- **Keystrokes typed during a reconnect are no longer lost.** If the WebSocket
+  dropped (a network blip, or the reconnect back-off), anything you typed under
+  the "Reconnecting…" overlay silently vanished. Input is now queued and
+  flushed, in order, the moment the socket reopens — the session is the same one
+  on the server, so nothing is dropped.
+- **A shell tab you exit now disappears from the tab bar on its own.** Closing a
+  shell with `exit` or Ctrl+D destroyed the tmux window server-side, but the tab
+  lingered (and clicking it did nothing) until an unrelated refresh. The server
+  now notices window changes and updates every open console within ~2s.
+
+### Changed
+- **Truecolor is advertised to programs** via `COLORTERM=truecolor`, so TUIs that
+  gate 24-bit colour on it (rather than the `TERM` string) use the full palette
+  the console already carries.
+
 ## [1.47.0] — 2026-07-17
 
 ### Added
