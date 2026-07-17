@@ -9,6 +9,14 @@ const BACKPRESSURE_HIGH = 1024 * 1024;
 const BACKPRESSURE_CHECK_MS = 50;
 const HEARTBEAT_MS = 30000;
 
+// Claude renders its status line once and caches it, re-running the command only
+// slowly. Just after a session opens it may still be launching, or have drawn the
+// status line before the terminal reached the browser's width — so nudge a redraw
+// at these offsets (ms from connect) to force a re-render at the real width,
+// whenever it finishes launching.
+const STATUS_REDRAW_DELAYS_MS = [3000, 9000, 20000];
+const RESIZE_REDRAW_DEBOUNCE_MS = 500;
+
 const clients = new Set();
 
 // Server-side liveness: browsers answer protocol pings automatically, so a
@@ -50,16 +58,16 @@ function attach(ws) {
   let pendingResize = null;
   const pendingInput = [];
 
-  // Debounced status-line redraw: a resize changes the terminal width, but
-  // Claude keeps showing its cached (old-width) status line until it next
-  // re-runs the command. Nudge a redraw shortly after the resize settles.
+  // Debounced status-line redraw: a resize changes the terminal width, but Claude
+  // keeps showing its cached (old-width) status line until it re-runs the command.
+  // Nudge a redraw once the resize settles.
   let statusRedrawTimer = null;
   const nudgeStatusRedraw = () => {
     if (statusRedrawTimer) clearTimeout(statusRedrawTimer);
     statusRedrawTimer = setTimeout(() => {
       statusRedrawTimer = null;
       if (alive) tmux.redrawClaude().catch(() => {});
-    }, 500);
+    }, RESIZE_REDRAW_DEBOUNCE_MS);
   };
 
   ws.isAlive = true;
@@ -67,19 +75,7 @@ function attach(ws) {
   clients.add(ws);
 
   const start = async () => {
-    // Wait briefly for the client's first resize so the persistent tmux session
-    // (and the window Claude renders into) is created at the browser's real
-    // width — otherwise Claude draws its first status line at the 80-col default
-    // and caches it. ~2s cap so a client that never sends a size still starts.
-    for (let i = 0; i < 100 && !pendingResize && alive; i += 1) {
-      await new Promise((r) => setTimeout(r, 20));
-    }
-    if (!alive) return;
-
-    await tmux.ensureMain(
-      pendingResize ? pendingResize.cols : 0,
-      pendingResize ? pendingResize.rows : 0,
-    );
+    await tmux.ensureMain();
     if (!alive) return;
 
     term = pty.spawn('tmux', ['new-session', '-A', '-t', tmux.MAIN, '-s', view], {
@@ -140,12 +136,8 @@ function attach(ws) {
 
     await broadcastTabs();
 
-    // Claude renders its status line once and caches it, refreshing only slowly;
-    // if it drew it before the terminal reached the browser's width (or while it
-    // was still launching), the bottom bar stays truncated for minutes. Nudge a
-    // redraw a few times over the first ~20s so it re-renders at the real width
-    // no matter when it finished launching.
-    for (const delay of [3000, 9000, 20000]) {
+    // Force Claude to re-render the status line at the real width once it is up.
+    for (const delay of STATUS_REDRAW_DELAYS_MS) {
       setTimeout(() => { if (alive) tmux.redrawClaude().catch(() => {}); }, delay).unref();
     }
   };
