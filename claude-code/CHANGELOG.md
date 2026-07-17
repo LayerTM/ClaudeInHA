@@ -1,6 +1,18 @@
 # Changelog
 
-## [1.46.5] — 2026-07-17
+## [1.47.0] — 2026-07-17
+
+### Added
+- **Multi-line prompts in the console.** **Shift+Enter** (and **Option/Alt+Enter**
+  or **Ctrl+Enter**) now inserts a new line in Claude's prompt instead of sending;
+  plain **Enter** still sends. Before, every Enter variant submitted, so there was
+  no way to compose a multi-line message — now the web console behaves like a local
+  terminal set up with `claude`'s `/terminal-setup`. Phones get a dedicated **⇧⏎**
+  key on the key bar for the same thing.
+
+### Fixed
+- **The find bar now closes when you switch tabs**, so its scrollback highlights
+  don't linger over a different tab's buffer.
 
 ### Added
 - **Active-alert badge on the 🔔 button.** When deterministic proactive alerts are

@@ -525,6 +525,7 @@
     if (!Array.isArray(tabs) || !tabs.length) return;
     state.tabs = tabs;
     if (!tabs.some((t) => t.index === state.currentTab)) {
+      closeSearch();
       state.currentTab = tabs[0].index;
       send({ t: 'select', w: state.currentTab });
     }
@@ -558,6 +559,7 @@
         b.appendChild(x);
       }
       b.addEventListener('click', () => {
+        if (tab.index !== state.currentTab) closeSearch();
         state.currentTab = tab.index;
         send({ t: 'select', w: tab.index });
         renderTabs();
@@ -572,6 +574,7 @@
       const r = await fetch(api('tabs'), { method: 'POST' });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
+      closeSearch();
       state.currentTab = j.index;
       updateTabs(j.tabs);
       send({ t: 'select', w: j.index });
@@ -1124,13 +1127,28 @@
   els.searchClose.addEventListener('click', closeSearch);
 
   // The single custom key-event handler (xterm supports only one). It runs before
-  // xterm turns a key into input: (1) the terminal-safe find combo opens the search
-  // bar; (2) the copy combo copies the current selection — synchronously inside the
-  // keydown so it works over plain HTTP too. Everything else — including plain Ctrl+C
-  // (SIGINT) and plain Ctrl+F — falls straight through untouched.
+  // xterm turns a key into input: (1) modifier+Enter inserts a newline instead of
+  // submitting; (2) the terminal-safe find combo opens the search bar; (3) the copy
+  // combo copies the current selection — synchronously inside the keydown so it works
+  // over plain HTTP too. Everything else — including plain Ctrl+C (SIGINT), plain
+  // Enter (submit), and plain Ctrl+F — falls straight through untouched.
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== 'keydown') return true;
-    // (1) Find — Cmd+F (macOS) / Ctrl+Shift+F opens our search bar.
+    // (1) Multi-line input — Shift / Alt(Option) / Ctrl / Cmd + Enter inserts a
+    // newline in Claude's prompt instead of sending. Every Enter variant reaches
+    // xterm as a bare CR (0x0D), which Claude reads as "submit". We instead send
+    // LF (0x0A = Ctrl+J): Claude maps CR→submit and LF→newline, and a lone LF is
+    // the one newline that survives tmux with no keyboard-protocol setup and no
+    // ESC-timing race (an ESC+CR "Alt+Enter" can be split across WebSocket frames,
+    // turning it into an Escape keypress + submit). Plain Enter is left untouched,
+    // so it still submits. Skip while an IME is composing (Enter commits there).
+    if (e.key === 'Enter' && !e.isComposing
+        && (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      send({ t: 'in', d: '\n' });
+      return false;
+    }
+    // (2) Find — Cmd+F (macOS) / Ctrl+Shift+F opens our search bar.
     if (findCombo(e)) {
       e.preventDefault();
       openSearch();
