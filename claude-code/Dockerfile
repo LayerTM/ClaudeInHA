@@ -4,6 +4,12 @@ FROM ${BUILD_FROM}
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV TERM=xterm-256color
+# Authoritative truecolor signal: many TUIs (incl. Claude Code's renderer) gate
+# 24-bit colour on COLORTERM=truecolor rather than the TERM string. The pipe
+# already carries truecolor (tmux terminal-overrides ",*:Tc"); this lets apps
+# actually use it. Inherited by the tmux server (spawned with process.env) and
+# so by every window/shell.
+ENV COLORTERM=truecolor
 ENV LANG=C.UTF-8
 
 # System packages:

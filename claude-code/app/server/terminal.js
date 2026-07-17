@@ -33,6 +33,9 @@ setInterval(() => {
   }
 }, HEARTBEAT_MS).unref();
 
+const tabsSignature = (tabs) => tabs.map((t) => `${t.index}:${t.name}`).join(',');
+let lastTabsSig = null;
+
 async function broadcastTabs() {
   let tabs;
   try {
@@ -40,11 +43,30 @@ async function broadcastTabs() {
   } catch {
     return;
   }
+  lastTabsSig = tabsSignature(tabs);
   const message = JSON.stringify({ t: 'tabs', tabs });
   for (const ws of clients) {
     if (ws.readyState === ws.OPEN) ws.send(message);
   }
 }
+
+// A shell tab the user exits on its own (Ctrl+D / `exit`) makes tmux destroy
+// that window server-side, but no request fires — so the closed tab would
+// linger in every browser's tab bar (and clicking it selects a dead window)
+// until an unrelated broadcastTabs(). Poll the window set while any client is
+// connected and re-broadcast whenever it changes, so organic exits (and windows
+// opened/renamed by any means) reach all clients within a couple of seconds.
+const TABS_POLL_MS = 2000;
+setInterval(async () => {
+  if (!clients.size) return;
+  let tabs;
+  try {
+    tabs = await tmux.listWindows();
+  } catch {
+    return;
+  }
+  if (tabsSignature(tabs) !== lastTabsSig) await broadcastTabs();
+}, TABS_POLL_MS).unref();
 
 function attach(ws) {
   const view = `view-${crypto.randomUUID().slice(0, 8)}`;

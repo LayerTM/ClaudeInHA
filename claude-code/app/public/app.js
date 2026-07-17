@@ -413,10 +413,32 @@
 
   /* ---------------- websocket ---------------- */
 
+  // While the socket is down (a blip, or the up-to-10s reconnect backoff) the
+  // terminal still holds keyboard focus under the "Reconnecting…" overlay, so
+  // keystrokes would otherwise vanish with no feedback. Queue user input and
+  // flush it in order once the socket reopens — the tmux session is
+  // server-resident, so it's the same Claude/shell on the other side. Capped so
+  // a long outage can't grow it without bound; resize/select are control
+  // messages re-sent fresh on reconnect, so they are never queued.
+  const OUT_QUEUE_MAX = 256 * 1024;
+  let outQueue = [];
+  let outQueueLen = 0;
+
   function send(obj) {
     if (state.ws?.readyState === WebSocket.OPEN) {
       state.ws.send(JSON.stringify(obj));
+    } else if (obj?.t === 'in' && typeof obj.d === 'string' && outQueueLen < OUT_QUEUE_MAX) {
+      outQueue.push(obj.d);
+      outQueueLen += obj.d.length;
     }
+  }
+
+  function flushOutQueue() {
+    if (!outQueue.length || state.ws?.readyState !== WebSocket.OPEN) return;
+    const d = outQueue.join('');
+    outQueue = [];
+    outQueueLen = 0;
+    state.ws.send(JSON.stringify({ t: 'in', d }));
   }
 
   function wsUrl() {
@@ -479,6 +501,7 @@
       fitToContainer();
       send({ t: 'resize', cols: term.cols, rows: term.rows });
       send({ t: 'select', w: state.currentTab });
+      flushOutQueue();
       term.focus();
       clearInterval(state.pingTimer);
       state.pingTimer = setInterval(() => {
