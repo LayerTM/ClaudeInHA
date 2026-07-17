@@ -46,3 +46,6 @@ dist/
 
 # Maestri multi-agent workspace (role dirs) — service dir, never shipped
 .maestri/
+
+# Team collaboration channel (requests/replies to Codex & the integration owner) — working correspondence, never shipped
+.team-comm/

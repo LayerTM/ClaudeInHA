@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.47.2] — 2026-07-17
+
+### Fixed
+- **Less status-line flicker when a tab loses focus.** With the same session open
+  in more than one browser, tmux was forwarding every focus-in/out to Claude's
+  terminal UI, and each one made it repaint — most noticeable as the bottom bar
+  flickering right after a tab lost focus. tmux now runs with `focus-events off`,
+  which removes that repaint trigger. (This does not yet address the separate
+  flicker from two differently-sized viewers negotiating the terminal size — that
+  needs a bigger change still in design.)
+
 ## [1.47.1] — 2026-07-17
 
 ### Fixed
