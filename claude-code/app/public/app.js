@@ -22,7 +22,7 @@
     copy: $('btn-copy'), copyMenu: $('menu-copy'), ctxMenu: $('menu-context'),
     tray: $('btn-tray'), trayMenu: $('menu-tray'), trayBadge: $('tray-badge'),
     actions: $('btn-actions'), actionsMenu: $('menu-actions'),
-    alerts: $('btn-alerts'), alertsMenu: $('menu-alerts'),
+    alerts: $('btn-alerts'), alertsMenu: $('menu-alerts'), alertsBadge: $('alerts-badge'),
     paste: $('btn-paste'), attach: $('btn-attach'), update: $('btn-update'),
     fontDec: $('btn-font-dec'), fontInc: $('btn-font-inc'),
     keys: $('btn-keys'), kiosk: $('btn-kiosk'), help: $('btn-help'),
@@ -641,6 +641,7 @@
       ? `Proactive alerts on · every ${data.intervalMinutes}m`
       : 'Proactive alerts off');
     const active = Array.isArray(data.active) ? data.active : [];
+    setAlertsBadge(active.length, active.some((a) => a && a.critical));
     if (active.length) {
       note('Active', 'menu-section');
       active.forEach((a) => {
@@ -669,6 +670,56 @@
     }
     if (!active.length && !notifs.length && !data.enabled) {
       note('Turn on Proactive alerts in the add-on options to be warned about leaks, low batteries, doors left open at night, and more.');
+    }
+  }
+
+  // Toolbar bell badge: the count of currently-active alerts (critical → red),
+  // hidden when there are none. Kept fresh by a background poll and by opening
+  // the 🔔 menu.
+  function setAlertsBadge(count, critical) {
+    const b = els.alertsBadge;
+    if (!b) return;
+    if (count > 0) {
+      b.textContent = count > 99 ? '99+' : String(count);
+      b.classList.toggle('crit', !!critical);
+      b.classList.remove('hidden');
+      els.alerts.title = `${count} active alert${count === 1 ? '' : 's'}`;
+    } else {
+      b.classList.add('hidden');
+      b.classList.remove('crit');
+      els.alerts.title = 'Alerts & notifications';
+    }
+  }
+
+  async function refreshAlertsBadge() {
+    try {
+      const r = await fetch(api('alerts/summary'), { cache: 'no-store' });
+      if (!r.ok) return;
+      const s = await r.json();
+      setAlertsBadge(Math.max(0, s.count | 0), !!s.critical);
+    } catch { /* network blip — leave the badge as it is */ }
+  }
+
+  // Append the user's own quick prompts (add-on `quick_prompts` option) to the
+  // 💡 menu, once, after the built-in ones. Each is inserted, never auto-run,
+  // by the existing menu-actions click handler.
+  let customPromptsRendered = false;
+  function renderCustomPrompts(prompts) {
+    if (customPromptsRendered) return;
+    const list = Array.isArray(prompts) ? prompts.filter((p) => typeof p === 'string' && p.trim()) : [];
+    if (!list.length) return;
+    customPromptsRendered = true;
+    const section = document.createElement('div');
+    section.className = 'menu-section';
+    section.textContent = 'Your prompts';
+    els.actionsMenu.appendChild(section);
+    for (const p of list) {
+      const btn = document.createElement('button');
+      btn.className = 'prompt-custom';
+      btn.dataset.prompt = p;
+      btn.textContent = p;
+      btn.title = p;
+      els.actionsMenu.appendChild(btn);
     }
   }
 
@@ -1139,6 +1190,7 @@
       if (r.ok) {
         state.status = await r.json();
         if (Array.isArray(state.status.tabs)) updateTabs(state.status.tabs);
+        renderCustomPrompts(state.status.quickPrompts);
       }
     } catch { /* offline */ }
   }
@@ -1147,5 +1199,7 @@
 
   renderTabs();
   refreshStatus();
+  refreshAlertsBadge();
+  setInterval(refreshAlertsBadge, 60000);
   connect();
 })();

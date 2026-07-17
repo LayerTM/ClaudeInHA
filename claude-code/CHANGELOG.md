@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.46.5] — 2026-07-17
+
+### Added
+- **Active-alert badge on the 🔔 button.** When deterministic proactive alerts are
+  firing (a leak, a low battery, a door left open at night…), the bell now carries
+  a small count badge so you can see there's something to look at without opening
+  the menu — and it turns red the moment any active alert is critical. It refreshes
+  on its own about once a minute and whenever you open the alerts menu.
+- **Your own quick prompts.** A new `quick_prompts` add-on option takes a list of
+  strings; each one shows up as a button under *Your prompts* in the 💡 menu.
+  Tapping it inserts the text into the console for you to review and send — it never
+  auto-runs, exactly like the built-in prompts.
+
 ## [1.46.4] — 2026-07-16
 
 ### Fixed
