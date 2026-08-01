@@ -176,8 +176,10 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/claude-code/run \
 # Surface console health to the Supervisor. Hits the loopback health endpoint
 # (allowed by the console's IP guard); marks the add-on unhealthy if the Node
 # console stops responding. Generous start period covers first-run home setup.
+# Exec form: no shell needed, and Docker already treats every non-zero probe
+# exit (curl's 7 refused / 22 HTTP error / 28 timeout) as unhealthy.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8099/api/health || exit 1
+    CMD ["curl", "-fsS", "http://127.0.0.1:8099/api/health"]
 
 LABEL \
     io.hass.name="Claude Code" \
