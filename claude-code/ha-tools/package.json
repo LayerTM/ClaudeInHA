@@ -5,6 +5,6 @@
   "description": "Home Assistant dashboard screenshot helper for the Claude Code add-on",
   "license": "MIT",
   "dependencies": {
-    "playwright-core": "1.62.0"
+    "playwright-core": "1.62.1"
   }
 }
