@@ -283,12 +283,14 @@ async function resizeSnapshot(srcFile, workDir, execImpl = execFile) {
 // to a 0600 temp file in workDir, downscaled for a sane vision token cost.
 // Returns the file path, or null on any failure (no image → the model just
 // answers without vision). Bounded by SNAPSHOT_CAP_BYTES.
-async function fetchSnapshot(entity, haToken, workDir, fetchImpl = fetch) {
-  if (!haToken || !CAMERA_ENTITY_RE.test(entity)) return null;
+async function fetchSnapshot(entity, relay, workDir, fetchImpl = fetch) {
+  if (!relay || !relay.url || !relay.token || !CAMERA_ENTITY_RE.test(entity)) return null;
   let resp;
   try {
-    resp = await fetchImpl(`http://homeassistant:8123/api/camera_proxy/${entity}`, {
-      headers: { Authorization: `Bearer ${haToken}` },
+    // Through the loopback relay, which holds the HA token and owns how Core is
+    // reached — including when Core terminates TLS itself. (ClaudeInHA#47)
+    resp = await fetchImpl(`${relay.url}/api/camera_proxy/${entity}`, {
+      headers: { Authorization: `Bearer ${relay.token}` },
       signal: AbortSignal.timeout(10000),
     });
   } catch {
@@ -307,7 +309,8 @@ async function fetchSnapshot(entity, haToken, workDir, fetchImpl = fetch) {
 }
 
 function createPromptApp({
-  token, claudeBin, usageBin, mcpConfigPath, model, voiceModel = '', dailyBudgetUsd = 0, haToken,
+  token, claudeBin, usageBin, mcpConfigPath, model, voiceModel = '', dailyBudgetUsd = 0,
+  coreRelayUrl = '', coreRelayToken = '',
   workDir, addonVersion, redact, audit, stateDir = null, dataDir = null,
 }) {
   const app = express();
@@ -641,7 +644,9 @@ function createPromptApp({
 
       // Fetch the requested camera snapshot (if any) before running Claude; a
       // failed fetch simply yields no image and the model answers without vision.
-      const imagePath = imageEntity ? await fetchSnapshot(imageEntity, haToken, workDir) : null;
+      const imagePath = imageEntity
+        ? await fetchSnapshot(imageEntity, { url: coreRelayUrl, token: coreRelayToken }, workDir)
+        : null;
 
       // For streaming, open an NDJSON response now and emit REDACTED text deltas
       // as the answer generates — one JSON object per line, which the companion
@@ -836,7 +841,7 @@ function createPromptApp({
         + `${automation ? ' automation=draft' : ''}${cost}`,
       );
       if (outcome.mcpFailed) {
-        console.error('[prompt] HA MCP server did not connect — check the HA token and that the Model Context Protocol Server integration is installed');
+        console.error('[prompt] HA MCP server did not connect — check the add-on log for the resolved Core address, that the Model Context Protocol Server integration is installed, and the HA token');
       }
 
       const responseBody = {

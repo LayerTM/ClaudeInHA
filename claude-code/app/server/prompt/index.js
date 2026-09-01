@@ -14,6 +14,8 @@ const crypto = require('node:crypto');
 const { createPromptApp } = require('./server');
 const { buildRedactor } = require('./security');
 const runner = require('./runner');
+const { resolveCoreTarget } = require('./core-target');
+const { startCoreRelay } = require('./core-relay');
 
 const PORT = Number(process.env.CLAUDE_PROMPT_PORT || 8126);
 const DEV = process.env.CLAUDE_PROMPT_DEV === '1';
@@ -21,8 +23,10 @@ const DATA_DIR = process.env.CLAUDE_PROMPT_DATA || '/data';
 const OPTIONS_FILE = process.env.CLAUDE_PROMPT_OPTIONS || '/data/options.json';
 const CLAUDE_BIN = process.env.CLAUDE_PROMPT_BIN || '/data/home/.local/bin/claude';
 const USAGE_BIN = process.env.CLAUDE_PROMPT_USAGE_BIN || '/usr/local/bin/ha-usage';
-const HA_MCP_URL = process.env.CLAUDE_PROMPT_HA_MCP_URL
-  || 'http://homeassistant:8123/api/mcp';
+// Dev/test escape hatch only. In the add-on the startup script unsets it after
+// applying user environment_vars, so it can never be set from the config — the
+// Core address is derived (see core-target.js), never supplied.
+const HA_MCP_URL_OVERRIDE = process.env.CLAUDE_PROMPT_HA_MCP_URL || '';
 const DISCOVERY_SERVICE = 'claude_ha';
 
 function log(msg) {
@@ -59,15 +63,17 @@ async function loadToken(options) {
   return token;
 }
 
-// The only HA credential the spawned Claude ever sees: a Home Assistant LLAT
-// inside this MCP config file (0600), pointing at HA's Model Context Protocol
-// Server integration. Assist entity exposure is the outer capability ceiling.
-// Never the Supervisor token.
-async function writeMcpConfig(haToken) {
+// The MCP config the spawned Claude reads (0600). It points at the loopback
+// relay and carries the per-boot RELAY token — not the Home Assistant one, which
+// now stays in this process (see core-relay.js). The relay is what talks to
+// Core, so this hop is plain HTTP on 127.0.0.1 and needs no TLS handling from a
+// client we do not control. Assist entity exposure remains the outer capability
+// ceiling. Never the Supervisor token.
+async function writeMcpConfig(url, bearer) {
   const dir = path.join(DATA_DIR, 'claude-prompt');
   await fsp.mkdir(dir, { recursive: true, mode: 0o700 });
   const file = path.join(dir, 'ha-mcp.json');
-  if (!haToken) {
+  if (!url || !bearer) {
     await fsp.rm(file, { force: true });
     return null;
   }
@@ -75,8 +81,8 @@ async function writeMcpConfig(haToken) {
     mcpServers: {
       ha: {
         type: 'http',
-        url: HA_MCP_URL,
-        headers: { Authorization: `Bearer ${haToken}` },
+        url,
+        headers: { Authorization: `Bearer ${bearer}` },
       },
     },
   };
@@ -152,7 +158,26 @@ async function start() {
   // general ha_token is the zero-extra-config fallback. Assist exposure still
   // caps what either can touch through the MCP server.
   const haToken = optionString(options, 'prompt_ha_token') || optionString(options, 'ha_token');
-  const mcpConfigPath = await writeMcpConfig(haToken);
+
+  // Ask the Supervisor where Core actually listens, then put a loopback relay in
+  // front of it. Everything downstream — the spawned Claude's MCP client and the
+  // camera-snapshot fetch — talks plain HTTP to the relay and never sees the HA
+  // token or has to reason about Core's TLS. (ClaudeInHA#47)
+  const coreTarget = await resolveCoreTarget();
+  log(`core at ${coreTarget.origin} (${coreTarget.source})`);
+  let relay = null;
+  if (haToken) {
+    const relayToken = crypto.randomBytes(32).toString('base64url');
+    relay = await startCoreRelay({
+      coreOrigin: coreTarget.origin, haToken, relayToken, log,
+    });
+    relay.token = relayToken;
+    log(`core relay on 127.0.0.1:${relay.port}`);
+  }
+
+  const mcpConfigPath = relay
+    ? await writeMcpConfig(HA_MCP_URL_OVERRIDE || `${relay.url}/api/mcp`, relay.token)
+    : await writeMcpConfig('', '');
   const workDir = await ensureWorkDir();
 
   const redact = buildRedactor([
@@ -185,8 +210,10 @@ async function start() {
     // same `model` as text (no change).
     voiceModel: optionString(options, 'chat_model_voice'),
     dailyBudgetUsd: Number(options.chat_daily_budget_usd) || 0,
-    // Same HA token the MCP config uses — for fetching camera snapshots (vision).
-    haToken,
+    // Camera snapshots (vision) go through the same relay, so the HA token and
+    // the Core TLS decision live in exactly one place.
+    coreRelayUrl: relay ? relay.url : '',
+    coreRelayToken: relay ? relay.token : '',
     workDir,
     addonVersion: process.env.ADDON_VERSION || 'unknown',
     redact,
@@ -216,6 +243,7 @@ async function start() {
 
   return function shutdown() {
     runner.shutdown();
+    if (relay) relay.close();
     server.close();
     server.closeAllConnections();
   };

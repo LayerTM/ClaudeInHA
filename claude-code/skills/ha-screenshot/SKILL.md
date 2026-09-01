@@ -49,7 +49,7 @@ After changing a card in the Lovelace config (edit the `!include`d dashboard fil
 Use when you must click, hover, toggle, open a dialog, wait for data, or capture a state `ha-shot` can't reach.
 
 ```
-browser_navigate  → http://homeassistant:8123<path>   e.g. http://homeassistant:8123/lovelace/0
+browser_navigate  → $HA_URL<path>   e.g. $HA_URL/lovelace/0   (echo $HA_URL first)
 browser_snapshot        # accessibility tree — inspect structure / find elements
 browser_take_screenshot # save PNG, then Read it
 ```

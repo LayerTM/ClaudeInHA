@@ -108,7 +108,27 @@ fi
 # user. Exported under the several names those tools expect.
 # Read straight from options.json (no Supervisor API dependency).
 ha_token=$(jq -r '.ha_token // ""' /data/options.json 2>/dev/null || echo "")
-export HA_URL="http://homeassistant:8123"
+# Where Core actually listens. Hardcoding http://homeassistant:8123 breaks every
+# install that terminates TLS on Core itself or moved the port (ClaudeInHA#47);
+# the Supervisor knows the answer and keeps it in sync with Core's HTTP config.
+# Falls back to the historic literal whenever it cannot be asked, so nothing
+# changes for the installs where the literal was already right.
+ha_core_scheme="http"
+ha_core_port="8123"
+if [ -n "${SUPERVISOR_TOKEN:-}" ]; then
+    ha_core_info=$(curl -fsSL -m 10 -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        http://supervisor/core/info 2>/dev/null || echo "")
+    if [ -n "${ha_core_info}" ]; then
+        [ "$(echo "${ha_core_info}" | jq -r '.data.ssl // false')" = "true" ] && ha_core_scheme="https"
+        ha_core_port_reported=$(echo "${ha_core_info}" | jq -r '.data.port // empty')
+        case "${ha_core_port_reported}" in
+            ''|*[!0-9]*) ;;
+            *) ha_core_port="${ha_core_port_reported}" ;;
+        esac
+    fi
+fi
+export HA_URL="${ha_core_scheme}://homeassistant:${ha_core_port}"
+bashio::log.info "Home Assistant Core at ${HA_URL}"
 if [ -n "${ha_token}" ]; then
     export HA_TOKEN="${ha_token}"
     export HASS_TOKEN="${ha_token}"
@@ -261,7 +281,11 @@ export CLAUDE_PROMPT_DATA=/data
 export CLAUDE_PROMPT_OPTIONS=/data/options.json
 export CLAUDE_PROMPT_BIN=/data/home/.local/bin/claude
 export CLAUDE_PROMPT_USAGE_BIN=/usr/local/bin/ha-usage
-export CLAUDE_PROMPT_HA_MCP_URL="http://homeassistant:8123/api/mcp"
+# NOT set: the prompt server derives Core's address itself and puts a loopback
+# relay in front of it (see app/server/prompt/core-target.js). Unset here, after
+# user environment_vars are applied, so the destination the HA token is sent to
+# still cannot come from the add-on configuration.
+unset CLAUDE_PROMPT_HA_MCP_URL
 # Time-based fallback (not a fixed "unknown") so asset cache-busting still gets a
 # fresh key if bashio::addon.version ever fails — a fixed string would freeze the
 # cache key and defeat busting for the whole outage.
