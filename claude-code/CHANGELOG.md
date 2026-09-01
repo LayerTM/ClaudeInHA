@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.47.3] — 2026-09-01
+
+### Fixed
+- **Custom `environment_vars` are applied again — and so are `init_commands` and
+  `extra_args`.** A list option with a single entry was dropped entirely, and a
+  list with several entries silently lost its last one. With one
+  `environment_vars` entry set, nothing was exported and the log said nothing at
+  all — no `Custom env:` line and no malformed-entry warning — so the option
+  looked ignored rather than broken. `ha-notify` falling back to the HA bell
+  instead of a configured `HA_NOTIFY_SERVICE` was the visible symptom.
+  ([#51](https://github.com/LayerTM/ClaudeInHA/issues/51))
+
+  The cause was the config reader, not the options: `bashio::config` ends in
+  `printf "%s"` with no trailing newline, so the newline `jq` produced was
+  stripped and `while IFS= read -r` discarded the final, unterminated line. All
+  list options now read `/data/options.json` directly through one shared
+  `config_list` helper, the same way `plugins` and `marketplaces` already did —
+  which also removes a startup dependency on the Supervisor API, where a hiccup
+  produced exactly the same silence. A test suite covers all three call sites
+  and fails on the old behaviour.
+
 ## [1.47.2] — 2026-07-17
 
 ### Fixed

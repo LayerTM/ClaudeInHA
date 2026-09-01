@@ -8,6 +8,9 @@
 # a shell tab, or a bare container.
 # ==============================================================================
 
+# shellcheck source=../lib/addon-config.sh
+source /usr/local/lib/addon-config.sh
+
 # Pin HOME to persistent storage — auth tokens and sessions must never land
 # in the ephemeral /root.
 export HOME=/data/home
@@ -52,7 +55,7 @@ EOF
     fi
     while IFS= read -r arg; do
         [ -n "${arg}" ] && claude_args+=("${arg}")
-    done < <(bashio::config 'extra_args')
+    done < <(config_list extra_args)
 }
 
 run_claude() {
