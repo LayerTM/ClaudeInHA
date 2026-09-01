@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.48.0] — 2026-09-01
+
+### Fixed
+- **Home Assistant with TLS on Core (or on a non-default port) now works.** The
+  add-on assumed Core was reachable at `http://homeassistant:8123`. If you set
+  `ssl_certificate` in the `http:` integration, port 8123 speaks HTTPS only, so
+  every call from the add-on got an empty reply: the companion `claude_ha` Assist
+  agent could not read or control anything, and camera snapshots silently
+  returned no image. The address is now asked of the Supervisor, which keeps it in
+  sync with Core's own HTTP config, so both the scheme and the port follow your
+  install. Nothing to configure. On an ordinary install the derived address is
+  byte-identical to the old one — a no-op.
+  ([#47](https://github.com/LayerTM/ClaudeInHA/issues/47))
+
+### Changed
+- **The companion chat's Claude session no longer holds a Home Assistant token.**
+  It used to read the long-lived token straight out of its MCP config. Calls to
+  Core now go through a loopback relay inside the add-on that holds the token
+  itself, so the spawned session only ever sees a per-boot token that is useless
+  anywhere else. The relay accepts exactly two paths — the MCP endpoint and camera
+  snapshots — refuses redirects, and only ever talks to the address derived from
+  the Supervisor, never one from your configuration.
+- `$HA_URL` (used by `ha-shot`, `hass-cli` and the bundled skills) is derived the
+  same way instead of being hardcoded. Scripts should use `$HA_URL` rather than a
+  literal address.
+- The "HA MCP server did not connect" log line no longer blames the token first;
+  it points at the resolved Core address as well.
+
 ## [1.47.3] — 2026-09-01
 
 ### Fixed

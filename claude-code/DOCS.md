@@ -259,6 +259,10 @@ Everything that matters lives in `/data` and survives restarts and updates: logi
 - **Blank screen** — check the add-on log; restart the add-on.
 - **401 / frozen after long idle** — the ingress session expires after 15 minutes without traffic; the console reloads automatically, or refresh the page.
 - **Copy does not reach the clipboard** — rare now (selecting text copies in the pointer gesture, which works over plain HTTP too). If a browser blocks the clipboard even inside a gesture, the text is still saved to the 📥 tray — one tap to copy — and serving HA over HTTPS avoids it entirely.
+- **TLS on Home Assistant itself** — if you set `ssl_certificate` in the `http:` integration, or moved
+  Core off port 8123, the add-on follows automatically: it asks the Supervisor where Core listens
+  instead of assuming `http://homeassistant:8123`. Nothing to configure. Inside the add-on,
+  `$HA_URL` always holds the right address — prefer it over a hardcoded one in scripts.
 - **`bypass_permissions` refuses to start** — the add-on sets `IS_SANDBOX=1` automatically; if a CLI update ever breaks this, run `claude install <previous-version> --force` in a shell tab and report an issue.
 
 ## Support

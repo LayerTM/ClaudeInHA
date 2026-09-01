@@ -149,7 +149,7 @@ ha-shot /lovelace-scratch/0 /tmp/card.png 414x896    # mobile-width check
 - Adjust the YAML, re-run the **same** `ha-shot` to the **same** file, Read it again. Repeat until it matches the goal.
 - A screenshot you don't Read proves nothing — always look.
 
-Interactive states `ha-shot` can't reach (open a dialog, hover, toggle, wait for data)? Use the Playwright MCP: `browser_navigate` → `http://homeassistant:8123/lovelace-scratch/0`, then `browser_take_screenshot` and Read the PNG.
+Interactive states `ha-shot` can't reach (open a dialog, hover, toggle, wait for data)? Use the Playwright MCP: `browser_navigate` → `$HA_URL/lovelace-scratch/0` (echo `$HA_URL` first — it is not always `http://homeassistant:8123`), then `browser_take_screenshot` and Read the PNG.
 
 ## 5. Ship it
 

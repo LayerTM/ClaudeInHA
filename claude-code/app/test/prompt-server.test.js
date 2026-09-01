@@ -253,16 +253,27 @@ test('createChatHealth: rolling recent/degraded/recovered/last_reason, capped, t
   assert.equal(s.last_reason, 'timeout', 'newest failure reason wins');
 });
 
-test('fetchSnapshot: validates entity/token/status and writes a 0600 temp file', async () => {
+test('fetchSnapshot: goes through the relay, validates entity/status, writes 0600', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-snap-'));
-  const okFetch = async () => new Response(Buffer.from('imgbytes'), { status: 200 });
-  assert.equal(await fetchSnapshot('light.x', 'tok', dir, okFetch), null, 'non-camera rejected');
-  assert.equal(await fetchSnapshot('camera.x', '', dir, okFetch), null, 'missing token rejected');
-  assert.equal(await fetchSnapshot('camera.x', 'tok', dir, async () => new Response('x', { status: 404 })), null, 'bad status rejected');
-  const file = await fetchSnapshot('camera.front_door', 'tok', dir, okFetch);
+  // Since #47 the snapshot fetch carries the RELAY token to the loopback relay,
+  // not the HA token to Core — the relay owns the credential and the TLS choice.
+  const relay = { url: 'http://127.0.0.1:12345', token: 'relay-tok' };
+  const calls = [];
+  const okFetch = async (url, init) => {
+    calls.push({ url, auth: init.headers.Authorization });
+    return new Response(Buffer.from('imgbytes'), { status: 200 });
+  };
+  assert.equal(await fetchSnapshot('light.x', relay, dir, okFetch), null, 'non-camera rejected');
+  assert.equal(await fetchSnapshot('camera.x', null, dir, okFetch), null, 'no relay rejected');
+  assert.equal(await fetchSnapshot('camera.x', { url: '', token: '' }, dir, okFetch), null, 'empty relay rejected');
+  assert.equal(await fetchSnapshot('camera.x', relay, dir, async () => new Response('x', { status: 404 })), null, 'bad status rejected');
+  const file = await fetchSnapshot('camera.front_door', relay, dir, okFetch);
   assert.ok(file && file.endsWith('.jpg'), 'writes a .jpg snapshot');
   assert.equal(fs.statSync(file).mode & 0o777, 0o600, 'snapshot is 0600');
   assert.equal(fs.readFileSync(file, 'utf8'), 'imgbytes');
+  const last = calls[calls.length - 1];
+  assert.equal(last.url, 'http://127.0.0.1:12345/api/camera_proxy/camera.front_door');
+  assert.equal(last.auth, 'Bearer relay-tok');
 });
 
 test('resizeSnapshot: downscales via the tool, stays 0600, falls back on failure', async () => {
@@ -901,8 +912,15 @@ test('artifacts: token + mcp files are 0600 and audit log is written', () => {
   assert.equal(tokenMode, 0o600);
   const mcpFile = path.join(TMP, 'claude-prompt', 'ha-mcp.json');
   assert.equal(fs.statSync(mcpFile).mode & 0o777, 0o600);
-  const mcp = JSON.parse(fs.readFileSync(mcpFile, 'utf8'));
-  assert.ok(fs.readFileSync(mcpFile, 'utf8').includes(HA_LLAT));
+  const mcpRaw = fs.readFileSync(mcpFile, 'utf8');
+  const mcp = JSON.parse(mcpRaw);
+  // The spawned Claude must NOT hold a Home Assistant credential. Since #47 the
+  // config points at the loopback relay and carries a per-boot relay token; the
+  // LLAT stays in the prompt-server process. This assertion is inverted from
+  // what it used to be, deliberately.
+  assert.ok(!mcpRaw.includes(HA_LLAT), 'the HA token must not reach the child MCP config');
+  assert.match(mcp.mcpServers.ha.url, /^http:\/\/127\.0\.0\.1:\d+\/api\/mcp$/);
+  assert.match(mcp.mcpServers.ha.headers.Authorization, /^Bearer .+/);
   // Regression guard: the MCP endpoint must be HA's Model Context Protocol
   // Server path `/api/mcp` (Streamable HTTP). A wrong path (e.g. the never-valid
   // `/mcp_server/mcp`) 404s, the `ha` server never connects, and the chat goes
