@@ -12,6 +12,7 @@
     "start": "node server/index.js",
     "test": "node --test \"test/**/*.test.js\"",
     "test:alerts": "bash test/cc-alerts.test.sh",
+    "test:config": "bash test/config-list.test.sh",
     "lint": "eslint .",
     "typecheck": "tsc -p jsconfig.json"
   },

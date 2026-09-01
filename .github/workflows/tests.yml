@@ -24,6 +24,10 @@ jobs:
         working-directory: claude-code/app
         run: npm run test:alerts
 
+      - name: Run config-list tests (bash + jq)
+        working-directory: claude-code/app
+        run: npm run test:config
+
   lint-js:
     name: JS lint & types
     runs-on: ubuntu-latest
