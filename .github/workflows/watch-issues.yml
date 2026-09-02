@@ -1,0 +1,94 @@
+# One watcher for EVERY repository this account owns — including ones created
+# later. Deliberately not an `on: issues` trigger: that only fires in the repo it
+# lives in, which would mean copying this file into every repo and remembering to
+# copy it into the next one. A scheduled search covers them all from one place.
+#
+# It notifies about reports from OTHER PEOPLE only: issues opened by the owner or
+# by a bot are excluded, so the mirror bot that files hundreds of tickets in a
+# private repo cannot drown a real user's bug report.
+
+name: watch issues
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore the list of already-notified issues
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: seen-issues.txt
+          # A rolling key: restore-keys picks up the most recent previous list,
+          # and each run saves a new one. A cache miss re-notifies at most the
+          # last 24h of reports rather than going silent.
+          key: seen-issues-${{ github.run_id }}
+          restore-keys: seen-issues-
+
+      - name: Find new reports and notify
+        env:
+          # A PAT is only needed to see PRIVATE repos. Without it the search still
+          # covers every public repo, so the watcher degrades rather than dies.
+          GH_TOKEN: ${{ secrets.GH_WATCH_TOKEN || github.token }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          touch seen-issues.txt
+
+          since=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+
+          # --paginate is load-bearing, not tidiness. Search has no wildcard for
+          # bot authors, so they are dropped client-side — and a single repo whose
+          # bot files hundreds of tickets fills the entire first page on its own,
+          # after which a page-limited query returns NOTHING and looks exactly
+          # like "no new reports". Measured: over a 30-day window the three real
+          # reports sat behind 241 bot issues and only paging reached them.
+          if ! gh api --paginate -X GET search/issues \
+                -f q="user:${OWNER} is:issue created:>${since} -author:${OWNER}" \
+                -f sort=created -f order=desc -F per_page=100 \
+                --jq '.items[] | select(.user.login | endswith("[bot]") | not)
+                      | [(.repository_url | split("/") | last), (.number|tostring), .user.login, .title, .html_url]
+                      | @tsv' > hits.tsv; then
+            # A failed query must be LOUD. Silence here is indistinguishable from
+            # "nobody reported anything", which is the one outcome this watcher
+            # exists to rule out.
+            echo "::error::GitHub search failed — the watcher cannot report on this run"
+            exit 1
+          fi
+
+          new=0
+          while IFS=$'\t' read -r repo number author title url; do
+            [ -n "${repo:-}" ] || continue
+            id="${repo}#${number}"
+            if grep -qxF "${id}" seen-issues.txt 2>/dev/null; then continue; fi
+            new=$((new + 1))
+            echo "NEW: ${id} by ${author} — ${title}"
+            if [ -n "${TELEGRAM_BOT_TOKEN}" ] && [ -n "${TELEGRAM_CHAT_ID}" ]; then
+              text=$(printf '🐛 New report in %s\n\n%s\n\nby %s\n%s' \
+                     "${repo}" "${title}" "${author}" "${url}")
+              curl -fsS -X POST \
+                "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+                --data-urlencode "text=${text}" \
+                --data-urlencode "disable_web_page_preview=false" > /dev/null \
+                || echo "::warning::Telegram send failed for ${id}"
+            fi
+            echo "${id}" >> seen-issues.txt
+          done < hits.tsv
+
+          if [ "${new}" -eq 0 ]; then echo "no new reports"; fi
+          if [ -z "${TELEGRAM_BOT_TOKEN}" ] || [ -z "${TELEGRAM_CHAT_ID}" ]; then
+            echo "::notice::TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set — detection ran, delivery skipped"
+          fi
+
+          # Keep the list bounded; ids are tiny and 500 covers many months.
+          tail -n 500 seen-issues.txt > seen-issues.tmp && mv seen-issues.tmp seen-issues.txt
