@@ -12,7 +12,7 @@
   connect and again after every resize. In Claude's interface Ctrl+L means
   **clear the screen**, and the session is shared between all your open windows,
   so each one of those wiped what everyone could see. The conversation itself was
-  never lost — only the view of it — but there was no way to scroll it back.
+  never lost — only the view of it.
 
   Nothing is sent to Claude any more. Resizing the window already tells the
   program its new size, which is what makes it re-draw; the extra nudge was never
