@@ -9,11 +9,13 @@
   between writes. Two writes in flight at once interleaved into a document that
   could not be read back, and the next start then treated the whole history as
   missing: the reliability window reset to empty, and the day's recorded spend
-  reset to zero. Measured on the previous code, with two writes issued together,
-  this damaged the file in **144 of 400** trials; with three, **219 of 400**. On
-  the same measurement the new code is clean in every trial. Writes are now
-  ordered, and each one lands complete or not at all, so a restart mid-write —
-  which is every add-on update — can no longer leave a partial file behind.
+  reset to zero. Writes are now ordered, and each one lands complete or not at
+  all, so a restart mid-write — which is every add-on update — can no longer
+  leave a partial file behind. Reproduced across three independent test harnesses
+  and well over a thousand trials: on the old code, writes issued together
+  regularly failed to leave the newest complete state on disk — sometimes an
+  unreadable file, sometimes an older one, depending on the exact sizes involved.
+  On the new code, every trial of every harness left exactly the newest state.
   ([#62](https://github.com/LayerTM/ClaudeInHA/issues/62))
 - A state file that is present but damaged is now reported in the add-on log
   instead of being indistinguishable from a fresh install. Both still start from

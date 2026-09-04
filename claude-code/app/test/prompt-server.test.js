@@ -260,6 +260,88 @@ test('fileStore: concurrent saves land in order and never leave a half-written f
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('fileStore: a reader never sees a half-written file while a save is in flight', async () => {
+  // The ATOMIC half, and it needs no killed process to observe — the review of
+  // #63 showed that a concurrent reader sees a broken document 60 times in 151
+  // reads when the write goes straight to the destination. Without this test the
+  // most likely future "simplification" — keep the ordering, drop the temp file,
+  // which is one of the two options #62 itself offers — passes the whole suite in
+  // silence. (#62)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-store-torn-'));
+  const file = path.join(dir, 'state.json');
+  const big = (gen) => Array.from({ length: 20000 }, (_, i) => ({ n: i, gen }));
+  fs.writeFileSync(file, JSON.stringify(big(-1)), { mode: 0o600 });
+
+  const store = fileStore(file);
+  let done = false;
+  let torn = 0;
+  let reads = 0;
+  const writing = store.save(big(0)).then(() => { done = true; });
+  while (!done) {
+    reads += 1;
+    try { JSON.parse(fs.readFileSync(file, 'utf8')); } catch { torn += 1; }
+    await new Promise((r) => setImmediate(r));
+  }
+  await writing;
+  assert.ok(reads > 1, `the write must not finish in one tick, or this proves nothing (reads=${reads})`);
+  assert.strictEqual(torn, 0, 'the destination is only ever a complete document');
+  assert.deepEqual(fs.readdirSync(dir), ['state.json'], 'and the temp file does not survive');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('fileStore: what lands is the state as of the save() call, not as of the write', async () => {
+  // The payload is stringified at CALL time on purpose: both stores hand save()
+  // their LIVE object, which keeps being mutated while the write is in flight.
+  // Deferring the stringify into the chain would write a state the caller never
+  // asked to persist — and no other test pins this. (#62)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-store-snap-'));
+  const file = path.join(dir, 'state.json');
+  const live = [{ n: 1 }];
+  const p = fileStore(file).save(live);
+  live.push({ n: 2 }); // the window moves on before the write lands
+  await p;
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), [{ n: 1 }],
+    'the file holds what was passed, not what the array became');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('fileStore: a store that cannot write says so once, not on every chat', async () => {
+  // Silence on the WRITE path is the same defect as silence on the read path: a
+  // read-only /data leaves an add-on that looks healthy until a restart rolls the
+  // window and the day's spend back. Reported on the healthy->failing edge only,
+  // so a persistent failure does not flood the log. (#62)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-store-fail-'));
+  const said = [];
+  const realError = console.error;
+  console.error = (...a) => said.push(a.join(' '));
+  try {
+    const store = fileStore(path.join(dir, 'state.json'));
+    // A store that is simply working says NOTHING. Without this, an edit that
+    // reports every successful write passes every other assertion here while
+    // putting one line in the add-on log per chat.
+    await store.save([{ n: 0 }]);
+    await store.save([{ n: 0 }]);
+    assert.strictEqual(said.length, 0, 'a healthy store is silent');
+
+    fs.chmodSync(dir, 0o500); // no new files may be created here
+    await store.save([{ n: 1 }]);
+    await store.save([{ n: 2 }]);
+    await store.save([{ n: 3 }]);
+    assert.strictEqual(said.length, 1, 'three failed writes, one report');
+    assert.ok(said[0].includes('FAILED'), 'and it says the write failed');
+
+    fs.chmodSync(dir, 0o700); // the disk comes back
+    await store.save([{ n: 4 }]);
+    assert.strictEqual(said.length, 2, 'the recovery is reported too');
+    assert.ok(said[1].includes('writable again'));
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8')), [{ n: 4 }]);
+  } finally {
+    console.error = realError;
+    fs.chmodSync(dir, 0o700);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('fileStore: a damaged file is reported, an absent one is not', () => {
   // Both return null — but they are not the same event. An absent file is a fresh
   // install; a damaged one is history that just disappeared, and it must not pass

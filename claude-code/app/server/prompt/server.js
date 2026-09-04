@@ -325,8 +325,15 @@ function createBudget(limitUsd, now = () => new Date(), persist = null) {
 // The payload is stringified at CALL time, so what eventually lands is the state
 // as of the save() that queued it, applied in that order.
 function fileStore(file) {
-  const tmp = `${file}.tmp`;
+  // The temp name is per INSTANCE, not per path. Two stores over one file would
+  // otherwise share it while their chains stayed independent, and the writes
+  // trample each other again — measured, 4 unreadable results in 200 concurrent
+  // rounds. Nothing here builds two stores on one path; not relying on that
+  // costs one random suffix, and it also means a foreign leftover `.tmp` can
+  // never lend this file its permissions.
+  const tmp = `${file}.tmp-${crypto.randomBytes(6).toString('hex')}`;
   let chain = Promise.resolve();
+  let failing = false;
   return {
     load() {
       try {
@@ -346,7 +353,27 @@ function fileStore(file) {
       chain = chain
         .then(() => fsp.writeFile(tmp, body, { mode: 0o600 }))
         .then(() => fsp.rename(tmp, file))
-        .catch(() => {});
+        .then(() => {
+          if (failing) {
+            failing = false;
+            console.error(`[prompt] state file is writable again: ${file}`);
+          }
+        })
+        .catch(async (err) => {
+          // Fire-and-forget stays fire-and-forget — a write failure must never
+          // break the chat — but it must not be INVISIBLE. A read-only /data or
+          // a full disk otherwise leaves an add-on that looks perfectly healthy
+          // until a restart quietly rolls the reliability window and the day's
+          // recorded spend back to whatever was last written. That is the same
+          // silent loss the load() message above exists for, noticed a day
+          // earlier. Logged on the healthy->failing EDGE only, so a persistent
+          // failure reports once instead of on every chat.
+          if (!failing) {
+            failing = true;
+            console.error(`[prompt] state file write FAILED, this state will not survive a restart: ${file} — ${err && err.message ? err.message : err}`);
+          }
+          await fsp.unlink(tmp).catch(() => {}); // a rename that failed leaves it behind
+        });
       return chain;
     },
   };
