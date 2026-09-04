@@ -235,10 +235,181 @@ test('fileStore: a budget restores today’s spend from a real 0600 /data json',
   assert.equal(createBudget(1.0, () => clock, fileStore(file)).spent(), 0, 'corrupt file → fresh state');
 });
 
+test('createChatHealth: entries carry a time, and the snapshot publishes the span', () => {
+  // Why this exists: the window is trimmed by COUNT, so on a quiet install the
+  // last 50 runs can span weeks. Without a time, a consumer cannot tell a failure
+  // 30 seconds old from one three days old, and a single stale blip reads as a
+  // live fault forever. (#60)
+  let t = 0;
+  const h = createChatHealth(10, null, () => t);
+  t = 1000; h.record(true, null, false);
+  t = 2000; h.record(false, 'model-error', false);
+  t = 3000; h.record(true, null, true);
+  const s = h.snapshot();
+  assert.strictEqual(s.window_from_ts, 1000, 'span starts at the oldest entry');
+  assert.strictEqual(s.window_to_ts, 3000, 'span ends at the newest entry');
+  assert.strictEqual(s.last_failure_ts, 2000, 'the FAILURE time, not the last run time');
+  assert.strictEqual(s.last_reason, 'model-error', 'reason still names the same failure');
+  // The counts must be unchanged by the addition — consumers already read them.
+  assert.strictEqual(s.recent, 3);
+  assert.strictEqual(s.degraded, 1);
+  assert.strictEqual(s.recovered, 1);
+});
+
+test('createChatHealth: an empty window reports null times, not zero, now, or undefined', () => {
+  // strictEqual, not equal: `undefined == null` is true, so a loose assertion
+  // here would pass on a build where the fields do not exist at all. That is
+  // exactly the distinction the contract rests on — JSON.stringify DROPS an
+  // undefined key, and to the consumer an absent field means "add-on too old"
+  // while null means "time unknown". They are different answers.
+  const s = createChatHealth(5).snapshot();
+  assert.strictEqual(s.window_from_ts, null);
+  assert.strictEqual(s.window_to_ts, null);
+  assert.strictEqual(s.last_failure_ts, null);
+});
+
+test('createChatHealth: times survive a restart, and a pre-ts file loads as unknown', () => {
+  // fileStore.save is a fire-and-forget async write (see the budget test above),
+  // so reading it back in the same tick would measure the write latency, not the
+  // data. This store round-trips through JSON exactly as the file does, which is
+  // the property under test: a `ts` must survive serialisation.
+  const store = { s: null, load() { return this.s; }, save(v) { this.s = JSON.parse(JSON.stringify(v)); } };
+  let t = 5000;
+  const h1 = createChatHealth(5, store, () => t);
+  h1.record(true, null, false);
+  t = 6000; h1.record(false, 'timeout', false);
+  const s = createChatHealth(5, store).snapshot();
+  assert.strictEqual(s.window_from_ts, 5000, 'ts is persisted, not rebuilt away on load');
+  assert.strictEqual(s.last_failure_ts, 6000);
+
+  // A file written by a build that predates `ts`: the entries are still valid
+  // history and must load, but their time is unknown rather than invented.
+  const legacyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-health-legacy-'));
+  const legacyPath = path.join(legacyDir, 'chat-health.json');
+  fs.writeFileSync(legacyPath, JSON.stringify([
+    { ok: true, reason: null, recovered: false },
+    { ok: false, reason: 'model-error', recovered: false },
+  ]));
+  const legacy = createChatHealth(5, fileStore(legacyPath), () => 9000);
+  let ls = legacy.snapshot();
+  assert.strictEqual(ls.recent, 2, 'old entries still count');
+  assert.strictEqual(ls.degraded, 1);
+  assert.strictEqual(ls.last_failure_ts, null, 'unknown time is null, never a fabricated one');
+  assert.strictEqual(ls.window_from_ts, null);
+  // A new run alongside them dates the window from ITSELF, not from the old tail.
+  legacy.record(true, null, false);
+  ls = legacy.snapshot();
+  assert.strictEqual(ls.window_from_ts, 9000, 'oldest KNOWN time, not the undated tail');
+  assert.strictEqual(ls.window_to_ts, 9000);
+});
+
+test('createChatHealth: consecutive_ok proves a recovery by evidence, not by elapsed time', () => {
+  // Why: on a small window the failure RATE stays high long after the system
+  // recovered — 1 failure of 3 is 33 % with two clean runs already behind it.
+  // The counts are order-blind and cannot separate those two cases; the trailing
+  // run of successes can, and only the add-on knows the order. (#60)
+  const h = createChatHealth(10);
+  assert.strictEqual(h.snapshot().consecutive_ok, 0, 'empty window: nothing proven yet');
+  h.record(true, null, false);
+  h.record(true, null, false);
+  assert.strictEqual(h.snapshot().consecutive_ok, 2, 'no failure in the window equals recent');
+  assert.strictEqual(h.snapshot().consecutive_ok, h.snapshot().recent);
+  h.record(false, 'model-error', false);
+  assert.strictEqual(h.snapshot().consecutive_ok, 0, 'the newest run failed, so nothing since');
+  h.record(true, null, true);
+  h.record(true, null, false);
+  const s = h.snapshot();
+  assert.strictEqual(s.consecutive_ok, 2, 'counts only the runs AFTER the last failure');
+  assert.strictEqual(s.degraded, 1, 'the failure itself is still reported');
+  assert.strictEqual(s.last_reason, 'model-error', 'and still named');
+});
+
+test('createChatHealth: consecutive_failed makes a fresh outage visible before the rate moves', () => {
+  // The mirror of consecutive_ok, and needed for the same reason in the other
+  // direction: a total outage starting now has to DILUTE a 50-run window before
+  // degraded/recent crosses any threshold, so the rate is blind for exactly the
+  // minutes that matter. The count of failures since the last success is not.
+  const h = createChatHealth(50);
+  for (let i = 0; i < 20; i += 1) h.record(true, null, false);
+  assert.strictEqual(h.snapshot().consecutive_failed, 0, 'a healthy window has none');
+  h.record(false, 'model-error', false);
+  h.record(false, 'model-error', false);
+  const s = h.snapshot();
+  assert.strictEqual(s.consecutive_failed, 2, 'two failures since the last success');
+  assert.strictEqual(s.consecutive_ok, 0, 'and the two counts never both run');
+  assert.ok(s.degraded / s.recent < 0.1, 'while the RATE is still under any sane threshold');
+});
+
+test('createChatHealth: an old failure ages OUT of the window, and stops dating it', () => {
+  // The actual promise of #60: the window is bounded, so a stale failure leaves.
+  // Nothing else here exercises shift(), and this is the first regression anyone
+  // would break by "improving" the trim.
+  let t = 0;
+  const h = createChatHealth(3, null, () => t);
+  t = 1000; h.record(false, 'model-error', false);
+  t = 2000; h.record(true, null, false);
+  t = 3000; h.record(true, null, false);
+  let s = h.snapshot();
+  assert.strictEqual(s.degraded, 1, 'still in the window');
+  assert.strictEqual(s.last_failure_ts, 1000);
+  assert.strictEqual(s.window_from_ts, 1000);
+  t = 4000; h.record(true, null, false); // pushes the failure out
+  s = h.snapshot();
+  assert.strictEqual(s.recent, 3, 'ring stays capped');
+  assert.strictEqual(s.degraded, 0, 'the old failure is gone');
+  assert.strictEqual(s.last_failure_ts, null, 'and no longer dates anything');
+  assert.strictEqual(s.last_reason, null);
+  assert.strictEqual(s.window_from_ts, 2000, 'the span moved with the window');
+  assert.strictEqual(s.consecutive_ok, 3);
+});
+
+test('createChatHealth: the window span never ends before it starts', () => {
+  // Date.now() is a WALL clock: an NTP step backwards or a corrected RTC puts
+  // neighbouring entries out of order. Reading the ends positionally would then
+  // publish a span that ends before it starts, and the failure it names could sit
+  // outside its own window. min/max cannot. (found in review of #61)
+  let t = 5000000;
+  const h = createChatHealth(5, null, () => t);
+  h.record(false, 'model-error', false);
+  t = 1000000; // the clock stepped back between runs
+  h.record(true, null, false);
+  const s = h.snapshot();
+  assert.strictEqual(s.window_from_ts, 1000000, 'the earliest time, whatever its position');
+  assert.strictEqual(s.window_to_ts, 5000000);
+  assert.ok(s.window_to_ts >= s.window_from_ts, 'the span is never inverted');
+  assert.ok(s.last_failure_ts >= s.window_from_ts && s.last_failure_ts <= s.window_to_ts,
+    'the named failure lies inside the published span');
+});
+
+test('createChatHealth: a hostile persist file cannot fabricate failures or times', () => {
+  // A junk element coerced into a run becomes an invented failure with an unknown
+  // time, the single most conservative shape the consumer can see, so it would
+  // hold the sensor red until 50 real chats pushed it out. Dropping is the only
+  // safe reading. Likewise a ts must be a positive whole number of millis or be
+  // unknown; the add-on owns that promise rather than delegating it to consumers.
+  const load = (v) => createChatHealth(10, { load: () => v, save() {} }).snapshot();
+  for (const junk of [[null, 'x', 7, undefined], 'not-an-array', { ok: true }, null]) {
+    const s = load(junk);
+    assert.strictEqual(s.recent, 0, `junk history is not history: ${JSON.stringify(junk)}`);
+    assert.strictEqual(s.degraded, 0, 'and above all invents no failure');
+  }
+  const dated = (ts) => load([{ ok: true, ts }]).window_from_ts;
+  assert.strictEqual(dated('1000'), null, 'a string is not a time');
+  assert.strictEqual(dated(NaN), null);
+  assert.strictEqual(dated(Infinity), null);
+  assert.strictEqual(dated(-5000), null, 'nothing happened before 1970');
+  assert.strictEqual(dated(0), null, 'the contract says 0 is never a value');
+  assert.strictEqual(dated(1000.5), 1000, 'epoch MILLIS, not fractions of one');
+  assert.strictEqual(dated(1000), 1000, 'and a real one still passes');
+});
+
 test('createChatHealth: rolling recent/degraded/recovered/last_reason, capped, token-only', () => {
   const h = createChatHealth(3);
   assert.deepEqual(h.snapshot(), {
-    recent: 0, degraded: 0, recovered: 0, last_reason: null,
+    recent: 0, degraded: 0, recovered: 0, consecutive_ok: 0, consecutive_failed: 0,
+    last_reason: null,
+    // the time dimension (#60) — null on an empty window, never 0 or "now".
+    last_failure_ts: null, window_from_ts: null, window_to_ts: null,
   });
   h.record(true, null, false);
   h.record(false, 'model-error', false);

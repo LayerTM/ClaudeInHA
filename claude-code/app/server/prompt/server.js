@@ -108,29 +108,84 @@ const delay = (ms) => new Promise((r) => { setTimeout(r, ms); });
 // In-memory ring (last `cap`); a failure carries only a reason TOKEN from the
 // runner's reason enum — NEVER prompt content. `recovered` counts reads that a
 // retry rescued (a transient blip the user never saw).
-function createChatHealth(cap = 50, persist = null) {
+function createChatHealth(cap = 50, persist = null, now = Date.now) {
   // Optionally seed from a durable store so the rolling window survives an
   // add-on restart. A malformed/absent store reads as an empty history.
+  //
+  // `ts` is preserved rather than rebuilt: the window is trimmed by COUNT, so on
+  // an install where Assist is used a few times a day the last 50 runs span
+  // weeks, and a single transient failure would otherwise sit in the published
+  // summary indefinitely with nothing to say how old it is. An entry written by
+  // an older build has no `ts`; that reads as null — unknown, and therefore old.
+  //
+  // A persisted entry is trusted only as far as it can be read. Anything that is
+  // not an object is not a run and is dropped, never coerced: coercion turns a
+  // junk element into a FABRICATED failure with an unknown time, which is exactly
+  // the shape the consumer treats most conservatively — it would hold the sensor
+  // red until 50 real chats pushed it out. And a `ts` is a positive whole count
+  // of milliseconds or it is unknown, so the published field means what its name
+  // says rather than relying on every consumer to sanitise it.
+  const savedTs = (r) => (Number.isFinite(r.ts) && r.ts > 0 ? Math.floor(r.ts) : null);
   const saved = persist && persist.load ? persist.load() : null;
-  const runs = (Array.isArray(saved) ? saved : []).slice(-cap).map((r) => ({
-    ok: Boolean(r && r.ok),
-    reason: (r && r.ok) ? null : ((r && r.reason) || 'unknown'),
-    recovered: Boolean(r && r.recovered),
+  const seed = (Array.isArray(saved) ? saved : []).filter((r) => r !== null && typeof r === 'object');
+  const runs = (cap > 0 ? seed.slice(-cap) : []).map((r) => ({
+    ts: savedTs(r),
+    ok: Boolean(r.ok),
+    reason: r.ok ? null : (r.reason || 'unknown'),
+    recovered: Boolean(r.recovered),
   }));
   const flush = () => { if (persist && persist.save) persist.save(runs); };
+  // Trailing runs that share `ok`. Counted from the newest end, so it answers
+  // "what has happened SINCE" — the one thing the counts cannot express, because
+  // they are order-blind: 1 failure of 3 is the same rate whether the failure was
+  // the oldest run or the newest, and those are opposite situations.
+  const trailing = (want) => {
+    let n = 0;
+    for (let i = runs.length - 1; i >= 0 && runs[i].ok === want; i -= 1) n += 1;
+    return n;
+  };
   return {
     record(ok, reason, recovered) {
-      runs.push({ ok: Boolean(ok), reason: ok ? null : (reason || 'unknown'), recovered: Boolean(recovered) });
-      if (runs.length > cap) runs.shift();
+      runs.push({
+        ts: now(),
+        ok: Boolean(ok),
+        reason: ok ? null : (reason || 'unknown'),
+        recovered: Boolean(recovered),
+      });
+      while (runs.length > Math.max(cap, 0)) runs.shift();
       flush();
     },
+    // Counts say HOW OFTEN, the trailing runs say WHAT SINCE, and the timestamps
+    // say HOW LONG AGO. This publishes all three and grades none of them: what
+    // counts as healthy is the consumer's call, and it cannot make that call
+    // without them. Every `*_ts` is epoch millis, or null when unknown — an empty
+    // window, or entries written before `ts` existed.
     snapshot() {
       const degraded = runs.filter((r) => !r.ok);
+      const stamps = runs.filter((r) => r.ts != null).map((r) => r.ts);
+      const lastFailure = degraded.length ? degraded[degraded.length - 1] : null;
       return {
         recent: runs.length,
         degraded: degraded.length,
         recovered: runs.filter((r) => r.recovered).length,
-        last_reason: degraded.length ? degraded[degraded.length - 1].reason : null,
+        // Successes since the last failure, and failures since the last success.
+        // The first proves a recovery by evidence rather than by elapsed time;
+        // the second makes a fresh outage visible immediately instead of waiting
+        // for it to dilute the window enough to move the rate.
+        consecutive_ok: trailing(true),
+        consecutive_failed: trailing(false),
+        last_reason: lastFailure ? lastFailure.reason : null,
+        // When the most recent failure happened — the one `last_reason` names.
+        // Read from the same object, so the two can never name different runs.
+        last_failure_ts: lastFailure ? lastFailure.ts : null,
+        // The span the window actually covers, as min/max over the entries that
+        // HAVE a time. Deliberately not the first and last positions: `Date.now()`
+        // is a wall clock, so an NTP step backwards or a corrected RTC puts
+        // neighbouring entries out of order, and a positional read would then
+        // publish a span that ends before it starts. `window_to_ts` is the time of
+        // the newest ENTRY, never the time this snapshot was taken.
+        window_from_ts: stamps.length ? Math.min(...stamps) : null,
+        window_to_ts: stamps.length ? Math.max(...stamps) : null,
       };
     },
   };

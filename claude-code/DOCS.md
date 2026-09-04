@@ -227,6 +227,38 @@ deliberately much more restricted than the interactive console:
   Assistant language, and voice replies are kept to one short, spoken-friendly
   sentence.
 
+### Chat reliability (`chat_health`)
+
+`/api/status` publishes a rolling window over the last 50 companion-chat runs,
+which the integration turns into a *chat health* sensor. The window is durable —
+it survives an add-on restart, so an update does not reset it to a flattering
+blank — and it is trimmed by **count**, never by age.
+
+That last point is deliberate, and it is why the fields below exist. On an install
+where Assist is used a few times a day, "the last 50 runs" spans weeks. So the
+add-on reports **what happened, in what order, and when**, and leaves the question
+of *what counts as healthy* to the consumer, which is where the threshold can be
+changed without an add-on release.
+
+| field | meaning |
+|---|---|
+| `recent` | runs in the window (its full size) |
+| `degraded` | how many of them failed |
+| `recovered` | how many succeeded only after a retry (a subset of the successes, never of `degraded`) |
+| `consecutive_ok` | successes since the last failure — proves a recovery by evidence instead of by a timer |
+| `consecutive_failed` | failures since the last success — makes a fresh outage visible before it has diluted the window enough to move the rate |
+| `last_reason` | why the most recent failure failed: a short token such as `model-error` or `timeout`, never prompt text or model output |
+| `last_failure_ts` | when that same failure happened |
+| `window_from_ts` / `window_to_ts` | the span the window actually covers |
+
+Every `*_ts` is **epoch milliseconds**, and **`null` means unknown** — never "now"
+and never `0`. A window seeded from a file written before add-on 1.49.0 has no
+times at all; those runs still count, they simply cannot say when they happened.
+A field that is **absent** rather than null means the add-on predates it.
+
+`recent = degraded + successes`, so `recent - degraded` is the number of
+successful runs, and a failure rate is `degraded / recent`.
+
 ### Manage automations by chatting
 
 With the companion integration you can **create, edit, and delete automations** by
