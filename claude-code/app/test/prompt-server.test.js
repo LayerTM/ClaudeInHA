@@ -310,34 +310,63 @@ test('fileStore: a store that cannot write says so once, not on every chat', asy
   // read-only /data leaves an add-on that looks healthy until a restart rolls the
   // window and the day's spend back. Reported on the healthy->failing edge only,
   // so a persistent failure does not flood the log. (#62)
+  //
+  // The failure is injected by pointing the store into a directory that does not
+  // exist, NOT by chmod: a permission test is a no-op when the suite happens to
+  // run as root, which is exactly how a check quietly stops checking. ENOENT is
+  // ENOENT for every user on every platform, and creating the directory later is
+  // a clean way back to healthy.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-store-fail-'));
+  const sub = path.join(dir, 'not-yet');
   const said = [];
   const realError = console.error;
   console.error = (...a) => said.push(a.join(' '));
   try {
-    const store = fileStore(path.join(dir, 'state.json'));
+    const healthy = fileStore(path.join(dir, 'ok.json'));
     // A store that is simply working says NOTHING. Without this, an edit that
     // reports every successful write passes every other assertion here while
     // putting one line in the add-on log per chat.
-    await store.save([{ n: 0 }]);
-    await store.save([{ n: 0 }]);
+    await healthy.save([{ n: 0 }]);
+    await healthy.save([{ n: 0 }]);
     assert.strictEqual(said.length, 0, 'a healthy store is silent');
 
-    fs.chmodSync(dir, 0o500); // no new files may be created here
+    const store = fileStore(path.join(sub, 'state.json'));
     await store.save([{ n: 1 }]);
     await store.save([{ n: 2 }]);
     await store.save([{ n: 3 }]);
     assert.strictEqual(said.length, 1, 'three failed writes, one report');
     assert.ok(said[0].includes('FAILED'), 'and it says the write failed');
 
-    fs.chmodSync(dir, 0o700); // the disk comes back
+    fs.mkdirSync(sub); // the destination becomes writable
     await store.save([{ n: 4 }]);
     assert.strictEqual(said.length, 2, 'the recovery is reported too');
     assert.ok(said[1].includes('writable again'));
-    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8')), [{ n: 4 }]);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(sub, 'state.json'), 'utf8')), [{ n: 4 }]);
+    assert.deepEqual(fs.readdirSync(sub), ['state.json'], 'no temp file survives a failed run');
   } finally {
     console.error = realError;
-    fs.chmodSync(dir, 0o700);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+test('fileStore: a rename that fails leaves no temp file lying in /data', async () => {
+  // The other failure shape: the WRITE succeeds and the RENAME does not, so the
+  // temp file exists and has nowhere to go. Without cleanup those accumulate in
+  // /data for as long as the condition lasts — one per chat. The previous test
+  // cannot see this, because there the write itself fails and no temp is ever
+  // created. (#62)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-store-rename-'));
+  const dest = path.join(dir, 'state.json');
+  fs.mkdirSync(dest);                                   // the destination is a
+  fs.writeFileSync(path.join(dest, 'occupied'), 'x');   // NON-EMPTY directory
+  const said = [];
+  const realError = console.error;
+  console.error = (...a) => said.push(a.join(' '));
+  try {
+    await fileStore(dest).save([{ n: 1 }]);
+    assert.strictEqual(said.length, 1, 'the failure is reported');
+    assert.deepEqual(fs.readdirSync(dir), ['state.json'], 'and the temp file is gone');
+  } finally {
+    console.error = realError;
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
