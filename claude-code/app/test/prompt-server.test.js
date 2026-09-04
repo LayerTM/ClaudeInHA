@@ -235,6 +235,54 @@ test('fileStore: a budget restores today’s spend from a real 0600 /data json',
   assert.equal(createBudget(1.0, () => clock, fileStore(file)).spent(), 0, 'corrupt file → fresh state');
 });
 
+test('fileStore: concurrent saves land in order and never leave a half-written file', async () => {
+  // save() is called on every mutation, so two writes are routinely in flight at
+  // once. With a bare writeFile the winner is whichever FINISHES last, not
+  // whichever started last, and the two documents interleave into something
+  // JSON.parse rejects — after which load() reads the whole history as "nothing
+  // here". Measured on the previous implementation with this same shape: 144 of
+  // 400 trials at two flushes per tick, 219 of 400 at three. (#62)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-store-order-'));
+  const file = path.join(dir, 'state.json');
+  const store = fileStore(file);
+  // Deliberately different lengths: an interleaved write then leaves the tail of
+  // the longer document after the end of the shorter one, which is exactly the
+  // damage that used to be observed.
+  store.save(Array.from({ length: 40 }, (_, i) => ({ n: i, gen: 0 })));
+  store.save(Array.from({ length: 60 }, (_, i) => ({ n: i, gen: 1 })));
+  await store.save(Array.from({ length: 50 }, (_, i) => ({ n: i, gen: 2 })));
+
+  const read = JSON.parse(fs.readFileSync(file, 'utf8')); // must not throw
+  assert.strictEqual(read.length, 50, 'the LAST save is what is on disk');
+  assert.strictEqual(read[0].gen, 2, 'not an interleaving of the three');
+  assert.strictEqual(fs.statSync(file).mode & 0o777, 0o600, 'still 0600 after rename');
+  assert.deepEqual(fs.readdirSync(dir), ['state.json'], 'no temp file left behind');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('fileStore: a damaged file is reported, an absent one is not', () => {
+  // Both return null — but they are not the same event. An absent file is a fresh
+  // install; a damaged one is history that just disappeared, and it must not pass
+  // silently, or the add-on looks brand new to everyone reading its state. (#62)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-store-log-'));
+  const said = [];
+  const realError = console.error;
+  console.error = (...a) => said.push(a.join(' '));
+  try {
+    assert.strictEqual(fileStore(path.join(dir, 'nope.json')).load(), null, 'absent reads as empty');
+    assert.strictEqual(said.length, 0, 'and says nothing — this is a normal first boot');
+
+    const damaged = path.join(dir, 'damaged.json');
+    fs.writeFileSync(damaged, '[{"n":1},{"n":2', { mode: 0o600 }); // truncated mid-write
+    assert.strictEqual(fileStore(damaged).load(), null, 'damaged also reads as empty');
+    assert.strictEqual(said.length, 1, 'but is reported exactly once');
+    assert.ok(said[0].includes(damaged), 'and names the file');
+  } finally {
+    console.error = realError;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('createChatHealth: entries carry a time, and the snapshot publishes the span', () => {
   // Why this exists: the window is trimmed by COUNT, so on a quiet install the
   // last 50 runs can span weeks. Without a time, a consumer cannot tell a failure

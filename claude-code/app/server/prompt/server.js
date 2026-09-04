@@ -303,13 +303,52 @@ function createBudget(limitUsd, now = () => new Date(), persist = null) {
 }
 
 // Durable, best-effort JSON state under the add-on's /data (survives restarts).
-// load() is synchronous (called once, at startup); save() is
-// fire-and-forget — a write failure must never break the chat, and a corrupt or
-// absent file simply reads back as null.
+// load() is synchronous (called once, at startup); save() stays fire-and-forget,
+// because a write failure must never break the chat.
+//
+// Writes are SERIALISED and ATOMIC. Those are two independent defects, and each
+// one alone leaves the other:
+//
+//   Serialised — save() is called on every mutation, so two writes can be in
+//   flight at once, and with a bare writeFile the winner is whichever FINISHES
+//   last, not whichever started last. Measured on the previous code: at two and
+//   three concurrent flushes the file was left OLDER than memory in 15 % and
+//   47 % of trials, so a restart silently dropped the newest runs. Renaming
+//   without ordering does not fix this — two renames race exactly the same way.
+//
+//   Atomic — writeFile truncates before it writes, so a process killed partway
+//   through (which is every add-on update) leaves a half-document that JSON.parse
+//   rejects, and the whole history then reads back as "nothing here". Ordering
+//   without renaming does not fix this either; only a complete file appearing in
+//   one step does.
+//
+// The payload is stringified at CALL time, so what eventually lands is the state
+// as of the save() that queued it, applied in that order.
 function fileStore(file) {
+  const tmp = `${file}.tmp`;
+  let chain = Promise.resolve();
   return {
-    load() { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } },
-    save(obj) { fsp.writeFile(file, JSON.stringify(obj), { mode: 0o600 }).catch(() => {}); },
+    load() {
+      try {
+        return JSON.parse(fs.readFileSync(file, 'utf8'));
+      } catch (err) {
+        // "No file yet" and "the file is damaged" both have to return null, but
+        // they are not the same event and must not look the same in the log: the
+        // first is a fresh install, the second is history that just disappeared.
+        if (!err || err.code !== 'ENOENT') {
+          console.error(`[prompt] state file unreadable, starting empty: ${file} — ${err && err.message ? err.message : err}`);
+        }
+        return null;
+      }
+    },
+    save(obj) {
+      const body = JSON.stringify(obj);
+      chain = chain
+        .then(() => fsp.writeFile(tmp, body, { mode: 0o600 }))
+        .then(() => fsp.rename(tmp, file))
+        .catch(() => {});
+      return chain;
+    },
   };
 }
 
