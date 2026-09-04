@@ -23,6 +23,22 @@ process.stdin.on('end', () => run(stdin));
 
 function emit(obj) { process.stdout.write(`${JSON.stringify(obj)}\n`); }
 
+// The tool allowlist the server passed. Under `--permission-mode dontAsk` the real
+// CLI DENIES every tool call outside this list, with no prompt — the stub models
+// that below, which is what makes the tool-name tests meaningful.
+const allowedIdx = args.indexOf('--allowed-tools');
+const ALLOWED = new Set((allowedIdx !== -1 ? args[allowedIdx + 1] : '').split(',').filter(Boolean));
+
+// Home Assistant publishes the live-context tool under a name that has changed
+// across releases (2026.9 renamed it to `homeassistant__GetLiveContext`, and
+// MergedAPI namespaces it further). RENAMED makes the stub publish the newer
+// spelling, so a test can drive the exact upgrade that broke read mode.
+function liveContextTool(prompt) {
+  return prompt.includes('RENAMED')
+    ? 'mcp__ha__homeassistant__GetLiveContext'
+    : 'mcp__ha__GetLiveContext';
+}
+
 function run(prompt) {
   const hasMcp = args.includes('--mcp-config');
   const schemaIdx = args.indexOf('--json-schema');
@@ -31,7 +47,7 @@ function run(prompt) {
   emit({
     type: 'system',
     subtype: 'init',
-    tools: ['mcp__ha__GetLiveContext'],
+    tools: [liveContextTool(prompt)],
     // MCPLATE simulates the `ha` server still connecting at init (it serves the
     // tool fine a moment later) — exercises the mcp=FAILED false-positive fix.
     mcp_servers: hasMcp
@@ -121,7 +137,26 @@ function run(prompt) {
 
 function finish(prompt, wantsProposal) {
   const haId = 'toolu_ha_glc';
-  emit({ type: 'assistant', message: { content: [{ type: 'tool_use', id: haId, name: 'mcp__ha__GetLiveContext', input: {} }] } });
+  const liveCtx = liveContextTool(prompt);
+  emit({ type: 'assistant', message: { content: [{ type: 'tool_use', id: haId, name: liveCtx, input: {} }] } });
+  // Not on the allowlist → `dontAsk` denies it silently and the model apologises
+  // instead of answering. The run still ends as a SUCCESS carrying that apology —
+  // the exact shape that made the real bug so hard to see (issue #58).
+  // Read mode only: write runs allowlist the confirmed intent tools instead, and
+  // this stub's live-context call is not part of what they exercise.
+  if (wantsProposal && !ALLOWED.has(liveCtx)) {
+    emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: haId, is_error: true, content: 'permission denied' }] } });
+    const denied = {
+      text: 'access to the Home Assistant state tool was denied — please check permissions',
+      proposal: null,
+      automation: null,
+    };
+    emit({
+      type: 'result', subtype: 'success', is_error: false,
+      result: JSON.stringify(denied), structured_output: denied, num_turns: 3, total_cost_usd: 0.001,
+    });
+    process.exit(0);
+  }
   // The tool RESULT — is_error only when MCPERR is present (MCP unreachable case),
   // so mcpConnected can be proven up (default) or down (MCPERR).
   emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: haId, is_error: prompt.includes('MCPERR'), content: 'ha state' }] } });

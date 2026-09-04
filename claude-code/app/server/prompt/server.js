@@ -53,7 +53,10 @@ const CRITICAL_NEVER_AUTO = new Set([
 // is retried once before we give up, and even then it DEGRADES to a friendly 200
 // message instead of a bare 500 so the conversation never simply dies. Writes are
 // never retried or degraded: a state-changing action must fail honestly.
-const RETRYABLE_REASONS = new Set(['no-result', 'model-error']);
+// `tool-name-mismatch` is raised at init — BEFORE any tool has run — and the
+// outcome carries the tool names HA really publishes, so the retry runs with a
+// corrected allowlist rather than repeating the same doomed call.
+const RETRYABLE_REASONS = new Set(['no-result', 'model-error', 'tool-name-mismatch']);
 // Total attempts per read (1 = no retry). Bounded to keep worst-case latency sane.
 const MAX_ATTEMPTS = Math.min(3, Math.max(1, Number(process.env.CLAUDE_PROMPT_MAX_ATTEMPTS) || 2));
 // Backoff between attempts; small, since each attempt already carries its own
@@ -332,6 +335,11 @@ function createPromptApp({
   // (e.g. the Model Context Protocol Server integration is missing) apart from
   // "connected". Distinct from ha_mcp, which only says a config file exists.
   let lastMcpConnected = null;
+  // The `ha` MCP tool names the last run actually saw. Home Assistant renames
+  // them across releases and namespaces them under `MergedAPI`, so the allowlist
+  // is built from THIS rather than from a pinned string (see runner.js). Empty
+  // until the first run reports in — the runner falls back to the bare names then.
+  let haToolCatalog = null;
   // Rolling chat-health window; durable across restarts when a stateDir is
   // provided so the health sensor's history isn't wiped on every update.
   const chatHealth = createChatHealth(
@@ -676,6 +684,10 @@ function createPromptApp({
 
       let outcome;
       let attempts = 0;
+      // Why a retry was needed, for the success audit below. A run that only
+      // succeeded on the second attempt looked identical to a clean one before —
+      // which is how a whole class of silent failures stayed invisible (#58).
+      let recoveredFrom = null;
       let spent = 0; // real API cost of EVERY attempt (billed even on a failed/degraded read)
       // A voice turn uses the (optional) faster voice model; everything else uses
       // the normal chat model. Resolved ONCE here so the run and the audit can't
@@ -715,14 +727,28 @@ function createPromptApp({
             // Existing automation config → the model MODIFIES it (read only): the
             // runner embeds it and returns the full updated config in `automation`.
             editAutomation: body.edit_automation,
+            // Live `ha` tool names, so a run allowlists what HA actually publishes.
+            haTools: haToolCatalog,
             // First attempt gets the full ceiling; a retry gets only what's LEFT of
             // the one-request budget, so TOTAL wall-clock across attempts never
             // exceeds TIMEOUT_MS (the client can pair its timeout to that one bound).
             timeoutMs: attempts === 1 ? undefined : Math.max(0, TIMEOUT_MS - (Date.now() - started)),
           });
           spent += Number(outcome.costUsd) || 0;
+          // Learn the published tool names from EVERY attempt (success or not) —
+          // this is what makes the next run track an HA rename on its own.
+          if (Array.isArray(outcome.haTools) && outcome.haTools.length > 0) {
+            haToolCatalog = outcome.haTools;
+          }
+          // A write normally never retries: a state change that may have already
+          // run must not be repeated. A tool-name mismatch is the one exception
+          // that is provably safe — it is raised at init and the guard below holds
+          // it to a run where NO tool ran at all, so nothing can be repeated.
+          const preExecutionMismatch = outcome.status === 'error'
+            && outcome.reason === 'tool-name-mismatch'
+            && (outcome.toolsUsed || []).length === 0;
           const retryable = outcome.status === 'error'
-            && mode === 'read'
+            && (mode === 'read' || preExecutionMismatch)
             && !imagePath
             && !(streaming && emittedLen > 0)
             && RETRYABLE_REASONS.has(outcome.reason)
@@ -730,6 +756,7 @@ function createPromptApp({
             && !res.writableEnded // client still connected
             && (TIMEOUT_MS - (Date.now() - started)) > MIN_RETRY_BUDGET_MS; // budget left to be worth it
           if (!retryable) break;
+          recoveredFrom = outcome.reason;
           // eslint-disable-next-line no-await-in-loop
           await delay(RETRY_BACKOFF_MS);
         }
@@ -837,6 +864,7 @@ function createPromptApp({
         `prompt[${mode}] ${base} status=200 dur=${seconds}s turns=${outcome.numTurns ?? '?'}`
         + ` tools=${outcome.toolsUsed.map((t) => sanitizeId(t, 64)).join('|') || '-'}`
         + ` out=${Buffer.byteLength(text, 'utf8')}B${outcome.truncated ? ' truncated' : ''}`
+        + `${attempts > 1 ? ` attempts=${attempts} recovered=${recoveredFrom}` : ''}`
         + `${outcome.mcpFailed ? ' mcp=FAILED' : ''}${proposal ? ' proposal=yes' : ''}`
         + `${automation ? ' automation=draft' : ''}${cost}`,
       );
