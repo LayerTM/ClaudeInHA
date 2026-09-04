@@ -9,15 +9,29 @@
   consumer tell a failure from 30 seconds ago from one from three days ago. Each
   entry is now stamped with the time it happened, and the snapshot publishes the
   span: `last_failure_ts`, `window_from_ts` and `window_to_ts` (epoch
-  milliseconds, `null` when unknown), plus `consecutive_ok` — the number of
-  successful runs since the last failure, which proves a recovery by evidence
-  rather than by elapsed time (on a small window the failure *rate* stays high
-  long after two clean runs have already followed the blip). The existing
-  `recent` / `degraded` /
+  milliseconds, `null` when unknown), plus two counts the rate cannot express
+  because it is order-blind: `consecutive_ok` (successes since the last failure —
+  proves a recovery by evidence rather than by a timer, since on a small window
+  the failure *rate* stays high long after two clean runs have already followed
+  the blip) and `consecutive_failed` (failures since the last success — makes a
+  fresh outage visible immediately, instead of waiting for it to dilute a 50-run
+  window enough to move the rate). The whole contract is now documented in the
+  add-on's own documentation, under *Chat reliability*, rather than only in the
+  consumer that reads it. The existing `recent` / `degraded` /
   `recovered` / `last_reason` fields are unchanged, so nothing that reads them
   needs to change. History written by an earlier version still loads; those
   entries simply report an unknown time rather than an invented one.
   ([#60](https://github.com/LayerTM/ClaudeInHA/issues/60))
+
+### Fixed
+- **The reported window can no longer contradict itself.** Its two ends were read
+  by position, which is only correct while the clock moves forwards; an NTP step
+  backwards or a corrected hardware clock could publish a span that ended before
+  it started, with the failure it named lying outside it. And a history file that
+  had been damaged or hand-edited could be read as *invented* failures with
+  unknown times — the one shape a consumer treats most conservatively, which
+  would have held a health sensor red until 50 real chats pushed it out.
+  Unreadable entries are now dropped rather than coerced.
 
 ## [1.48.1] — 2026-09-04
 
