@@ -9,13 +9,24 @@ const BACKPRESSURE_HIGH = 1024 * 1024;
 const BACKPRESSURE_CHECK_MS = 50;
 const HEARTBEAT_MS = 30000;
 
-// Claude renders its status line once and caches it, re-running the command only
-// slowly. Just after a session opens it may still be launching, or have drawn the
-// status line before the terminal reached the browser's width — so nudge a redraw
-// at these offsets (ms from connect) to force a re-render at the real width,
-// whenever it finishes launching.
-const STATUS_REDRAW_DELAYS_MS = [3000, 9000, 20000];
-const RESIZE_REDRAW_DEBOUNCE_MS = 500;
+// NOTHING HERE MAY SEND KEYS TO THE SHARED CLAUDE WINDOW. There used to be a
+// "status-line nudge" that sent Ctrl+L — on connect (at 3s, 9s and 20s) and after
+// every resize — to make Claude re-render its cached status line at the real
+// width. Its comment called that harmless, claiming Ctrl+L only repaints. It does
+// not: in Claude's TUI Ctrl+L is CLEAR, and the window is shared, so every nudge
+// wiped the visible transcript for EVERY viewer. Reproduced three ways on a live
+// install: pressing Ctrl+L by hand reproduces the reported blank screen exactly;
+// opening a second browser tab blanks the first one's screen; and the code sends
+// it from two places. It needed no second browser — any reconnect (a refresh, a
+// sleeping tab, a dropped network) did it.
+//
+// It is deleted rather than replaced because the signal a terminal application
+// gets for "you changed size, repaint" is SIGWINCH, which `term.resize()` already
+// delivers. Measured against Claude 2.1.260 in a bare pty, no key sent: resizing
+// 120 -> 64 columns made it repaint with a widest painted line of exactly 64, and
+// 64 -> 120 exactly 120. The nudge was never needed. A keystroke is the
+// application's alphabet, not the terminal's — a redraw must never be spelled in
+// it.
 
 const clients = new Set();
 
@@ -79,18 +90,6 @@ function attach(ws) {
   // the client rendered full-width, clipping the terminal to 80 columns.
   let pendingResize = null;
   const pendingInput = [];
-
-  // Debounced status-line redraw: a resize changes the terminal width, but Claude
-  // keeps showing its cached (old-width) status line until it re-runs the command.
-  // Nudge a redraw once the resize settles.
-  let statusRedrawTimer = null;
-  const nudgeStatusRedraw = () => {
-    if (statusRedrawTimer) clearTimeout(statusRedrawTimer);
-    statusRedrawTimer = setTimeout(() => {
-      statusRedrawTimer = null;
-      if (alive) tmux.redrawClaude().catch(() => {});
-    }, RESIZE_REDRAW_DEBOUNCE_MS);
-  };
 
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
@@ -157,11 +156,6 @@ function attach(ws) {
     });
 
     await broadcastTabs();
-
-    // Force Claude to re-render the status line at the real width once it is up.
-    for (const delay of STATUS_REDRAW_DELAYS_MS) {
-      setTimeout(() => { if (alive) tmux.redrawClaude().catch(() => {}); }, delay).unref();
-    }
   };
 
   ws.on('message', (raw, isBinary) => {
@@ -193,7 +187,9 @@ function attach(ws) {
             // Remember the latest size even before the pty exists, so start()
             // can spawn/resize to it instead of dropping it.
             pendingResize = { cols: msg.cols, rows: msg.rows };
-            if (term) { term.resize(msg.cols, msg.rows); nudgeStatusRedraw(); }
+            // The resize alone is the redraw: it raises SIGWINCH in the pty,
+            // which is what makes the application repaint at the new width.
+            if (term) term.resize(msg.cols, msg.rows);
           }
           break;
         case 'select':
@@ -218,7 +214,6 @@ function attach(ws) {
     alive = false;
     clients.delete(ws);
     if (drainTimer) clearInterval(drainTimer);
-    if (statusRedrawTimer) clearTimeout(statusRedrawTimer);
     if (term) {
       try { term.kill(); } catch { /* already dead */ }
     }

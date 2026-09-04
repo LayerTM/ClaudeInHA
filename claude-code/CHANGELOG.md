@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.49.2] — 2026-09-04
+
+### Fixed
+- **The console no longer wipes itself.** Everything on screen could vanish at
+  once — a blank window with the prompt still there and the session still
+  running — most noticeably when the console was open in more than one browser,
+  but really on any reconnect: a refresh, a tab waking from sleep, a dropped
+  network. The add-on was doing it to you. To make Claude re-draw its status bar
+  at the browser's width, the terminal layer sent it Ctrl+L, three times on every
+  connect and again after every resize. In Claude's interface Ctrl+L means
+  **clear the screen**, and the session is shared between all your open windows,
+  so each one of those wiped what everyone could see. The conversation itself was
+  never lost — only the view of it.
+
+  Nothing is sent to Claude any more. Resizing the window already tells the
+  program its new size, which is what makes it re-draw; the extra nudge was never
+  needed and is gone, along with the delayed ones on connect. Verified against
+  Claude 2.1.260: resized from 120 columns to 64 and back, it re-draws itself at
+  exactly the new width with nothing sent to it.
+
 ## [1.49.1] — 2026-09-04
 
 ### Fixed
