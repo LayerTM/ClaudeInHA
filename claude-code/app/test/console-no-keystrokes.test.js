@@ -11,12 +11,10 @@
 // wiped the visible transcript for every viewer at once. Users saw the console go
 // blank on its own; it needed no second browser, only a reconnect.
 //
-// Two measurements settle why it is deleted rather than replaced. A bare pty
-// resize (SIGWINCH) already makes the TUI repaint at the new width — 120 to 64
-// columns repaints at exactly 64, and back at exactly 120, with nothing sent to
-// it. And the nudge never did the job it existed for either: instrumenting the
-// statusLine command shows it is NOT re-run, by the resize or by the key. The
-// machinery was destructive and useless at once.
+// It is deleted rather than replaced because a bare pty resize (SIGWINCH) already
+// makes the TUI repaint at the new width — measured against Claude 2.1.260 with
+// nothing sent to it: 120 columns to 64 repaints at exactly 64, and back at
+// exactly 120.
 //
 // The rule this pins outlives that one key: a keystroke is the APPLICATION's
 // alphabet, not the terminal's. What the terminal wants to say — you changed
@@ -31,11 +29,11 @@ const Module = require('node:module');
 const SERVER = path.join(__dirname, '..', 'server');
 
 // --- Behavioural guard -------------------------------------------------------
-// The real check: drive attach() with a stubbed pty and a recording tmux, and
-// assert nothing was written into the pty and no tmux verb outside the allowed
-// set was used. A source scan cannot see the likeliest way this returns —
-// `term.write('\x0c')`, with the pty right there in scope — and a whitelist
-// fails closed on the next mechanism nobody predicted, including a renamed one.
+// Drive attach() with a stubbed pty and a recording tmux; assert nothing reached
+// the pty and no tmux verb outside the allowed set was used. A source scan cannot
+// see the likeliest way this returns — a write straight into the pty, which is
+// right there in scope — especially once the byte is spelled with an expression
+// rather than a literal.
 
 const writes = [];
 const tmuxVerbs = new Set();
@@ -49,6 +47,11 @@ const ptyStub = {
   },
 };
 
+// Everything the terminal layer may ask of the shared session. Adding a verb here
+// is a deliberate act; forgetting to is a red test.
+const ALLOWED = new Set(['MAIN', 'workdir', 'ensureMain', 'listWindows',
+  'killSession', 'selectWindow', 'setDestroyUnattachedWithRetry']);
+
 const tmuxReal = {
   MAIN: 'main',
   workdir: () => '/tmp',
@@ -59,7 +62,18 @@ const tmuxReal = {
   setDestroyUnattachedWithRetry: async () => {},
 };
 const tmuxStub = new Proxy(tmuxReal, {
-  get(t, k) { if (typeof k === 'string') tmuxVerbs.add(k); return t[k]; },
+  get(t, k) {
+    // `then` must stay absent: a module that answers it is treated as a thenable
+    // and silently swallows any `await` of the module itself.
+    if (typeof k !== 'string' || k === 'then') return t[k];
+    tmuxVerbs.add(k);
+    // A verb outside ALLOWED answers a harmless no-op rather than `undefined`.
+    // Left undefined it throws a TypeError at the call, the test dies there, and
+    // the assertion that would have EXPLAINED the failure never runs — so the
+    // whitelist would be decoration, and the catch would be an accident of an
+    // incomplete stub.
+    return k in t ? t[k] : async () => {};
+  },
 });
 
 const inject = (id, exports) => {
@@ -81,21 +95,24 @@ class FakeWs {
   send() {} close() {} ping() {} terminate() {}
 }
 
-// Everything the terminal layer is allowed to ask of the shared session. Adding
-// a verb here is a deliberate act; forgetting to is a red test, not a silent one.
-const ALLOWED = new Set(['MAIN', 'workdir', 'ensureMain', 'listWindows',
-  'killSession', 'selectWindow', 'setDestroyUnattachedWithRetry']);
+const settle = async (n = 20) => {
+  for (let i = 0; i < n; i += 1) await new Promise((r) => setImmediate(r));
+};
 
-test('the terminal layer touches the shared window only through the allowed verbs', async () => {
+test('the terminal layer touches the shared window only through the allowed verbs', async (t) => {
+  // A VIRTUAL clock, not a wall-clock wait. The deleted nudges fired at 3s, 9s
+  // AND 20s, so a test that sleeps four real seconds is green against a violation
+  // planted one second later — measured, not supposed. Ticking a minute of virtual
+  // time costs nothing and leaves no window to hide in.
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
   const ws = new FakeWs();
   terminal.attach(ws);
-  await new Promise((r) => setTimeout(r, 60));
+  await settle();
   ws.emit('message', Buffer.from(JSON.stringify({ t: 'resize', cols: 64, rows: 24 })), false);
   ws.emit('message', Buffer.from(JSON.stringify({ t: 'resize', cols: 120, rows: 24 })), false);
-  // Long enough to outlive both deleted timers: the earliest connect-time nudge
-  // fired at 3s and the resize nudge was debounced by 500ms. A shorter wait would
-  // pass on the buggy code too.
-  await new Promise((r) => setTimeout(r, 4000));
+  await settle();
+  for (let i = 0; i < 60; i += 1) { t.mock.timers.tick(1000); await settle(3); }
+
   assert.deepEqual(writes, [],
     `bytes synthesised into the shared pty: ${JSON.stringify(writes)}`);
   assert.deepEqual([...tmuxVerbs].filter((k) => !ALLOWED.has(k)), [],
@@ -103,20 +120,28 @@ test('the terminal layer touches the shared window only through the allowed verb
   ws.emit('close');
 });
 
-// --- Source guard, second line ----------------------------------------------
+test('one mechanism was deleted, not the capability', () => {
+  // Cheap insurance that the cure did not take the patient: restarting the Claude
+  // window is still possible, it just no longer happens by typing at it.
+  const tmux = require(path.join(SERVER, 'tmux.js'));
+  assert.strictEqual(typeof tmux.respawnClaude, 'function');
+});
+
+// --- Source scan, second line ------------------------------------------------
 // Cheap, and it reaches code paths the behavioural test never drives. It does NOT
 // strip comments: a stripper is code that can eat code — two ordinary string
-// literals spelling a block-comment delimiter blinded the first version of this
-// file and hid a live violation. Instead the prose above simply avoids the
-// literals, which needs no parser and cannot be wrong.
+// literals spelling a block-comment delimiter blinded an earlier version of this
+// file and hid a live violation. The prose above simply avoids the literal
+// tokens, which needs no parser and cannot be wrong.
 //
-// Scoped to the two files that OWN the shared console session. Scanning all of
-// server/ was wrong in the other direction: the prompt subsystem runs a separate
-// per-request child with no shared window, and its JSON escape table (`f: '\f'`)
-// is a form feed that means nothing here. A guard whose alarms are mostly false
-// gets switched off.
+// Every file that requires ./tmux, plus the terminal layer itself. api.js holds
+// the most destructive verb in the repo (window respawn) and index.js reaches the
+// session too; scoping to terminal.js and tmux.js alone left both unwatched.
+// Widening to exactly these four costs no false positive — the prompt subsystem,
+// which has no shared window, stays out.
 
-const OWNS_SHARED_SESSION = ['terminal.js', 'tmux.js'].map((f) => path.join(SERVER, f));
+const OWNS_SHARED_SESSION = ['terminal.js', 'tmux.js', 'api.js', 'index.js']
+  .map((f) => path.join(SERVER, f));
 
 test('the files owning the shared session do not type at it', () => {
   const offenders = [];
