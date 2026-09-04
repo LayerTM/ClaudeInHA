@@ -9,7 +9,11 @@
   consumer tell a failure from 30 seconds ago from one from three days ago. Each
   entry is now stamped with the time it happened, and the snapshot publishes the
   span: `last_failure_ts`, `window_from_ts` and `window_to_ts` (epoch
-  milliseconds, `null` when unknown). The existing `recent` / `degraded` /
+  milliseconds, `null` when unknown), plus `consecutive_ok` — the number of
+  successful runs since the last failure, which proves a recovery by evidence
+  rather than by elapsed time (on a small window the failure *rate* stays high
+  long after two clean runs have already followed the blip). The existing
+  `recent` / `degraded` /
   `recovered` / `last_reason` fields are unchanged, so nothing that reads them
   needs to change. History written by an earlier version still loads; those
   entries simply report an unknown time rather than an invented one.

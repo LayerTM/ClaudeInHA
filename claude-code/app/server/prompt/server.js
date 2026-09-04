@@ -146,18 +146,29 @@ function createChatHealth(cap = 50, persist = null) {
       const degraded = runs.filter((r) => !r.ok);
       const timed = runs.filter((r) => r.ts != null);
       const lastFailure = degraded.length ? degraded[degraded.length - 1] : null;
-      const lastRun = runs.length ? runs[runs.length - 1] : null;
+      // Successes since the last failure. Equals `recent` when the window holds
+      // no failure at all. This is what proves a recovery by EVIDENCE rather
+      // than by elapsed time — a small window (1 failure of 3) reads as a high
+      // failure rate long after two clean runs have already followed it, and no
+      // combination of the counts alone can tell those two cases apart.
+      let consecutiveOk = 0;
+      for (let i = runs.length - 1; i >= 0 && runs[i].ok; i -= 1) consecutiveOk += 1;
       return {
         recent: runs.length,
         degraded: degraded.length,
         recovered: runs.filter((r) => r.recovered).length,
+        consecutive_ok: consecutiveOk,
         last_reason: lastFailure ? lastFailure.reason : null,
         // When the most recent failure happened — the one `last_reason` names.
         last_failure_ts: lastFailure ? lastFailure.ts : null,
-        // The span the window actually covers. `window_from_ts` is the oldest
-        // entry that HAS a time, so a pre-`ts` tail does not report as "now".
+        // The span the window actually covers — the oldest and newest entries
+        // that HAVE a time, so a pre-`ts` tail never reports as "now". Both ends
+        // read from the same set on purpose: taking one end from `runs` and the
+        // other from the timed subset makes the span disagree with itself the
+        // moment an undated entry sits at that end. `window_to_ts` is the time
+        // of the newest ENTRY, not the time this snapshot was taken.
         window_from_ts: timed.length ? timed[0].ts : null,
-        window_to_ts: lastRun ? lastRun.ts : null,
+        window_to_ts: timed.length ? timed[timed.length - 1].ts : null,
       };
     },
   };

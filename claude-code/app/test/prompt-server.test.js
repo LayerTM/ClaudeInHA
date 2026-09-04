@@ -296,10 +296,45 @@ test('createChatHealth: times survive a restart, and a pre-ts file loads as unkn
   assert.equal(ls.window_to_ts, 9000);
 });
 
+test('createChatHealth: consecutive_ok proves a recovery by evidence, not by elapsed time', () => {
+  // Why: on a small window the failure RATE stays high long after the system
+  // recovered — 1 failure of 3 is 33 % with two clean runs already behind it.
+  // The count of successes since the last failure separates those two cases,
+  // and nothing derivable from recent/degraded/recovered can. (#60)
+  const h = createChatHealth(10);
+  assert.equal(h.snapshot().consecutive_ok, 0, 'empty window: nothing proven yet');
+  h.record(true, null, false, 1000);
+  h.record(true, null, false, 2000);
+  assert.equal(h.snapshot().consecutive_ok, 2, 'no failure in the window → equals recent');
+  assert.equal(h.snapshot().consecutive_ok, h.snapshot().recent);
+  h.record(false, 'model-error', false, 3000);
+  assert.equal(h.snapshot().consecutive_ok, 0, 'the newest run failed → nothing since');
+  h.record(true, null, true, 4000);
+  h.record(true, null, false, 5000);
+  const s = h.snapshot();
+  assert.equal(s.consecutive_ok, 2, 'counts only the runs AFTER the last failure');
+  assert.equal(s.degraded, 1, 'the failure itself is still reported');
+  assert.equal(s.last_reason, 'model-error', 'and still named');
+});
+
+test('createChatHealth: the window span never ends before it starts', () => {
+  // Both ends read from the entries that HAVE a time. Taking one end from the
+  // raw ring and the other from the timed subset lets a half-migrated file
+  // (dated head, undated tail) publish a span with a start and no end. (#60)
+  const store = { s: [{ ts: 7000, ok: true, reason: null, recovered: false },
+                      { ok: true, reason: null, recovered: false }],
+    load() { return this.s; }, save() {} };
+  const s = createChatHealth(5, store).snapshot();
+  assert.equal(s.recent, 2, 'both entries count');
+  assert.equal(s.window_from_ts, 7000);
+  assert.equal(s.window_to_ts, 7000, 'the newest KNOWN time, not null from an undated tail');
+  assert.ok(s.window_to_ts >= s.window_from_ts, 'the span is never inverted');
+});
+
 test('createChatHealth: rolling recent/degraded/recovered/last_reason, capped, token-only', () => {
   const h = createChatHealth(3);
   assert.deepEqual(h.snapshot(), {
-    recent: 0, degraded: 0, recovered: 0, last_reason: null,
+    recent: 0, degraded: 0, recovered: 0, consecutive_ok: 0, last_reason: null,
     // the time dimension (#60) — null on an empty window, never 0 or "now".
     last_failure_ts: null, window_from_ts: null, window_to_ts: null,
   });
