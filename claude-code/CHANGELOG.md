@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.49.0] — 2026-09-04
+
+### Added
+- **Chat health now says *when*, not just *what*.** `/api/status` trims its
+  reliability window by count (the last 50 runs), so on an install where Assist is
+  used a few times a day that window spans weeks — and nothing in the data let a
+  consumer tell a failure from 30 seconds ago from one from three days ago. Each
+  entry is now stamped with the time it happened, and the snapshot publishes the
+  span: `last_failure_ts`, `window_from_ts` and `window_to_ts` (epoch
+  milliseconds, `null` when unknown). The existing `recent` / `degraded` /
+  `recovered` / `last_reason` fields are unchanged, so nothing that reads them
+  needs to change. History written by an earlier version still loads; those
+  entries simply report an unknown time rather than an invented one.
+  ([#60](https://github.com/LayerTM/ClaudeInHA/issues/60))
+
 ## [1.48.1] — 2026-09-04
 
 ### Fixed

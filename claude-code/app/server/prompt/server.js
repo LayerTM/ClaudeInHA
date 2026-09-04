@@ -111,26 +111,53 @@ const delay = (ms) => new Promise((r) => { setTimeout(r, ms); });
 function createChatHealth(cap = 50, persist = null) {
   // Optionally seed from a durable store so the rolling window survives an
   // add-on restart. A malformed/absent store reads as an empty history.
+  //
+  // `ts` is preserved rather than rebuilt: the window is trimmed by COUNT, so on
+  // an install where Assist is used a few times a day the last 50 runs span
+  // weeks, and a single transient failure would otherwise sit in the published
+  // summary indefinitely with nothing to say how old it is. An entry written by
+  // an older build has no `ts`; that reads as null — unknown, and therefore old.
+  const savedTs = (r) => (r && Number.isFinite(r.ts) ? r.ts : null);
   const saved = persist && persist.load ? persist.load() : null;
   const runs = (Array.isArray(saved) ? saved : []).slice(-cap).map((r) => ({
+    ts: savedTs(r),
     ok: Boolean(r && r.ok),
     reason: (r && r.ok) ? null : ((r && r.reason) || 'unknown'),
     recovered: Boolean(r && r.recovered),
   }));
   const flush = () => { if (persist && persist.save) persist.save(runs); };
   return {
-    record(ok, reason, recovered) {
-      runs.push({ ok: Boolean(ok), reason: ok ? null : (reason || 'unknown'), recovered: Boolean(recovered) });
+    record(ok, reason, recovered, now = Date.now()) {
+      runs.push({
+        ts: now,
+        ok: Boolean(ok),
+        reason: ok ? null : (reason || 'unknown'),
+        recovered: Boolean(recovered),
+      });
       if (runs.length > cap) runs.shift();
       flush();
     },
+    // Counts say HOW OFTEN; the timestamps say HOW LONG AGO. This publishes both
+    // and grades neither: what counts as healthy is the consumer's call, and it
+    // cannot make that call without the time dimension. Every `*_ts` is epoch
+    // millis, or null when unknown — an empty window, or entries written before
+    // `ts` existed.
     snapshot() {
       const degraded = runs.filter((r) => !r.ok);
+      const timed = runs.filter((r) => r.ts != null);
+      const lastFailure = degraded.length ? degraded[degraded.length - 1] : null;
+      const lastRun = runs.length ? runs[runs.length - 1] : null;
       return {
         recent: runs.length,
         degraded: degraded.length,
         recovered: runs.filter((r) => r.recovered).length,
-        last_reason: degraded.length ? degraded[degraded.length - 1].reason : null,
+        last_reason: lastFailure ? lastFailure.reason : null,
+        // When the most recent failure happened — the one `last_reason` names.
+        last_failure_ts: lastFailure ? lastFailure.ts : null,
+        // The span the window actually covers. `window_from_ts` is the oldest
+        // entry that HAS a time, so a pre-`ts` tail does not report as "now".
+        window_from_ts: timed.length ? timed[0].ts : null,
+        window_to_ts: lastRun ? lastRun.ts : null,
       };
     },
   };

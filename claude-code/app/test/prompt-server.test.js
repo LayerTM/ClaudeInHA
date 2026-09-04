@@ -235,10 +235,73 @@ test('fileStore: a budget restores today’s spend from a real 0600 /data json',
   assert.equal(createBudget(1.0, () => clock, fileStore(file)).spent(), 0, 'corrupt file → fresh state');
 });
 
+test('createChatHealth: entries carry a time, and the snapshot publishes the span', () => {
+  // Why this exists: the window is trimmed by COUNT, so on a quiet install the
+  // last 50 runs can span weeks. Without a time, a consumer cannot tell a failure
+  // 30 seconds old from one three days old, and a single stale blip reads as a
+  // live fault forever. (#60)
+  const h = createChatHealth(10);
+  h.record(true, null, false, 1000);
+  h.record(false, 'model-error', false, 2000);
+  h.record(true, null, true, 3000);
+  const s = h.snapshot();
+  assert.equal(s.window_from_ts, 1000, 'span starts at the oldest entry');
+  assert.equal(s.window_to_ts, 3000, 'span ends at the newest entry');
+  assert.equal(s.last_failure_ts, 2000, 'the FAILURE time, not the last run time');
+  assert.equal(s.last_reason, 'model-error', 'reason still names the same failure');
+  // The counts must be unchanged by the addition — consumers already read them.
+  assert.equal(s.recent, 3);
+  assert.equal(s.degraded, 1);
+  assert.equal(s.recovered, 1);
+});
+
+test('createChatHealth: an empty window reports null times, not zero or now', () => {
+  const s = createChatHealth(5).snapshot();
+  assert.equal(s.window_from_ts, null);
+  assert.equal(s.window_to_ts, null);
+  assert.equal(s.last_failure_ts, null);
+});
+
+test('createChatHealth: times survive a restart, and a pre-ts file loads as unknown', () => {
+  // fileStore.save is a fire-and-forget async write (see the budget test above),
+  // so reading it back in the same tick would measure the write latency, not the
+  // data. This store round-trips through JSON exactly as the file does, which is
+  // the property under test: a `ts` must survive serialisation.
+  const store = { s: null, load() { return this.s; }, save(v) { this.s = JSON.parse(JSON.stringify(v)); } };
+  const h1 = createChatHealth(5, store);
+  h1.record(true, null, false, 5000);
+  h1.record(false, 'timeout', false, 6000);
+  const s = createChatHealth(5, store).snapshot();
+  assert.equal(s.window_from_ts, 5000, 'ts is persisted, not rebuilt away on load');
+  assert.equal(s.last_failure_ts, 6000);
+
+  // A file written by a build that predates `ts`: the entries are still valid
+  // history and must load, but their time is unknown rather than invented.
+  const legacyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-health-legacy-'));
+  const legacyPath = path.join(legacyDir, 'chat-health.json');
+  fs.writeFileSync(legacyPath, JSON.stringify([
+    { ok: true, reason: null, recovered: false },
+    { ok: false, reason: 'model-error', recovered: false },
+  ]));
+  const legacy = createChatHealth(5, fileStore(legacyPath));
+  let ls = legacy.snapshot();
+  assert.equal(ls.recent, 2, 'old entries still count');
+  assert.equal(ls.degraded, 1);
+  assert.equal(ls.last_failure_ts, null, 'unknown time is null, never a fabricated one');
+  assert.equal(ls.window_from_ts, null);
+  // A new run alongside them dates the window from ITSELF, not from the old tail.
+  legacy.record(true, null, false, 9000);
+  ls = legacy.snapshot();
+  assert.equal(ls.window_from_ts, 9000, 'oldest KNOWN time, not the undated tail');
+  assert.equal(ls.window_to_ts, 9000);
+});
+
 test('createChatHealth: rolling recent/degraded/recovered/last_reason, capped, token-only', () => {
   const h = createChatHealth(3);
   assert.deepEqual(h.snapshot(), {
     recent: 0, degraded: 0, recovered: 0, last_reason: null,
+    // the time dimension (#60) — null on an empty window, never 0 or "now".
+    last_failure_ts: null, window_from_ts: null, window_to_ts: null,
   });
   h.record(true, null, false);
   h.record(false, 'model-error', false);
