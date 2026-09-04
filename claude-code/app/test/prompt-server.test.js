@@ -48,6 +48,7 @@ const {
 } = require('../server/prompt/server');
 const { createHistoryStore } = require('../server/prompt/history');
 const promptServer = require('../server/prompt');
+const runner = require('../server/prompt/runner');
 
 // ---------------------------------------------------------------------------
 // Unit tests: security primitives
@@ -931,4 +932,75 @@ test('artifacts: token + mcp files are 0600 and audit log is written', () => {
     `MCP url must target /api/mcp, got ${mcp.mcpServers.ha.url}`,
   );
   assert.ok(fs.existsSync(path.join(TMP, 'claude-audit.log')));
+});
+
+// ---------------------------------------------------------------------------
+// HA tool-name drift (issue #58)
+// ---------------------------------------------------------------------------
+
+test('haToolBasename: strips the server prefix and any HA namespace', () => {
+  assert.equal(runner.haToolBasename('mcp__ha__GetLiveContext'), 'GetLiveContext');
+  assert.equal(runner.haToolBasename('mcp__ha__homeassistant__GetLiveContext'), 'GetLiveContext');
+  // MergedAPI namespaces every tool with slugify(api.name)__ once >1 API is selected.
+  assert.equal(runner.haToolBasename('mcp__ha__my_assistant__HassTurnOn'), 'HassTurnOn');
+  assert.equal(runner.haToolBasename('mcp__ha__HassTurnOn'), 'HassTurnOn');
+  // Not an `ha` MCP tool → not ours to resolve.
+  assert.equal(runner.haToolBasename('Read'), null);
+  assert.equal(runner.haToolBasename('mcp__other__GetLiveContext'), null);
+  assert.equal(runner.haToolBasename(undefined), null);
+});
+
+test('resolveHaTools: prefers published names, falls back to the bare name', () => {
+  // The rename: the published name is what must reach --allowed-tools.
+  assert.deepEqual(
+    runner.resolveHaTools('GetLiveContext', ['mcp__ha__homeassistant__GetLiveContext']),
+    ['mcp__ha__homeassistant__GetLiveContext'],
+  );
+  // Write mode resolves each confirmed intent the same way, so a MergedAPI
+  // namespace does not silently disarm the write path either.
+  assert.deepEqual(
+    runner.resolveHaTools('HassTurnOn', ['mcp__ha__assist__HassTurnOn', 'mcp__ha__assist__HassTurnOff']),
+    ['mcp__ha__assist__HassTurnOn'],
+  );
+  // No catalog (first run) or nothing matching → the pre-discovery behaviour,
+  // so discovery can only ever add names, never remove ones that worked.
+  assert.deepEqual(runner.resolveHaTools('GetLiveContext', null), ['mcp__ha__GetLiveContext']);
+  assert.deepEqual(runner.resolveHaTools('GetLiveContext', ['mcp__ha__HassTurnOn']), ['mcp__ha__GetLiveContext']);
+});
+
+test('read: a renamed live-context tool is discovered and answered, not silently denied', async () => {
+  // The HA 2026.9 rename, end to end: the session publishes the tool as
+  // `homeassistant__GetLiveContext`, which the first attempt's allowlist misses.
+  // Before the fix that run came back a cheerful 200 carrying an apology
+  // ("access ... was denied"), which is exactly what users reported in #58.
+  const r = await post({ prompt: 'RENAMED what lights are on' }, { 'X-Claude-Caller': 'user.renamed' });
+  assert.equal(r.status, 200);
+  assert.ok(
+    !/denied/i.test(r.json.text),
+    `the read must be answered, not denied — got: ${r.json.text}`,
+  );
+  assert.ok(!r.json.degraded, `the read must not degrade — got: ${JSON.stringify(r.json)}`);
+  // The run that answered used the name HA actually publishes.
+  assert.deepEqual(r.json.tools_used, ['mcp__ha__homeassistant__GetLiveContext']);
+});
+
+test('read: the mismatch is caught before the call, retried, and named in the audit', async () => {
+  // The audit for the run above (the FIRST renamed request, so the catalog was
+  // still cold and the mismatch really happened). Without the fix there is no
+  // retry to record — the denied run just logs a clean status=200.
+  const line = await waitForAuditLine('user.renamed');
+  assert.ok(line, 'an audit line for the renamed-tool run exists');
+  assert.match(line, /status=200 /, `the retry produced a real answer: ${line}`);
+  assert.match(line, /attempts=2 recovered=tool-name-mismatch/, `the recovery is visible: ${line}`);
+  assert.match(line, /tools=mcp__ha__homeassistant__GetLiveContext/, `published name used: ${line}`);
+});
+
+test('read: drift back to the bare name self-heals the same way', async () => {
+  // The catalog now holds the renamed spelling. A session that publishes the bare
+  // name again (an HA downgrade, or a second HA with an older core) must not be
+  // stuck with the newer one — resolution follows whatever init actually says.
+  const r = await post({ prompt: 'plain read' }, { 'X-Claude-Caller': 'user.notrenamed' });
+  assert.equal(r.status, 200);
+  assert.ok(!/denied/i.test(r.json.text), `answered, not denied — got: ${r.json.text}`);
+  assert.deepEqual(r.json.tools_used, ['mcp__ha__GetLiveContext']);
 });

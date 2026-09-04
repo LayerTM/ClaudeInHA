@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.48.1] — 2026-09-04
+
+### Fixed
+- **The companion chat can read your home again on Home Assistant 2026.9.**
+  HA 2026.9 renamed the tool the chat uses to read state (`GetLiveContext` →
+  `homeassistant__GetLiveContext`), and the add-on only ever allowed the old
+  name. Because the chat session runs deny-by-default, the call was refused with
+  no prompt: every question about the house came back as "access to the Home
+  Assistant state tool was denied", which reads like a permissions or exposure
+  problem and is neither. Writes (turning things on and off) were unaffected.
+  The add-on no longer pins that name — it allows whatever the connected Home
+  Assistant actually publishes, so the same build works on 2026.8 and 2026.9+,
+  and survives the next rename without an update.
+  ([#58](https://github.com/LayerTM/ClaudeInHA/issues/58))
+
+### Changed
+- A chat turn that only succeeded on a second attempt now says so in the audit
+  log (`attempts=2 recovered=<reason>`). A tool call refused for a name mismatch
+  is caught before it runs and named there too, instead of disappearing into an
+  ordinary `status=200` line.
+
 ## [1.48.0] — 2026-09-01
 
 ### Fixed

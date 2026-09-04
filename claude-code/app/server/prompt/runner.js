@@ -59,6 +59,46 @@ const DISALLOWED_TOOLS = DISALLOWED_TOOLS_ARR.join(',');
 // allow rule (plus `dontAsk` denying every unlisted path) is the actual gate.
 const DISALLOWED_TOOLS_VISION = DISALLOWED_TOOLS_ARR.filter((t) => t !== 'Read').join(',');
 
+// ---------------------------------------------------------------------------
+// HA tool names are NOT stable — never pin a full one.
+//
+// Home Assistant renamed the live-context tool between releases:
+//   2026.8.0  mcp_server/server.py: LIVE_CONTEXT_TOOL_NAME = 'GetLiveContext'
+//   2026.9.0  mcp_server/server.py: LIVE_CONTEXT_TOOL_NAME = 'homeassistant__GetLiveContext'
+// and HA's own `MergedAPI` prefixes EVERY tool with `slugify(api.name)__`
+// (helpers/llm.py: NamespacedTool -> `f"{namespace}__{tool.name}"`) as soon as
+// more than one API is selected in the MCP Server integration.
+//
+// A pinned name is therefore a time bomb, and a silent one: under
+// `--permission-mode dontAsk` a tool that is not on the allowlist is denied with
+// no prompt, so the model reports it as a permissions problem and the run still
+// ends `status=200`. So we pin only the BASENAME — the part HA actually keeps
+// stable — and resolve it against the names the session really publishes
+// (`haTools`, learned from the CLI's own init event and fed back by the caller).
+const LIVE_CONTEXT_BASENAME = 'GetLiveContext';
+const HA_TOOL_PREFIX = 'mcp__ha__';
+
+// `mcp__ha__homeassistant__GetLiveContext` -> `GetLiveContext`
+// `mcp__ha__HassTurnOn`                    -> `HassTurnOn`
+// Anything that is not an `ha` MCP tool -> null.
+function haToolBasename(name) {
+  if (typeof name !== 'string' || !name.startsWith(HA_TOOL_PREFIX)) return null;
+  const rest = name.slice(HA_TOOL_PREFIX.length);
+  if (!rest) return null;
+  const cut = rest.lastIndexOf('__');
+  return cut === -1 ? rest : rest.slice(cut + 2);
+}
+
+// The exact published name(s) for one wanted basename. With no catalog (a first
+// run, or an init event without a tool list) this falls back to the bare
+// `mcp__ha__<basename>` — exactly the pre-discovery behaviour, so discovery can
+// only ever ADD names, never take away the ones that already worked.
+function resolveHaTools(basename, catalog) {
+  const published = (Array.isArray(catalog) ? catalog : [])
+    .filter((n) => haToolBasename(n) === basename);
+  return published.length ? published : [`${HA_TOOL_PREFIX}${basename}`];
+}
+
 const READ_SCHEMA = JSON.stringify({
   type: 'object',
   properties: {
@@ -365,17 +405,26 @@ function shutdown() {
 /**
  * Run one claude call. Resolves to:
  *   { status: 'ok', text, proposal, automation, toolsUsed, numTurns, costUsd,
- *     truncated, mcpFailed }
- *   { status: 'timeout' }
- *   { status: 'error', reason, message, numTurns?, toolsUsed?, costUsd? }
+ *     truncated, mcpFailed, haTools }
+ *   { status: 'timeout', haTools }
+ *   { status: 'error', reason, message, numTurns?, toolsUsed?, costUsd?, haTools? }
  *     reason ∈ spawn-failed | aborted | stream-cap | no-result | model-error | max-turns
+ *              | tool-name-mismatch
  *     (no-result and model-error are transient — safe to retry a read;
- *      max-turns is deterministic — retrying only burns tokens, so it is not)
+ *      max-turns is deterministic — retrying only burns tokens, so it is not;
+ *      tool-name-mismatch is transient AND self-correcting — the outcome carries
+ *      the real `haTools`, so the retry is only worth anything if the caller
+ *      feeds them back in. It is raised at init, BEFORE any tool has run, so
+ *      retrying it cannot repeat a state change.)
+ *
+ * `haTools` is the `ha` MCP tool names the session published (null when init
+ * carried none). Callers should keep the last non-empty value and pass it back as
+ * the `haTools` option — that is what makes the allowlist track HA's renames.
  * Never rejects.
  */
 function runClaude({
   bin, prompt, mode, intents, mcpConfigPath, model, cwd, signal, history, imagePath, onText, timeoutMs,
-  language, surface, editAutomation,
+  language, surface, editAutomation, haTools,
 }) {
   return new Promise((resolve) => {
     // A caller may cap THIS run below the module ceiling (e.g. a retry gets only
@@ -386,14 +435,16 @@ function runClaude({
       : TIMEOUT_MS;
     const read = mode !== 'write';
     const vision = read && Boolean(imagePath);
-    let allowedTools;
-    if (!read) {
-      allowedTools = mcpConfigPath ? [...new Set(intents.map((i) => `mcp__ha__${i.intent}`))] : [];
-    } else {
-      allowedTools = [];
-      if (mcpConfigPath) allowedTools.push('mcp__ha__GetLiveContext');
-      if (imagePath) allowedTools.push(`Read(${imagePath})`);
+    // What this run needs from the `ha` server, by BASENAME (see the note above):
+    // read mode needs live context; write mode needs exactly the confirmed intents.
+    const wantedBasenames = read
+      ? [LIVE_CONTEXT_BASENAME]
+      : [...new Set(intents.map((i) => i.intent))];
+    let allowedTools = [];
+    if (mcpConfigPath) {
+      allowedTools = [...new Set(wantedBasenames.flatMap((b) => resolveHaTools(b, haTools)))];
     }
+    if (read && imagePath) allowedTools.push(`Read(${imagePath})`);
 
     const args = [
       '-p',
@@ -451,6 +502,14 @@ function runClaude({
     let mcpInitConnected = false;
     let haToolOk = false;
     let haToolErr = false;
+    // The `ha` tool names this session actually publishes, straight from the CLI's
+    // init event. Handed back to the caller on EVERY outcome so the next run's
+    // allowlist is built from live names instead of a guess.
+    let publishedHaTools = null;
+    // Set when init shows a wanted tool published under a name we did not allow —
+    // i.e. this run is doomed to a silent `dontAsk` denial. Ends the run early
+    // with a distinct reason so the caller can re-run with the real names.
+    let toolNameMismatch = null;
     const haToolUseIds = new Set();
     const toolsUsed = [];
     // Hold partial multi-byte UTF-8 sequences across chunk boundaries so
@@ -516,6 +575,26 @@ function runClaude({
         const servers = Array.isArray(ev.mcp_servers) ? ev.mcp_servers : [];
         mcpInitConnected = servers.some((s) => s && s.name === 'ha' && s.status === 'connected');
         mcpFailed = Boolean(mcpConfigPath) && !mcpInitConnected;
+        // Init lists what this session can actually see. Two jobs here: record the
+        // real `ha` names for the caller's catalog, and catch the rename trap —
+        // a wanted basename IS published, but under a name our allowlist misses.
+        // `dontAsk` would deny that call with no prompt and the run would end a
+        // cheerful `status=200` carrying an apology, so stop it here instead: no
+        // tool has run yet (init is the first event), which makes ending safe.
+        const sessionTools = Array.isArray(ev.tools)
+          ? ev.tools.filter((t) => typeof t === 'string') : [];
+        publishedHaTools = sessionTools.filter((t) => t.startsWith(HA_TOOL_PREFIX));
+        if (mcpConfigPath) {
+          const allowed = new Set(allowedTools);
+          const missed = wantedBasenames.filter((b) => {
+            const published = publishedHaTools.filter((n) => haToolBasename(n) === b);
+            return published.length > 0 && !published.some((n) => allowed.has(n));
+          });
+          if (missed.length > 0) {
+            toolNameMismatch = missed;
+            killGroup(child);
+          }
+        }
       } else if (ev.type === 'assistant') {
         const content = ev.message && Array.isArray(ev.message.content)
           ? ev.message.content : [];
@@ -569,16 +648,35 @@ function runClaude({
     });
 
     child.on('close', (code) => {
+      // Checked FIRST: we killed this child ourselves at init, so every later
+      // branch (no result envelope, non-zero exit) would only misreport why.
+      if (toolNameMismatch) {
+        finish({
+          status: 'error',
+          reason: 'tool-name-mismatch',
+          message: `HA publishes ${toolNameMismatch.join(', ')} under a different tool name`
+            + ` (${publishedHaTools.join(', ') || 'none'}) — re-running with the published names`,
+          numTurns: null,
+          toolsUsed,
+          costUsd: null,
+          haTools: publishedHaTools,
+        });
+        return;
+      }
       if (timedOut) {
-        finish({ status: 'timeout' });
+        finish({ status: 'timeout', haTools: publishedHaTools });
         return;
       }
       if (aborted) {
-        finish({ status: 'error', reason: 'aborted', message: 'client disconnected' });
+        finish({
+          status: 'error', reason: 'aborted', message: 'client disconnected', haTools: publishedHaTools,
+        });
         return;
       }
       if (streamBytes > STREAM_CAP_BYTES) {
-        finish({ status: 'error', reason: 'stream-cap', message: 'output stream exceeded cap' });
+        finish({
+          status: 'error', reason: 'stream-cap', message: 'output stream exceeded cap', haTools: publishedHaTools,
+        });
         return;
       }
       // No result event (crash / killed mid-flight) and a model-reported error are
@@ -593,6 +691,7 @@ function runClaude({
           numTurns: null,
           toolsUsed,
           costUsd: null,
+          haTools: publishedHaTools,
         });
         return;
       }
@@ -611,6 +710,7 @@ function runClaude({
           numTurns: resultEnvelope.num_turns ?? null,
           toolsUsed,
           costUsd: resultEnvelope.total_cost_usd ?? null,
+          haTools: publishedHaTools,
         });
         return;
       }
@@ -657,11 +757,15 @@ function runClaude({
         // flip the health signal, which caused a false "MCP unreachable" repair).
         // eslint-disable-next-line no-nested-ternary
         mcpConnected: haToolOk ? true : (haToolErr ? false : (mcpInitConnected ? true : null)),
+        // The `ha` tool names this session published — the caller keeps them as the
+        // catalog for the next run, so a rename is absorbed by the run after it at
+        // the latest (and by THIS request, via the tool-name-mismatch retry).
+        haTools: publishedHaTools,
       });
     });
   });
 }
 
 module.exports = {
-  runClaude, shutdown, TIMEOUT_MS, safeLangTag,
+  runClaude, shutdown, TIMEOUT_MS, safeLangTag, haToolBasename, resolveHaTools,
 };
