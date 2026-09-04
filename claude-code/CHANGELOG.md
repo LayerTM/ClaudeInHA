@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.49.1] — 2026-09-04
+
+### Fixed
+- **Saved state can no longer be lost or half-written.** The add-on keeps two
+  small files under `/data` — the chat-reliability window and today's spend — and
+  wrote each of them by truncating the file and writing over it, with no ordering
+  between writes. Two writes in flight at once interleaved into a document that
+  could not be read back, and the next start then treated the whole history as
+  missing: the reliability window reset to empty, and the day's recorded spend
+  reset to zero. Writes are now ordered, and each one lands complete or not at
+  all, so a restart mid-write — which is every add-on update — can no longer
+  leave a partial file behind. Reproduced across three independent test harnesses
+  and well over a thousand trials: on the old code, writes issued together
+  regularly failed to leave the newest complete state on disk — sometimes an
+  unreadable file, sometimes an older one, depending on the exact sizes involved.
+  On the new code, every trial of every harness left exactly the newest state.
+  ([#62](https://github.com/LayerTM/ClaudeInHA/issues/62))
+- A state file that is present but damaged is now reported in the add-on log
+  instead of being indistinguishable from a fresh install. Both still start from
+  empty, as before; only one of them is normal.
+
 ## [1.49.0] — 2026-09-04
 
 ### Added

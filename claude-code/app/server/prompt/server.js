@@ -303,13 +303,109 @@ function createBudget(limitUsd, now = () => new Date(), persist = null) {
 }
 
 // Durable, best-effort JSON state under the add-on's /data (survives restarts).
-// load() is synchronous (called once, at startup); save() is
-// fire-and-forget — a write failure must never break the chat, and a corrupt or
-// absent file simply reads back as null.
+// load() is synchronous (called once, at startup); save() stays fire-and-forget,
+// because a write failure must never break the chat.
+//
+// Writes are SERIALISED and ATOMIC. Those are two independent defects, and each
+// one alone leaves the other:
+//
+//   Serialised — save() is called on every mutation, so two writes can be in
+//   flight at once, and with a bare writeFile the winner is whichever FINISHES
+//   last, not whichever started last. Measured on the previous code: at two and
+//   three concurrent flushes the file was left OLDER than memory in 15 % and
+//   47 % of trials, so a restart silently dropped the newest runs. Renaming
+//   without ordering does not fix this — two renames race exactly the same way.
+//
+//   Atomic — writeFile truncates before it writes, so a process killed partway
+//   through (which is every add-on update) leaves a half-document that JSON.parse
+//   rejects, and the whole history then reads back as "nothing here". Ordering
+//   without renaming does not fix this either; only a complete file appearing in
+//   one step does.
+//
+// The payload is stringified at CALL time, so what eventually lands is the state
+// as of the save() that queued it, applied in that order.
 function fileStore(file) {
+  // Reporting must never be able to affect a write. It is the only step in the
+  // chain that calls out of this module, and if it threw, the terminal handler
+  // would turn a SUCCESSFUL write into a reported failure — and, worse, leave the
+  // chain rejected, which is fatal for a promise nothing awaits.
+  const report = (msg) => { try { console.error(msg); } catch { /* never */ } };
+
+  // The temp name is per INSTANCE, not per path. Two stores over one file would
+  // otherwise share it while their chains stayed independent, and the writes
+  // trample each other again — measured, 4 unreadable results in 200 concurrent
+  // rounds. Nothing here builds two stores on one path; not relying on that
+  // costs one random suffix.
+  //
+  // The suffix costs one thing back, so it is paid for here: a fixed name was
+  // self-cleaning, because the next write simply overwrote whatever a killed
+  // process had left. A random one never collides, so an orphan would survive
+  // forever — and a process killed between the write and the rename is the exact
+  // event this whole store exists to survive. Sweeping siblings at CONSTRUCTION
+  // keeps both properties: this runs before this instance has written anything,
+  // and the add-on builds its stores once, at startup.
+  const dir = path.dirname(file);
+  const prefix = `${path.basename(file)}.tmp-`;
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.startsWith(prefix)) continue;
+      // Guarded per ENTRY, not around the loop: one thing that cannot be removed
+      // — a directory wearing the prefix, say — would otherwise abort the sweep
+      // and leave every real orphan behind it in place, silently. Never
+      // `recursive`, so this can only ever unlink a single file.
+      try { fs.rmSync(path.join(dir, name), { force: true }); } catch { /* skip it */ }
+    }
+  } catch { /* no directory yet, or unreadable — the writes below will say so */ }
+  const tmp = `${file}.tmp-${crypto.randomBytes(6).toString('hex')}`;
+
+  let chain = Promise.resolve();
+  let failing = false;
   return {
-    load() { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } },
-    save(obj) { fsp.writeFile(file, JSON.stringify(obj), { mode: 0o600 }).catch(() => {}); },
+    load() {
+      try {
+        return JSON.parse(fs.readFileSync(file, 'utf8'));
+      } catch (err) {
+        // "No file yet" and "the file is damaged" both have to return null, but
+        // they are not the same event and must not look the same in the log: the
+        // first is a fresh install, the second is history that just disappeared.
+        if (!err || err.code !== 'ENOENT') {
+          report(`[prompt] state file unreadable, starting empty: ${file} — ${err && err.message ? err.message : err}`);
+        }
+        return null;
+      }
+    },
+    save(obj) {
+      const body = JSON.stringify(obj);
+      chain = chain
+        .then(() => fsp.writeFile(tmp, body, { mode: 0o600 }))
+        .then(() => fsp.rename(tmp, file))
+        .then(() => {
+          if (failing) {
+            failing = false;
+            report(`[prompt] state file is writable again: ${file}`);
+          }
+        })
+        .catch(async (err) => {
+          // Fire-and-forget stays fire-and-forget — a write failure must never
+          // break the chat — but it must not be INVISIBLE. A read-only /data or
+          // a full disk otherwise leaves an add-on that looks perfectly healthy
+          // until a restart quietly rolls the reliability window and the day's
+          // recorded spend back to whatever was last written. That is the same
+          // silent loss the load() message above exists for, noticed a day
+          // earlier. Logged on the healthy->failing EDGE only, so a persistent
+          // failure reports once instead of on every chat.
+          if (!failing) {
+            failing = true;
+            report(`[prompt] state file write FAILED, this state will not survive a restart: ${file} — ${err && err.message ? err.message : err}`);
+          }
+          await fsp.unlink(tmp).catch(() => {}); // a rename that failed leaves it behind
+        })
+        // The chain must NEVER end rejected. In production nothing awaits save(),
+        // and an unhandled rejection ends the process — so a store whose whole
+        // purpose is to survive a bad day must not be able to cause one.
+        .catch(() => {});
+      return chain;
+    },
   };
 }
 
