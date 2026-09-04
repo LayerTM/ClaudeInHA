@@ -348,7 +348,12 @@ function fileStore(file) {
   const prefix = `${path.basename(file)}.tmp-`;
   try {
     for (const name of fs.readdirSync(dir)) {
-      if (name.startsWith(prefix)) fs.rmSync(path.join(dir, name), { force: true });
+      if (!name.startsWith(prefix)) continue;
+      // Guarded per ENTRY, not around the loop: one thing that cannot be removed
+      // — a directory wearing the prefix, say — would otherwise abort the sweep
+      // and leave every real orphan behind it in place, silently. Never
+      // `recursive`, so this can only ever unlink a single file.
+      try { fs.rmSync(path.join(dir, name), { force: true }); } catch { /* skip it */ }
     }
   } catch { /* no directory yet, or unreadable — the writes below will say so */ }
   const tmp = `${file}.tmp-${crypto.randomBytes(6).toString('hex')}`;

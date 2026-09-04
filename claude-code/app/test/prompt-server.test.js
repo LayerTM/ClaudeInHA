@@ -408,12 +408,19 @@ test('fileStore: a temp file orphaned by a killed process is swept at startup', 
   fs.writeFileSync(`${file}.tmp-deadbeefcafe`, '{"half":', { mode: 0o600 }); // killed mid-write
   fs.writeFileSync(path.join(dir, 'unrelated.json.tmp-0123456789ab'), 'x'); // another file's
 
+  // And one entry that cannot be removed must not abort the sweep: guarding the
+  // whole loop instead of each entry would leave every orphan after this one in
+  // place, with nothing said. ("one bad item kills the batch")
+  fs.mkdirSync(`${file}.tmp-aaaaaaaaaaaa`);
+
   const store = fileStore(file); // a "restart"
   assert.deepEqual(store.load(), [{ n: 0 }], 'the real state is untouched');
-  assert.deepEqual(fs.readdirSync(dir).sort(), ['state.json', 'unrelated.json.tmp-0123456789ab'],
-    'our orphan is gone, and only ours');
+  assert.deepEqual(fs.readdirSync(dir).sort(),
+    ['state.json', 'state.json.tmp-aaaaaaaaaaaa', 'unrelated.json.tmp-0123456789ab'],
+    'our orphan is gone even though an unremovable entry sorts before it, and only ours');
   await store.save([{ n: 1 }]);
-  assert.deepEqual(fs.readdirSync(dir).sort(), ['state.json', 'unrelated.json.tmp-0123456789ab']);
+  assert.deepEqual(fs.readdirSync(dir).sort(),
+    ['state.json', 'state.json.tmp-aaaaaaaaaaaa', 'unrelated.json.tmp-0123456789ab']);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
