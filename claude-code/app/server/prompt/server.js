@@ -325,13 +325,34 @@ function createBudget(limitUsd, now = () => new Date(), persist = null) {
 // The payload is stringified at CALL time, so what eventually lands is the state
 // as of the save() that queued it, applied in that order.
 function fileStore(file) {
+  // Reporting must never be able to affect a write. It is the only step in the
+  // chain that calls out of this module, and if it threw, the terminal handler
+  // would turn a SUCCESSFUL write into a reported failure — and, worse, leave the
+  // chain rejected, which is fatal for a promise nothing awaits.
+  const report = (msg) => { try { console.error(msg); } catch { /* never */ } };
+
   // The temp name is per INSTANCE, not per path. Two stores over one file would
   // otherwise share it while their chains stayed independent, and the writes
   // trample each other again — measured, 4 unreadable results in 200 concurrent
   // rounds. Nothing here builds two stores on one path; not relying on that
-  // costs one random suffix, and it also means a foreign leftover `.tmp` can
-  // never lend this file its permissions.
+  // costs one random suffix.
+  //
+  // The suffix costs one thing back, so it is paid for here: a fixed name was
+  // self-cleaning, because the next write simply overwrote whatever a killed
+  // process had left. A random one never collides, so an orphan would survive
+  // forever — and a process killed between the write and the rename is the exact
+  // event this whole store exists to survive. Sweeping siblings at CONSTRUCTION
+  // keeps both properties: this runs before this instance has written anything,
+  // and the add-on builds its stores once, at startup.
+  const dir = path.dirname(file);
+  const prefix = `${path.basename(file)}.tmp-`;
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      if (name.startsWith(prefix)) fs.rmSync(path.join(dir, name), { force: true });
+    }
+  } catch { /* no directory yet, or unreadable — the writes below will say so */ }
   const tmp = `${file}.tmp-${crypto.randomBytes(6).toString('hex')}`;
+
   let chain = Promise.resolve();
   let failing = false;
   return {
@@ -343,7 +364,7 @@ function fileStore(file) {
         // they are not the same event and must not look the same in the log: the
         // first is a fresh install, the second is history that just disappeared.
         if (!err || err.code !== 'ENOENT') {
-          console.error(`[prompt] state file unreadable, starting empty: ${file} — ${err && err.message ? err.message : err}`);
+          report(`[prompt] state file unreadable, starting empty: ${file} — ${err && err.message ? err.message : err}`);
         }
         return null;
       }
@@ -356,7 +377,7 @@ function fileStore(file) {
         .then(() => {
           if (failing) {
             failing = false;
-            console.error(`[prompt] state file is writable again: ${file}`);
+            report(`[prompt] state file is writable again: ${file}`);
           }
         })
         .catch(async (err) => {
@@ -370,10 +391,14 @@ function fileStore(file) {
           // failure reports once instead of on every chat.
           if (!failing) {
             failing = true;
-            console.error(`[prompt] state file write FAILED, this state will not survive a restart: ${file} — ${err && err.message ? err.message : err}`);
+            report(`[prompt] state file write FAILED, this state will not survive a restart: ${file} — ${err && err.message ? err.message : err}`);
           }
           await fsp.unlink(tmp).catch(() => {}); // a rename that failed leaves it behind
-        });
+        })
+        // The chain must NEVER end rejected. In production nothing awaits save(),
+        // and an unhandled rejection ends the process — so a store whose whole
+        // purpose is to survive a bad day must not be able to cause one.
+        .catch(() => {});
       return chain;
     },
   };

@@ -240,8 +240,7 @@ test('fileStore: concurrent saves land in order and never leave a half-written f
   // once. With a bare writeFile the winner is whichever FINISHES last, not
   // whichever started last, and the two documents interleave into something
   // JSON.parse rejects — after which load() reads the whole history as "nothing
-  // here". Measured on the previous implementation with this same shape: 144 of
-  // 400 trials at two flushes per tick, 219 of 400 at three. (#62)
+  // here". (#62)
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-store-order-'));
   const file = path.join(dir, 'state.json');
   const store = fileStore(file);
@@ -343,6 +342,12 @@ test('fileStore: a store that cannot write says so once, not on every chat', asy
     assert.ok(said[1].includes('writable again'));
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(sub, 'state.json'), 'utf8')), [{ n: 4 }]);
     assert.deepEqual(fs.readdirSync(sub), ['state.json'], 'no temp file survives a failed run');
+    // The recovery must be reported ONCE as well. Without this, dropping the flag
+    // reset puts "writable again" in the log on every chat, forever — which is
+    // the very thing this test's name promises not to do, on the other side.
+    await store.save([{ n: 5 }]);
+    assert.strictEqual(said.length, 2, 'and reported once — the healthy side is bounded too');
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(sub, 'state.json'), 'utf8')), [{ n: 5 }]);
   } finally {
     console.error = realError;
     fs.rmSync(dir, { recursive: true, force: true });
@@ -365,6 +370,79 @@ test('fileStore: a rename that fails leaves no temp file lying in /data', async 
     await fileStore(dest).save([{ n: 1 }]);
     assert.strictEqual(said.length, 1, 'the failure is reported');
     assert.deepEqual(fs.readdirSync(dir), ['state.json'], 'and the temp file is gone');
+  } finally {
+    console.error = realError;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('fileStore: two stores over one file do not trample each other', async () => {
+  // The temp path carries a per-instance suffix so two stores cannot collide on
+  // it. Nothing in the add-on builds two over one path — but the guard was
+  // unwatched, and reverting it to a shared fixed name produced 4 unreadable
+  // results in 200 rounds when this was measured. (#62)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-store-two-'));
+  const file = path.join(dir, 'state.json');
+  const a = fileStore(file);
+  const b = fileStore(file);
+  let unreadable = 0;
+  for (let i = 0; i < 200; i += 1) {
+    const pa = a.save(Array.from({ length: 30 }, (_, n) => ({ n, who: 'a' })));
+    const pb = b.save(Array.from({ length: 60 }, (_, n) => ({ n, who: 'b' })));
+    await Promise.all([pa, pb]);
+    try { JSON.parse(fs.readFileSync(file, 'utf8')); } catch { unreadable += 1; }
+  }
+  assert.strictEqual(unreadable, 0, 'the destination is always a complete document');
+  assert.deepEqual(fs.readdirSync(dir), ['state.json'], 'and no temp file survives');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('fileStore: a temp file orphaned by a killed process is swept at startup', async () => {
+  // A random suffix never collides — which also means it never OVERWRITES, so an
+  // orphan would live forever. And the process being killed between the write and
+  // the rename is precisely the event this store exists to survive, i.e. every
+  // add-on update that goes badly. Swept when the store is built. (#62)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-store-orphan-'));
+  const file = path.join(dir, 'state.json');
+  fs.writeFileSync(file, JSON.stringify([{ n: 0 }]), { mode: 0o600 });
+  fs.writeFileSync(`${file}.tmp-deadbeefcafe`, '{"half":', { mode: 0o600 }); // killed mid-write
+  fs.writeFileSync(path.join(dir, 'unrelated.json.tmp-0123456789ab'), 'x'); // another file's
+
+  const store = fileStore(file); // a "restart"
+  assert.deepEqual(store.load(), [{ n: 0 }], 'the real state is untouched');
+  assert.deepEqual(fs.readdirSync(dir).sort(), ['state.json', 'unrelated.json.tmp-0123456789ab'],
+    'our orphan is gone, and only ours');
+  await store.save([{ n: 1 }]);
+  assert.deepEqual(fs.readdirSync(dir).sort(), ['state.json', 'unrelated.json.tmp-0123456789ab']);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('fileStore: a logger that throws cannot turn a good write into a reported failure', async () => {
+  // Reporting is the only step in save() that calls out of the module, and it was
+  // added INSIDE the chain. If it can throw, a successful write falls into the
+  // failure handler: the write is reported as FAILED, the healthy/failing flag
+  // sticks in the wrong state, and the pair then oscillates on every save. In
+  // production nothing awaits save(), so a rejected chain would also end the
+  // process. Neither is reachable today — Node's own console does not throw — but
+  // the comment three lines up promises a write failure never breaks the chat,
+  // and that promise should rest on this module, not on Node's console. (#63)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-store-badlog-'));
+  const sub = path.join(dir, 'not-yet');
+  const said = [];
+  const realError = console.error;
+  console.error = (...a) => { said.push(a.join(' ')); throw new Error('logger exploded'); };
+  try {
+    const store = fileStore(path.join(sub, 'state.json'));
+    await store.save([{ n: 1 }]);   // fails: destination directory is missing
+    fs.mkdirSync(sub);
+    await store.save([{ n: 2 }]);   // succeeds, and reporting the recovery throws
+    await store.save([{ n: 3 }]);   // healthy again: must be silent
+
+    assert.strictEqual(said.length, 2, `exactly one failure and one recovery, got ${JSON.stringify(said)}`);
+    assert.ok(said[0].includes('FAILED'));
+    assert.ok(said[1].includes('writable again'));
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(sub, 'state.json'), 'utf8')), [{ n: 3 }],
+      'and every write still landed, in order');
   } finally {
     console.error = realError;
     fs.rmSync(dir, { recursive: true, force: true });
