@@ -319,5 +319,40 @@ else
     bad "a failed run was passed on as if it were a finding: ${said}"
 fi
 
+# --- 13. a stop signal stops it, promptly -------------------------------------
+# Bash defers signal handling until the foreground child returns whenever ANY
+# trap is installed — an EXIT trap is enough. A cycle can sit inside an analysis
+# for minutes, so a trap added here to tidy a temp file would make the add-on
+# refuse to shut down for that long. Measured both ways before it was removed;
+# this keeps it removed.
+cat > "${work}/slowclaude" <<'STUB'
+#!/usr/bin/env bash
+cat > /dev/null
+sleep 30
+STUB
+chmod +x "${work}/slowclaude"
+
+# Wrapped so the shell's own "Terminated" job notice, which goes to stderr when
+# the job is reaped, does not look like an error in the CI log.
+shutdown_case() {
+    rm -rf "${work}/data"
+    CC_MONITOR_DATA_DIR="${work}/data" CC_MONITOR_NOTIFY_CMD="${work}/notify" \
+    CC_MONITOR_CHECK_CMD="${work}/check" CC_MONITOR_CURL="${work}/goodlog" \
+    CC_MONITOR_CLAUDE_CMD="${work}/slowclaude" CC_MONITOR_TIMEOUT_CMD="" \
+        bash "${script}" --once >/dev/null 2>&1 &
+    local mon_pid=$!
+    sleep 2
+    kill -TERM "${mon_pid}" 2>/dev/null
+    sleep 2
+    if kill -0 "${mon_pid}" 2>/dev/null; then
+        bad "a stop signal did not stop it — the add-on would hang on shutdown"
+        kill -9 "${mon_pid}" 2>/dev/null
+    else
+        ok "a stop signal stops it while an analysis is still running"
+    fi
+    wait "${mon_pid}" 2>/dev/null || true
+}
+shutdown_case 2>/dev/null
+
 printf '\n%s\n' "$([ "${fails}" -eq 0 ] && echo 'all checks passed' || echo "${fails} check(s) failed")"
 exit $(( fails > 0 ))

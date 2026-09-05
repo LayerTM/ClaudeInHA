@@ -53,11 +53,16 @@ mkdir -p "${DATA_DIR}" 2>/dev/null || true
 
 log() { printf '[cc-monitor] %s\n' "$1" >&2; }
 
-# Holds the current cycle's stderr capture. Global, and cleaned from a signal
-# handler as well as on the normal path: RETURN alone is not a signal handler,
-# so a restart arriving mid-cycle would otherwise leave the file behind.
-err=""
-trap 'rm -f "${err:-}"' EXIT INT TERM
+# NO TRAPS ANYWHERE IN THIS SCRIPT, and that is a decision rather than an
+# oversight. Bash defers signal handling until the foreground child returns
+# whenever ANY trap is installed — measured, and an EXIT trap is enough to do it:
+# with no trap the shell dies on SIGTERM at once, with a bare `trap 'true' EXIT`
+# it survives until the child finishes. Since a cycle can sit inside an analysis
+# for minutes, a trap here would make the add-on refuse to stop for that long.
+# The only thing a trap would buy is removing one small temp file when a signal
+# arrives mid-cycle; the paths below remove it every other time. A few bytes left
+# in /tmp on a restart is a far smaller problem than a container that will not
+# shut down.
 
 # Report a condition once, on the transition into it. The marker lives under
 # /data so a restart does not turn one problem into a notification per boot.
@@ -107,7 +112,7 @@ fetch_log() {
 }
 
 run_once() {
-    local errlog cfg prompt out rc trimmed
+    local errlog cfg prompt out rc trimmed err
 
     # An empty answer counts as no answer: a log with nothing in it is not
     # something to reassure the model with, and a 200 carrying an empty body
@@ -149,8 +154,6 @@ ${cfg}
     # environment — an instruction injected through the log data has nothing to
     # act with.
     err="$(mktemp)"
-    # Removed on both normal paths by this, and on a signal by the handler above.
-    trap 'rm -f "${err}"' RETURN
     out="$(printf '%s' "${prompt}" | ${TIMEOUT_CMD:+${TIMEOUT_CMD} 300} \
         env -u SUPERVISOR_TOKEN -u SUPERVISOR_API_TOKEN \
         -u HA_TOKEN -u HASS_TOKEN \
@@ -161,9 +164,11 @@ ${cfg}
     trimmed="$(printf '%s' "${out}" | tr -d '[:space:]')"
     if [ "${rc}" -ne 0 ] || [ -z "${trimmed}" ]; then
         log "the analysis produced nothing: $(tail -c 300 "${err}" 2>/dev/null | tr '\n' ' ')"
+        rm -f "${err}"
         announce analysis "Claude's periodic health check is not producing an answer, so problems on this instance would go unreported. It needs attention."
         return 1
     fi
+    rm -f "${err}"
     resolve analysis "the health check is answering again"
 
     if [ "${trimmed}" != "OK" ]; then
