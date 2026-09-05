@@ -54,11 +54,16 @@ mkdir -p "${DATA_DIR}" 2>/dev/null || true
 log() { printf '[cc-monitor] %s\n' "$1" >&2; }
 
 # NO TRAPS ANYWHERE IN THIS SCRIPT, and that is a decision rather than an
-# oversight. Bash defers signal handling until the foreground child returns
-# whenever ANY trap is installed — measured, and an EXIT trap is enough to do it:
-# with no trap the shell dies on SIGTERM at once, with a bare `trap 'true' EXIT`
-# it survives until the child finishes. Since a cycle can sit inside an analysis
-# for minutes, a trap here would make the add-on refuse to stop for that long.
+# oversight. Measured on THIS script, sent SIGTERM while an analysis was still
+# running: with no trap it stops at once; with a bare `trap 'true' EXIT` added it
+# survives until the child returns. Adding `exit` to a TERM handler does not help
+# either — the handler does not run until then. Since a cycle can sit inside an
+# analysis for minutes, a trap here would make the add-on refuse to stop for that
+# long.
+#
+# Stated narrowly on purpose: on a reduced script with a plain foreground command
+# an EXIT trap does NOT delay the signal. What was measured is this shape — a
+# command substitution wrapping a pipeline — not a general property of bash.
 # The only thing a trap would buy is removing one small temp file when a signal
 # arrives mid-cycle; the paths below remove it every other time. A few bytes left
 # in /tmp on a restart is a far smaller problem than a container that will not
