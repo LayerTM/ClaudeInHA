@@ -31,12 +31,9 @@
   missing: the reliability window reset to empty, and the day's recorded spend
   reset to zero. Writes are now ordered, and each one lands complete or not at
   all, so a restart mid-write — which is every add-on update — can no longer
-  leave a partial file behind. Reproduced across three independent test harnesses
-  and well over a thousand trials: on the old code, writes issued together
-  regularly failed to leave the newest complete state on disk — sometimes an
-  unreadable file, sometimes an older one, depending on the exact sizes involved.
-  On the new code, every trial of every harness left exactly the newest state.
-  ([#62](https://github.com/LayerTM/ClaudeInHA/issues/62))
+  leave a partial file behind. On the old code, writes issued together regularly
+  failed to leave the newest complete state on disk — sometimes an unreadable
+  file, sometimes an older one, depending on the exact sizes involved.
 - A state file that is present but damaged is now reported in the add-on log
   instead of being indistinguishable from a fresh install. Both still start from
   empty, as before; only one of them is normal.
@@ -62,7 +59,6 @@
   `recovered` / `last_reason` fields are unchanged, so nothing that reads them
   needs to change. History written by an earlier version still loads; those
   entries simply report an unknown time rather than an invented one.
-  ([#60](https://github.com/LayerTM/ClaudeInHA/issues/60))
 
 ### Fixed
 - **The reported window can no longer contradict itself.** Its two ends were read
