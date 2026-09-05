@@ -53,6 +53,12 @@ mkdir -p "${DATA_DIR}" 2>/dev/null || true
 
 log() { printf '[cc-monitor] %s\n' "$1" >&2; }
 
+# Holds the current cycle's stderr capture. Global, and cleaned from a signal
+# handler as well as on the normal path: RETURN alone is not a signal handler,
+# so a restart arriving mid-cycle would otherwise leave the file behind.
+err=""
+trap 'rm -f "${err:-}"' EXIT INT TERM
+
 # Report a condition once, on the transition into it. The marker lives under
 # /data so a restart does not turn one problem into a notification per boot.
 announce() {
@@ -101,7 +107,7 @@ fetch_log() {
 }
 
 run_once() {
-    local errlog cfg prompt out err rc trimmed
+    local errlog cfg prompt out rc trimmed
 
     # An empty answer counts as no answer: a log with nothing in it is not
     # something to reassure the model with, and a 200 carrying an empty body
@@ -143,8 +149,7 @@ ${cfg}
     # environment — an instruction injected through the log data has nothing to
     # act with.
     err="$(mktemp)"
-    # Removed on every path below; the trap covers the one path this script does
-    # not control, a signal arriving mid-cycle when the add-on restarts.
+    # Removed on both normal paths by this, and on a signal by the handler above.
     trap 'rm -f "${err}"' RETURN
     out="$(printf '%s' "${prompt}" | ${TIMEOUT_CMD:+${TIMEOUT_CMD} 300} \
         env -u SUPERVISOR_TOKEN -u SUPERVISOR_API_TOKEN \

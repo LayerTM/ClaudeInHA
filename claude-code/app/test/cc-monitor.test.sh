@@ -123,13 +123,18 @@ run() {
     CC_MONITOR_CURL="${work}/$1" \
     CC_MONITOR_CLAUDE_CMD="${work}/claude" \
     CC_MONITOR_TIMEOUT_CMD="${work}/timeout" \
-    SUPERVISOR_TOKEN="tok-supervisor" HA_TOKEN="tok-ha" \
+    SUPERVISOR_TOKEN="tok-supervisor" SUPERVISOR_API_TOKEN="tok-api" \
+    HA_TOKEN="tok-ha" HASS_TOKEN="tok-hass" \
     CLAUDE_ANSWER="$2" CLAUDE_RC="${3:-0}" \
         bash "${script}" --once >/dev/null 2>&1
     printf '%s' "$?"
 }
 
-markers() { ls "${work}/data" 2>/dev/null | wc -l | tr -d ' '; }
+markers() {
+    local n=0 f
+    for f in "${work}/data"/*; do [ -e "${f}" ] && n=$((n + 1)); done
+    printf '%s' "${n}"
+}
 
 notifications() { wc -l < "${notify_out}" | tr -d ' '; }
 
@@ -213,36 +218,54 @@ fi
 : > "${notify_out}"
 rm -rf "${work}/data"
 : > "${timeout_used}"          # count this run only, not every run before it
+# Cleared first so the assertions below cannot read a file some EARLIER run
+# wrote. Without this, a build where the command is never invoked at all leaves
+# the previous contents in place and every check here passes on stale evidence.
+rm -f "${claude_argv}" "${claude_env}" "${claude_in}"
 run goodlog OK >/dev/null
-argv="$(cat "${claude_argv}")"
-if [[ "${argv}" == *"--allowed-tools"* && "${argv}" != *"dangerously"* ]]; then
-    ok "the model is run with no tools and no permission bypass"
-else
-    bad "the tool restrictions are gone from the command line: ${argv}"
-fi
-# Bash builtins, not an external matcher with a GNU-only alternation: on a BSD
-# sed that pattern matches nothing, so the check would pass everywhere by being
-# dead. Proven by control below — it must SEE the variables when they are there.
-check "no Home Assistant credentials reach the model" "$(cat "${claude_env}")" ""
 
-# The control that makes the line above mean anything: with the stripping removed
-# the same recorder must report the leak. Without this, an empty result and a
-# broken recorder are the same result.
-CC_MONITOR_DATA_DIR="${work}/data" CC_MONITOR_NOTIFY_CMD="${work}/notify" \
-CC_MONITOR_CHECK_CMD="${work}/check" CC_MONITOR_CURL="${work}/goodlog" \
-SUPERVISOR_TOKEN="tok" HA_TOKEN="tok" CLAUDE_ANSWER=OK \
-    bash -c 'cat > /dev/null; . /dev/stdin' </dev/null 2>/dev/null || true
-SUPERVISOR_TOKEN="tok" HA_TOKEN="tok" "${work}/claude" </dev/null >/dev/null 2>&1
-if [ -n "$(cat "${claude_env}")" ]; then
-    ok "and the check that says so can actually see a leak when there is one"
+# One stuck call would stop the loop, and a loop that is not looping notifies
+# exactly as often as a healthy one: never. Counted for THIS run — the counter is
+# cleared above, because it accumulates across every run in the file.
+check "the log fetch and the analysis are both time-limited" \
+      "$(wc -l < "${timeout_used}" | tr -d ' ')" "2"
+
+if [ -e "${claude_argv}" ]; then
+    ok "the analysing command was invoked at all"
+else
+    bad "the analysing command was never invoked — every check below would measure nothing"
+fi
+
+# Exact equality, not a substring: the argument list is short and fixed, and
+# `*"--allowed-tools"*` is equally true of `--allowed-tools "Bash,Write,WebFetch"`,
+# which is the opposite of what this asserts.
+check "the model is run with no tools and no permission bypass" \
+      "$(cat "${claude_argv}" 2>/dev/null)" "-p --allowed-tools "
+
+# Bash builtins, not an external matcher: a matcher with a GNU-only alternation
+# matches nothing on BSD, so the check would report "nothing leaked" on a build
+# where everything did — and keep doing so.
+check "no Home Assistant credentials reach the model's environment" \
+      "$(cat "${claude_env}" 2>/dev/null)" ""
+
+# The recorder must be able to SEE a leak, or its silence means nothing.
+SUPERVISOR_TOKEN="tok" SUPERVISOR_API_TOKEN="tok" HA_TOKEN="tok" HASS_TOKEN="tok" \
+    "${work}/claude" </dev/null >/dev/null 2>&1
+if [ -n "$(cat "${claude_env}" 2>/dev/null)" ]; then
+    ok "and the recorder that says so can see a leak when there is one"
 else
     bad "the credential check cannot see anything — it would pass no matter what"
 fi
+rm -f "${claude_argv}" "${claude_env}"
 
-# --- 8. the calls are time-limited -------------------------------------------
-# One stuck call would stop the loop, and a loop that is not looping notifies
-# exactly as often as a healthy one: never.
-check "the log fetch and the analysis are both bounded" "$(wc -l < "${timeout_used}" | tr -d ' ')" "2"
+# The environment is one route in; the prompt is the other, and it is the one a
+# reader would assume "reaches the model" covers.
+run goodlog OK >/dev/null
+if [[ "$(cat "${claude_in}")" != *"tok-supervisor"* ]]; then
+    ok "and no credential is pasted into the prompt itself"
+else
+    bad "a Home Assistant token was interpolated into the prompt"
+fi
 
 # --- 9. a notifier that cannot deliver does not silence the warning -----------
 # The condition marker must be written only after the message is actually out.
