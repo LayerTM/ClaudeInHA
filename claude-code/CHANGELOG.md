@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.49.3] — 2026-09-05
+
+### Fixed
+- **The optional health monitoring has never actually run.** With
+  `monitoring_interval_hours` set, the add-on was supposed to look over your Home
+  Assistant log every few hours and message you if something looked wrong. Two
+  things stopped it, and both were invisible: the command that does the reading
+  was called in a way that left it with nothing to read, and the log it tried to
+  fetch was removed from Home Assistant earlier this year, so what arrived in its
+  place was the words "404: Not Found". Silence then looked exactly like good
+  news — the check produced no message either way.
+
+  The log now comes from the endpoint Home Assistant actually serves, the reply
+  is checked rather than assumed, and — the part that matters most — **a check
+  that cannot run now tells you so** instead of passing for a healthy one. You
+  will get one message when it breaks and nothing further until it recovers, so a
+  lasting problem does not turn into a notification every few hours.
+
+  If you had this switched on, it was doing nothing. It works now.
+
 ## [1.49.2] — 2026-09-04
 
 ### Fixed
