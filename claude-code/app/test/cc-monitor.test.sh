@@ -15,7 +15,10 @@
 # consumed by --allowed-tools, which takes a list, and the command exits with no
 # input. Nothing downstream could tell that from a healthy, quiet instance.
 #
-# Requires: bash. No live Home Assistant needed.
+# Requires: bash, and nothing else. The assertions use bash's own pattern
+# matching rather than an external matcher on purpose: a missing tool makes
+# `if <tool> ...` false, and a check written as if/else then reports PASS from
+# its else branch — passing because the instrument is dead.
 #
 # Run:  bash claude-code/app/test/cc-monitor.test.sh
 #   or, from claude-code/app:  npm run test:monitor   (see package.json)
@@ -100,14 +103,15 @@ check "a healthy run exits 0"                 "${rc}" "0"
 check "a healthy run notifies nothing"        "$(notifications)" "0"
 
 # --- 6. the prompt reaches the command, on stdin ------------------------------
-if rg -q 'ERROR LOG' "${claude_in}" && rg -q 'something' "${claude_in}"; then
+seen="$(cat "${claude_in}")"
+if [[ "${seen}" == *"ERROR LOG"* && "${seen}" == *"something"* ]]; then
     ok "the prompt and the log reach the analysing command"
 else
-    bad "the prompt never reached the analysing command (stdin was: $(head -c 80 "${claude_in}"))"
+    bad "the prompt never reached the analysing command (stdin was: ${seen:0:80})"
 fi
 
 # The colour codes journald emits are noise to a reader and to the model.
-if rg -q "$(printf '\033')" "${claude_in}"; then
+if [[ "${seen}" == *$'\033'* ]]; then
     bad "terminal colour codes were passed through into the prompt"
 else
     ok "colour codes are stripped out of the log"
@@ -123,10 +127,11 @@ check "a finding is notified"                 "$(notifications)" "1"
 rc="$(run badlog OK)"
 check "an unreadable log source exits non-zero" "${rc}" "1"
 check "an unreadable log source is notified"    "$(notifications)" "1"
-if rg -qi 'cannot read' "${notify_out}"; then
+said="$(cat "${notify_out}")"
+if [[ "${said}" == *"cannot read"* ]]; then
     ok "and the notification says the check is not running"
 else
-    bad "the notification does not say the check stopped: $(cat "${notify_out}")"
+    bad "the notification does not say the check stopped: ${said}"
 fi
 
 # --- 5a. it does not repeat on the next cycle ---------------------------------
@@ -145,10 +150,11 @@ rm -rf "${work}/data"
 rc="$(run goodlog '' 1)"
 check "a silent analysis exits non-zero"      "${rc}" "1"
 check "a silent analysis is notified"         "$(notifications)" "1"
-if rg -qi 'not producing an answer' "${notify_out}"; then
+said="$(cat "${notify_out}")"
+if [[ "${said}" == *"not producing an answer"* ]]; then
     ok "and the notification says nothing is being reported"
 else
-    bad "the notification does not describe the silence: $(cat "${notify_out}")"
+    bad "the notification does not describe the silence: ${said}"
 fi
 
 # An empty answer with a ZERO exit is the same defect wearing a different hat.
