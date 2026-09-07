@@ -40,7 +40,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Node.js from official dist tarballs (latest, deterministic, arch-aware)
-ARG NODE_VERSION=26.5.0
+ARG NODE_VERSION=26.8.1
 RUN arch="$(dpkg --print-architecture)" \
     && case "${arch}" in \
          amd64) node_arch="x64" ;; \
@@ -83,8 +83,8 @@ ENV CHROME_BIN=/usr/bin/chromium
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # --- Home Assistant CLIs (static, arch-aware) ---
-ARG HA_CLI_VERSION=5.2.0
-ARG YQ_VERSION=4.53.3
+ARG HA_CLI_VERSION=5.5.0
+ARG YQ_VERSION=4.53.6
 RUN arch="$(dpkg --print-architecture)" \
     && case "${arch}" in \
          amd64) ha_asset=ha_amd64; yq_asset=yq_linux_amd64 ;; \
@@ -101,7 +101,7 @@ RUN arch="$(dpkg --print-architecture)" \
 # Pillow: Python imaging for ad-hoc crops/resizes of dashboard screenshots
 # (ImageMagick's `magick` covers the CLI side).
 ARG HASS_CLI_VERSION=1.0.0
-ARG HASS_MCP_VERSION=0.5.0
+ARG HASS_MCP_VERSION=0.6.0
 ARG PILLOW_VERSION=12.3.0
 RUN pip install --no-cache-dir --break-system-packages \
         "homeassistant-cli==${HASS_CLI_VERSION}" \
@@ -110,13 +110,13 @@ RUN pip install --no-cache-dir --break-system-packages \
 
 # --- Playwright MCP (baked, pinned) ---
 # Uses the system Chromium via --executable-path at runtime; no browser download.
-ARG PLAYWRIGHT_MCP_VERSION=0.0.78
+ARG PLAYWRIGHT_MCP_VERSION=0.0.80
 RUN npm install -g "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
     && npm cache clean --force
 
 # --- ccstatusline (the rich status line the desktop Claude Code uses) ---
 # Bundled so no runtime npx download is needed; wired as Claude's statusLine.
-ARG CCSTATUSLINE_VERSION=2.2.23
+ARG CCSTATUSLINE_VERSION=2.2.29
 RUN npm install -g "ccstatusline@${CCSTATUSLINE_VERSION}" \
     && npm cache clean --force
 
@@ -131,7 +131,7 @@ RUN cd /opt/claude-console \
 
 # Bundled terminal font (JetBrains Mono, OFL) — crisp, consistent glyphs across
 # every client, served locally so nothing is fetched at runtime.
-ARG JETBRAINS_MONO_VERSION=5.2.8
+ARG JETBRAINS_MONO_VERSION=5.3.0
 RUN mkdir -p /opt/claude-console/public/fonts \
     && curl -fsSL --retry 3 --retry-delay 2 \
         "https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@${JETBRAINS_MONO_VERSION}/files/jetbrains-mono-latin-400-normal.woff2" \
