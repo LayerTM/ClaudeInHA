@@ -287,9 +287,9 @@ export CLAUDE_PROMPT_USAGE_BIN=/usr/local/bin/ha-usage
 # still cannot come from the add-on configuration.
 unset CLAUDE_PROMPT_HA_MCP_URL
 # Time-based fallback (not a fixed "unknown") so asset cache-busting still gets a
-# fresh key if bashio::addon.version ever fails — a fixed string would freeze the
+# fresh key if bashio::app.version ever fails — a fixed string would freeze the
 # cache key and defeat busting for the whole outage.
-export ADDON_VERSION="$(bashio::addon.version 2>/dev/null || echo "unknown-$(date +%s)")"
+export ADDON_VERSION="$(bashio::app.version 2>/dev/null || echo "unknown-$(date +%s)")"
 
 # --- Proactive monitoring (opt-in via monitoring_interval_hours > 0) ---
 # Periodically asks Claude to review the HA error log/config and pushes a short

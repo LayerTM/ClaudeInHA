@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.50.1] — 2026-09-07
+
+### Fixed
+- **Two deprecation warnings are gone from the add-on log.** The newer base image
+  that came with 1.50.0 started complaining about two things this add-on was
+  doing the old way: where it registers its own service with the container's
+  init, and which helper it asks for its version number. Both were renamed
+  upstream and both still worked, so nothing was broken — but a startup log that
+  cries wolf twice on every restart makes the one warning that matters harder to
+  notice. The add-on now uses the current form of each, and starts with a clean
+  log again.
+
 ## [1.50.0] — 2026-09-07
 
 ### Changed
