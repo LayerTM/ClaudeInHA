@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.51.1] — 2026-09-07
+
+### Changed
+- Housekeeping only, with no effect on how the add-on runs: it no longer ships
+  its own copy of a container-init file that the base image already provides
+  identically. One fewer thing to keep in step with upstream.
+
 ## [1.51.0] — 2026-09-07
 
 ### Fixed
