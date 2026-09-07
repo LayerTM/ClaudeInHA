@@ -11,10 +11,28 @@
   dependencies moved up too, which clears a security advisory that had been
   reported against one of them.
 
-  Nothing about how the add-on behaves has changed — this is a keep-current
-  maintenance release. Verified with a full image build for the architecture this
-  runs on, including the native terminal backend recompiled against the new Node,
-  and the whole test suite green.
+  The add-on itself behaves exactly as before. Verified with a full image build
+  for the architecture this runs on, including the native terminal backend
+  recompiled against the new Node, and the whole test suite green.
+
+### Added
+- **Claude can edit your dashboards now — if you have set an *HA Token*.** That
+  is not a change the add-on makes; it arrives with the refreshed Home Assistant
+  MCP server, which gained thirteen Lovelace tools. Four of them only look:
+  listing your dashboards, their views and sections, and reading a dashboard's
+  stored configuration. **Nine of them write** — adding, updating, moving and
+  removing cards and views, replacing a whole dashboard configuration, and
+  restoring one from a backup.
+
+  Every write saves the dashboard's current configuration first, and those
+  backups land under the add-on's persistent storage, so they survive restarts
+  and updates and Claude can put a dashboard back the way it was. The tools also
+  accept a dry run, so you can ask what a change would do before it happens.
+
+  This is worth knowing before you ask Claude to tidy a dashboard up. It is
+  available only with the *HA Token* option set — that token is what gives those
+  tools access at all — so if you have left it empty, nothing here applies to
+  you.
 
 ## [1.49.3] — 2026-09-05
 
