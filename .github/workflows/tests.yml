@@ -32,6 +32,10 @@ jobs:
         working-directory: claude-code/app
         run: npm run test:monitor
 
+      - name: Run audit-log hook tests (bash + jq)
+        working-directory: claude-code/app
+        run: npm run test:audit
+
   lint-js:
     name: JS lint & types
     runs-on: ubuntu-latest

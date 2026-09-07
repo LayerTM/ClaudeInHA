@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.51.0] — 2026-09-07
+
+### Fixed
+- **The action log was blind to anything an assistant tool changed.** The add-on
+  keeps a record of the Home Assistant–affecting things Claude does — service
+  calls, edits to files under your config, Core restarts, safety backups — which
+  you can read with `ha-audit`. It only ever watched Claude's shell and
+  file-editing tools. Everything done through a connected tool server went
+  unrecorded, and that stopped being theoretical in 1.50.0: the nine new tools
+  that write to your dashboards each changed a dashboard and left the log empty.
+
+  Those actions are now recorded, and not by naming the nine tools — a list like
+  that is out of date the day a tool server adds something. The log now watches
+  every connected tool and decides by what the tool *is*: the ones that only look
+  are left out, and anything else is written down. **A tool the add-on has never
+  seen counts as a change**, so a new way to alter something cannot slip through
+  by being new. Reading your states, history or dashboards still adds nothing to
+  the log, so it stays a record of what changed rather than of everything asked.
+
+  A preview is now labelled as one: several dashboard tools can be asked to show
+  what a change *would* do, and those used to be written down as if the change
+  had happened.
+
+  **This reaches installations that already have the add-on**, not only new ones.
+  The hook settings live in storage that survives an update, so an earlier
+  version of this fix would have shipped in the image and changed nothing for
+  anyone already running it. If you have edited the hook yourself, your version
+  is left exactly as it is.
+
+  Nothing about what Claude is allowed to do has changed — this only makes what
+  it did visible.
+
 ## [1.50.1] — 2026-09-07
 
 ### Fixed
