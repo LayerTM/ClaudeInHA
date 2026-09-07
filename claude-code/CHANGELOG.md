@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.50.0] — 2026-09-07
+
+### Changed
+- **Everything the add-on is built from is back on its newest release.** The
+  container now runs on **Node 26.8.1** on the current Home Assistant base image,
+  with the bundled Home Assistant CLI, `yq`, the Home Assistant MCP server, the
+  Playwright MCP server, the status line and the console's terminal font all
+  refreshed to their latest versions. The console's own build and type-checking
+  dependencies moved up too, which clears a security advisory that had been
+  reported against one of them.
+
+  Nothing about how the add-on behaves has changed — this is a keep-current
+  maintenance release. Verified with a full image build for the architecture this
+  runs on, including the native terminal backend recompiled against the new Node,
+  and the whole test suite green.
+
 ## [1.49.3] — 2026-09-05
 
 ### Fixed
