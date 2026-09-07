@@ -1,13 +1,68 @@
 #!/usr/bin/env bash
 # Claude Code PostToolUse hook — audit log. Record the HA-affecting actions
 # Claude takes (service calls, config-file edits, Core restarts/reloads,
-# backups) to /data/claude-audit.log. View with `ha-audit`.
+# backups, and anything a connected tool server changes) to
+# /data/claude-audit.log. View with `ha-audit`.
+#
+# MCP tools are named mcp__<server>__<tool>, so they are matched by SHAPE rather
+# than by a list of tool names: a list goes stale the moment a server gains a
+# tool, which is exactly how the dashboard-editing tools arrived unaudited. The
+# split is a read-only allowlist of VERB PREFIXES, and the polarity is
+# deliberate — a verb this hook has never seen is LOGGED, not skipped, so a new
+# way to change something cannot become invisible by being new.
+#
+# Two honest limits of a prefix rule, recorded so nobody reads the polarity as
+# absolute:
+#   * a composite name whose FIRST verb reads (get_and_update_dashboard,
+#     find_and_replace, read_modify_write, get_or_create_helper) is skipped.
+#     Measured, not assumed. Narrowing this needs a per-server signal that does
+#     not exist in the tool name; if it starts to matter, the fix is upstream
+#     naming or an explicit per-server rule, not a longer regex.
+#   * the read allowlist is a NAME rule, so a server that calls a write
+#     `get_thing` is skipped. The inverse — a write denylist — was rejected:
+#     staleness there produces SILENCE, while staleness here produces an extra
+#     line. Noise is recoverable, a blind spot is not.
+#
+# Six read tools of the two bundled servers are named after nouns rather than
+# verbs — Playwright's browser_snapshot, browser_take_screenshot,
+# browser_console_messages and browser_network_requests, and hass-mcp's
+# system_overview and domain_summary_tool — so they are listed by their exact
+# names instead of by suffix. Suffix patterns were tried first and swallowed real
+# writes on every other server: send_messages, approve_requests and
+# reset_snapshot all read as "reads". A list is acceptable on the READ side for
+# the reason above — if a server gains a read tool it costs one extra line, never
+# a missed change.
 set -o pipefail
+
+# Same override convention as cc-alerts and cc-monitor, so the read/write split
+# below can be exercised by a test without a container.
+DATA_DIR="${CC_AUDIT_DATA_DIR:-/data}"
 
 input="$(cat)"
 tool="$(printf '%s' "${input}" | jq -r '.tool_name // ""' 2>/dev/null)"
 ts="$(date '+%Y-%m-%d %H:%M:%S')"
 line=""
+
+# Was this a preview rather than a change? Several dashboard tools take a
+# `dry_run`, and the flag sits LAST in their arguments — past the 300-character
+# cap below — so without this a preview and a real write produced byte-identical
+# log lines. PostToolUse receives the tool's own reply as well as its arguments,
+# so both are consulted. Polarity again: only an explicit dry_run marks a line as
+# a preview; anything unproven is recorded as a change.
+preview=""
+case "${tool}" in
+    mcp__*)
+        if printf '%s' "${input}" | jq -e '
+                ((.tool_input     | objects | .dry_run?) == true)
+             or ((.tool_response  | objects | .dry_run?) == true)
+             or (([.tool_response | objects | .content?  | arrays | .[]? | .text? // ""] | join(" "))
+                 | test("\"dry_run\"[[:space:]]*:[[:space:]]*true"))
+             or ((.tool_response | strings) | test("\"dry_run\"[[:space:]]*:[[:space:]]*true"))
+            ' >/dev/null 2>&1; then
+            preview=" (dry-run)"
+        fi
+        ;;
+esac
 
 case "${tool}" in
     Bash)
@@ -16,11 +71,32 @@ case "${tool}" in
             line="${ts}  cmd: $(printf '%s' "${cmd}" | tr '\n' ' ' | head -c 300)"
         fi
         ;;
-    Edit|Write|MultiEdit)
-        fp="$(printf '%s' "${input}" | jq -r '.tool_input.file_path // ""' 2>/dev/null)"
+    Edit|Write|MultiEdit|NotebookEdit)
+        # NotebookEdit names its target notebook_path, not file_path; it reaches
+        # this hook because the matcher's `Edit` is an unanchored regex. Both keys
+        # are read so adding it here is not a silent no-op.
+        fp="$(printf '%s' "${input}" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' 2>/dev/null)"
         case "${fp}" in /homeassistant/*|/config/*) line="${ts}  ${tool}: ${fp}" ;; esac
+        ;;
+    mcp__*)
+        # Read-only verbs, matched on the tool's own name (the part after the
+        # last "__"), plus Playwright's noun-named reads. Everything else is
+        # treated as a change and logged.
+        case "${tool##*__}" in
+            get_*|list_*|read_*|find_*|search_*|query_*|fetch_*|describe_*|inspect_*) : ;;
+            browser_snapshot|browser_take_screenshot|browser_console_messages|browser_network_requests) : ;;
+            system_overview|domain_summary_tool) : ;;
+            *)
+                # jq -c keeps the arguments on one line; the cap keeps a whole
+                # dashboard configuration from filling the log with one entry.
+                # The dry-run marker goes BEFORE the arguments so the cap cannot
+                # cut it off.
+                args="$(printf '%s' "${input}" | jq -c '.tool_input // {}' 2>/dev/null | tr -d '\n')"
+                line="${ts}  ${tool}${preview}: $(printf '%s' "${args}" | head -c 300)"
+                ;;
+        esac
         ;;
 esac
 
-[ -n "${line}" ] && echo "${line}" >> /data/claude-audit.log
+[ -n "${line}" ] && echo "${line}" >> "${DATA_DIR}/claude-audit.log"
 exit 0

@@ -9,6 +9,8 @@
 # cannot be used for list options).
 # shellcheck source=../../../../usr/local/lib/addon-config.sh
 source /usr/local/lib/addon-config.sh
+# shellcheck source=../../../../usr/local/lib/addon-hooks.sh
+source /usr/local/lib/addon-hooks.sh
 
 bashio::log.info "Initializing Claude Code add-on..."
 
@@ -209,21 +211,16 @@ if [ -z "${cur_sl_cmd}" ] \
 fi
 
 # --- Safety hooks: backup-before-risky-change, action audit log, needs-input push ---
-# Seeded only when the user has no hooks of their own, so a custom hooks config
-# is never overwritten. cc-hook-notify is a no-op unless HA_NOTIFY_SERVICE is set.
-if [ "$(jq -r '(.hooks // {}) | length' "${settings_file}" 2>/dev/null)" = "0" ]; then
-    tmp_settings="$(mktemp)"
-    if jq '.hooks = {
-            PreToolUse:  [{matcher: "Bash|Edit|Write|MultiEdit", hooks: [{type: "command", command: "/usr/local/bin/cc-hook-backup"}]}],
-            PostToolUse: [{matcher: "Bash|Edit|Write|MultiEdit", hooks: [{type: "command", command: "/usr/local/bin/cc-hook-audit"}]}],
-            Notification: [{hooks: [{type: "command", command: "/usr/local/bin/cc-hook-notify"}]}]
-        }' "${settings_file}" > "${tmp_settings}" 2>/dev/null; then
-        mv "${tmp_settings}" "${settings_file}"
-        bashio::log.info "Safety hooks configured (backup / audit / notify)"
-    else
-        rm -f "${tmp_settings}"
-    fi
-fi
+# Seeded on a fresh install; on an existing one, only OUR own superseded matcher
+# is updated and anything the user has touched is left alone. /data survives an
+# update, so a seed-only guard would ship a matcher change to nobody who already
+# has the add-on — see addon-hooks.sh for why that is worth a migration.
+# cc-hook-notify is a no-op unless HA_NOTIFY_SERVICE is set.
+case "$(hooks_seed_or_migrate "${settings_file}")" in
+    seeded)   bashio::log.info "Safety hooks configured (backup / audit / notify)" ;;
+    migrated) bashio::log.info "Safety hooks updated (audit log now covers connected tool servers)" ;;
+    failed)   bashio::log.warning "Could not write the safety hooks into ${settings_file} — leaving it as it is" ;;
+esac
 
 cp /usr/share/claude-ha/CLAUDE.md /data/workdir/CLAUDE.md
 

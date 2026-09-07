@@ -14,6 +14,7 @@
     "test:alerts": "bash test/cc-alerts.test.sh",
     "test:config": "bash test/config-list.test.sh",
     "test:monitor": "bash test/cc-monitor.test.sh",
+    "test:audit": "bash test/cc-hook-audit.test.sh",
     "lint": "eslint .",
     "typecheck": "tsc -p jsconfig.json"
   },
