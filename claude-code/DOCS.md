@@ -62,7 +62,7 @@ reconciled on every start.
 | Option | Purpose |
 |---|---|
 | `api_key` / `oauth_token` | Authentication (see above). Stored encrypted by the Supervisor. |
-| `ha_token` | A Home Assistant Long-Lived Access Token (Profile → Security). Enables dashboard screenshots, `hass-cli`, `hass-mcp`, and WebSocket/REST access as you. Persists across updates. Optional. |
+| `ha_token` | A Home Assistant Long-Lived Access Token (Profile → Security). Enables dashboard screenshots, `hass-cli`, `hass-mcp` — including its tools for reading **and editing** Lovelace dashboards — and WebSocket/REST access as you. Persists across updates. Optional. |
 | `bypass_permissions` | Start Claude with `--dangerously-skip-permissions` (fully autonomous). |
 | `auto_update` | Update the CLI at every add-on start. Manual `update-claude` always works. |
 | `model` | Model override, e.g. `claude-sonnet-4-6`. |
