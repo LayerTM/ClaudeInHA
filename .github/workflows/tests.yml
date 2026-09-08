@@ -36,6 +36,86 @@ jobs:
         working-directory: claude-code/app
         run: npm run test:audit
 
+  # The architectures come from the add-on's own files rather than being listed
+  # here, so adding one cannot leave it unbuilt — and the script refuses to answer
+  # when config.yaml and build.yaml disagree about the set.
+  arches:
+    name: Architectures
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.read.outputs.list }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - name: Test the script the matrix comes from
+        run: python3 .github/scripts/test_addon_arches.py
+      - name: Read the architectures the add-on declares
+        id: read
+        run: |
+          list="$(python3 .github/scripts/addon_arches.py)"
+          echo "Declared architectures: ${list}"
+          echo "list=${list}" >> "$GITHUB_OUTPUT"
+
+  # A broken Dockerfile used to be invisible until a user's own update rebuilt
+  # the image on their device. This builds it for every declared architecture,
+  # natively, and publishes nothing.
+  image:
+    name: Add-on image (${{ matrix.arch }})
+    needs: arches
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(needs.arches.outputs.list) }}
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - name: Resolve the platform and base image for ${{ matrix.arch }}
+        id: target
+        run: |
+          case "${{ matrix.arch }}" in
+            amd64)   platform=linux/amd64 ;;
+            aarch64) platform=linux/arm64 ;;
+            *)
+              echo "No Docker platform is mapped for '${{ matrix.arch }}'."
+              echo "It is declared in the add-on but this job does not know how"
+              echo "to build it — add the mapping here rather than dropping it."
+              exit 1
+              ;;
+          esac
+          echo "platform=${platform}" >> "$GITHUB_OUTPUT"
+          echo "from=$(python3 .github/scripts/addon_arches.py --build-from '${{ matrix.arch }}')" >> "$GITHUB_OUTPUT"
+      - name: Refuse to pass by emulating the target
+        run: |
+          # Building arm64 under QEMU would still go green while taking half an
+          # hour and exercising a different code path than users get. If the
+          # native runner is unavailable this must fail loudly, not quietly
+          # emulate: the point of the job is to build what ships.
+          want='${{ steps.target.outputs.platform }}'
+          have="linux/$(dpkg --print-architecture)"
+          if [ "${want}" != "${have}" ]; then
+            echo "This runner is ${have} but the job must build ${want}."
+            echo "Give this architecture a runner that matches it."
+            exit 1
+          fi
+      - name: Build the add-on image (no push)
+        run: |
+          docker build --pull \
+            --platform '${{ steps.target.outputs.platform }}' \
+            --build-arg BUILD_FROM='${{ steps.target.outputs.from }}' \
+            --tag 'addon-image:${{ matrix.arch }}' \
+            claude-code
+      - name: Check the image runs what it shipped
+        run: |
+          # A build that succeeds and produces a binary that cannot execute on
+          # this architecture is the exact failure a user would hit, so ask the
+          # image, not the builder.
+          docker run --rm --platform '${{ steps.target.outputs.platform }}' \
+            --entrypoint /root/.local/bin/claude 'addon-image:${{ matrix.arch }}' --version
+          docker run --rm --platform '${{ steps.target.outputs.platform }}' \
+            --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
+            -e "require('/opt/claude-console/node_modules/node-pty'); console.log('node-pty loads')"
+
   lint-js:
     name: JS lint & types
     runs-on: ubuntu-latest
