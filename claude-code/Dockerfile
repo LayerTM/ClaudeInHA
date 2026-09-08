@@ -51,12 +51,66 @@ RUN arch="$(dpkg --print-architecture)" \
        | tar -xJ -C /usr/local --strip-components=1 --no-same-owner \
     && node --version && npm --version
 
-# Claude Code native binary.
-# Installed to /root/.local/bin/claude — copied to persistent /data/home at runtime.
-# HOME is set inline for this RUN only (not as ENV) so s6's container_environment
-# does not bake HOME=/root in and override the persistent HOME=/data/home.
-RUN HOME=/root curl -fsSL https://claude.ai/install.sh | bash \
-    && /root/.local/bin/claude --version   # fail the build if the binary can't run on this base
+# --- Claude Code native binary (pinned, checksum-verified) ---
+# Not `curl https://claude.ai/install.sh | bash`: that executes whatever the
+# script says on the day of the build and always installs the CURRENT release
+# (its optional version argument is passed to `claude install`, not to the
+# download), so two builds of the same commit could ship different binaries and
+# nothing was verified against a value this repository controls.
+#
+# The release channel publishes, per version, a manifest naming the SHA-256 of
+# each platform's binary. That is the same check the official installer performs
+# on the artifact it downloads, so this loses no verification while gaining a
+# reproducible version and executing nothing from the network.
+#
+# The layout below is the one `claude install` produces and the one the add-on's
+# service script depends on (it copies ~/.local wholesale and re-points the
+# persistent copy): the real binary under share/claude/versions/<version>, with
+# bin/claude a symlink to it. Both are asserted after the install, so an upstream
+# change of shape fails the build here instead of at a user's next start.
+#
+# A detached PGP signature of the manifest is also published, at
+# <version>/manifest.json.sig. It is deliberately NOT used: verifying it needs
+# Anthropic's public key from a channel whose trust could be established, and
+# fetching the key from the same bucket would prove nothing. If that key gets a
+# documented home, it belongs here — it is strictly stronger than the checksum.
+ARG CLAUDE_CODE_VERSION=2.1.263
+ARG CLAUDE_DOWNLOAD_BASE=https://downloads.claude.ai/claude-code-releases
+# Every fallible step carries its own message. In a single `A && B && C || D`
+# chain the `||` binds to the WHOLE chain, so the first failure jumps straight to
+# the last handler: a 404 on the manifest printed "Pinned 9.9.9 but the binary
+# reports ''" — true that the build failed, wrong about why. `set -o pipefail`
+# makes the very first assignment able to do that. Each guard is braced so it can
+# only fire for its own step.
+RUN arch="$(dpkg --print-architecture)" \
+    && case "${arch}" in \
+         amd64) claude_platform="linux-x64" ;; \
+         arm64) claude_platform="linux-arm64" ;; \
+         *) echo "Unsupported architecture: ${arch}"; exit 1 ;; \
+       esac \
+    && claude_bin="/root/.local/share/claude/versions/${CLAUDE_CODE_VERSION}" \
+    && { expected="$(curl -fsSL --retry 3 --retry-delay 2 \
+           "${CLAUDE_DOWNLOAD_BASE}/${CLAUDE_CODE_VERSION}/manifest.json" \
+           | jq -er --arg p "${claude_platform}" '.platforms[$p].checksum')" \
+         || { echo "No manifest, or no ${claude_platform} entry, for Claude Code ${CLAUDE_CODE_VERSION}"; exit 1; }; } \
+    && { [ "${#expected}" -eq 64 ] \
+         || { echo "Manifest checksum for ${claude_platform} is not 64 characters: '${expected}'"; exit 1; }; } \
+    && case "${expected}" in \
+         *[!0-9a-f]*) echo "Manifest checksum for ${claude_platform} is not hex: '${expected}'"; exit 1 ;; \
+       esac \
+    && mkdir -p /root/.local/share/claude/versions /root/.local/bin \
+    && { curl -fsSL --retry 3 --retry-delay 2 -o "${claude_bin}" \
+           "${CLAUDE_DOWNLOAD_BASE}/${CLAUDE_CODE_VERSION}/${claude_platform}/claude" \
+         || { echo "Could not download Claude Code ${CLAUDE_CODE_VERSION} for ${claude_platform}"; exit 1; }; } \
+    && { printf '%s  %s\n' "${expected}" "${claude_bin}" | sha256sum -c - \
+         || { echo "Claude Code ${CLAUDE_CODE_VERSION} for ${claude_platform} does not match the checksum the manifest publishes"; exit 1; }; } \
+    && chmod +x "${claude_bin}" \
+    && ln -sfn "${claude_bin}" /root/.local/bin/claude \
+    && { [ "$(readlink /root/.local/bin/claude)" = "${claude_bin}" ] \
+         || { echo "Launcher symlink does not point at ${claude_bin}"; exit 1; }; } \
+    && installed="$(/root/.local/bin/claude --version | awk '{print $1}')" \
+    && { [ "${installed}" = "${CLAUDE_CODE_VERSION}" ] \
+         || { echo "Pinned ${CLAUDE_CODE_VERSION} but the binary reports '${installed}'"; exit 1; }; }
 
 ENV PATH="/root/.local/bin:${PATH}"
 ENV USE_BUILTIN_RIPGREP=0

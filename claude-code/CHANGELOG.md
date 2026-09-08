@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.52.0] — 2026-09-08
+
+### Changed
+- **The add-on now builds the same way twice.** The Claude Code binary inside the
+  image was installed by fetching a script from the internet and running it,
+  which always took whatever release was current that minute. Two builds of the
+  same add-on version could therefore contain different versions of Claude, and
+  the only thing standing between the build and the network was trust.
+
+  The version is now written down in this repository like every other pinned
+  tool, the binary is downloaded directly, and **its SHA-256 is checked against
+  the checksum the release publishes for that exact version** before anything is
+  allowed to run. No script from the network is executed while the image is
+  built. If the download is corrupted, or the file behind that version ever
+  changes, the build stops instead of shipping it.
+
+  Nothing changes for you day to day: it is the same Claude Code, the add-on
+  still updates it in place, and a newer one still overrides the bundled copy.
+
 ## [1.51.1] — 2026-09-07
 
 ### Changed
