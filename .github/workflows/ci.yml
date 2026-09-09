@@ -64,12 +64,41 @@ jobs:
         working-directory: claude-code/app
         run: npm run typecheck
 
+  # Both linters below run as containers the runner builds from a public
+  # registry, so a rate limit there ("toomanyrequests") fails them in seconds —
+  # before either has read a line of ours — and a run goes red for a reason that
+  # has nothing to do with the change. Each gets three attempts, 30s apart.
+  #
+  # The retry is on the STEP rather than on a pre-pull because the runner builds
+  # these images itself (`docker build -f .../Dockerfile`, no --pull), so what
+  # touches the registry is inside the action, not something we can do first.
+  #
+  # Only the last attempt is allowed to decide: a real lint failure fails all
+  # three the same way and the run is still red. ci_gates.py holds that.
   addon-linter:
     name: Add-on linter
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - name: Lint the add-on
+        id: addon1
+        continue-on-error: true
+        uses: frenck/action-addon-linter@v2
+        with:
+          path: "./claude-code"
+      - if: steps.addon1.outcome == 'failure'
+        run: sleep 30
+      - name: Lint the add-on (attempt 2)
+        id: addon2
+        if: steps.addon1.outcome == 'failure'
+        continue-on-error: true
+        uses: frenck/action-addon-linter@v2
+        with:
+          path: "./claude-code"
+      - if: steps.addon1.outcome == 'failure' && steps.addon2.outcome == 'failure'
+        run: sleep 30
+      - name: Lint the add-on (attempt 3)
+        if: steps.addon1.outcome == 'failure' && steps.addon2.outcome == 'failure'
         uses: frenck/action-addon-linter@v2
         with:
           path: "./claude-code"
@@ -80,6 +109,26 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Lint Dockerfile
+        id: hado1
+        continue-on-error: true
+        uses: hadolint/hadolint-action@v3.5.0
+        with:
+          dockerfile: claude-code/Dockerfile
+          ignore: DL3003,DL3008,DL3013,DL3018,DL3059,SC2015
+      - if: steps.hado1.outcome == 'failure'
+        run: sleep 30
+      - name: Lint Dockerfile (attempt 2)
+        id: hado2
+        if: steps.hado1.outcome == 'failure'
+        continue-on-error: true
+        uses: hadolint/hadolint-action@v3.5.0
+        with:
+          dockerfile: claude-code/Dockerfile
+          ignore: DL3003,DL3008,DL3013,DL3018,DL3059,SC2015
+      - if: steps.hado1.outcome == 'failure' && steps.hado2.outcome == 'failure'
+        run: sleep 30
+      - name: Lint Dockerfile (attempt 3)
+        if: steps.hado1.outcome == 'failure' && steps.hado2.outcome == 'failure'
         uses: hadolint/hadolint-action@v3.5.0
         with:
           dockerfile: claude-code/Dockerfile
