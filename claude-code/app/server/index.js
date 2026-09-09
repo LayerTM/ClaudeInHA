@@ -105,7 +105,7 @@ for (const [route, mod] of Object.entries(VENDOR)) {
   app.get(route, (req, res) => res.sendFile(file, { maxAge: '1d' }));
 }
 
-app.use('/api', createRouter({ uploadDir: UPLOAD_DIR }));
+app.use('/api', createRouter({ uploadDir: UPLOAD_DIR, viewerCount: terminal.viewerCount }));
 
 const server = http.createServer(app);
 

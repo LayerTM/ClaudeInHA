@@ -44,6 +44,22 @@ setInterval(() => {
   }
 }, HEARTBEAT_MS).unref();
 
+// How many browsers are attached to the shared session. It is not a detail of
+// the connection: this is ONE session, so restarting Claude in it happens to
+// everyone at once, and the console says so before it does. Broadcast on every
+// attach and detach rather than polled, so the warning is about who is there
+// now.
+function viewerCount() {
+  return clients.size;
+}
+
+function broadcastViewers() {
+  const message = JSON.stringify({ t: 'viewers', n: clients.size });
+  for (const ws of clients) {
+    if (ws.readyState === ws.OPEN) ws.send(message);
+  }
+}
+
 const tabsSignature = (tabs) => tabs.map((t) => `${t.index}:${t.name}`).join(',');
 let lastTabsSig = null;
 
@@ -94,6 +110,7 @@ function attach(ws) {
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
   clients.add(ws);
+  broadcastViewers();
 
   const start = async () => {
     await tmux.ensureMain();
@@ -213,6 +230,7 @@ function attach(ws) {
     if (!alive) return;
     alive = false;
     clients.delete(ws);
+    broadcastViewers();
     if (drainTimer) clearInterval(drainTimer);
     if (term) {
       try { term.kill(); } catch { /* already dead */ }
@@ -238,4 +256,4 @@ function shutdown() {
   }
 }
 
-module.exports = { attach, broadcastTabs, shutdown };
+module.exports = { attach, broadcastTabs, shutdown, viewerCount };

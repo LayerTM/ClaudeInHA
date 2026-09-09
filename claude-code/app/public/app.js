@@ -39,6 +39,8 @@
     updateOutput: $('update-output'), updateRun: $('update-run'),
     updateRespawn: $('update-respawn'),
     dlgHelp: $('dlg-help'), helpStatus: $('help-status'),
+    dlgRestart: $('dlg-restart'), restartWho: $('restart-who'),
+    restartConfirm: $('restart-confirm'), restartCancel: $('restart-cancel'),
   };
 
   const state = {
@@ -52,6 +54,9 @@
     tray: [],
     kiosk: false,
     status: {},
+    // Browsers attached to this shared session, this one included. The server
+    // sends it on every attach and detach; null until it has.
+    viewers: null,
   };
 
   /* ---------------- toasts ---------------- */
@@ -516,6 +521,7 @@
         let msg;
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg.t === 'tabs') updateTabs(msg.tabs);
+        else if (msg.t === 'viewers') state.viewers = msg.n;
         else if (msg.t === 'pong') state.missedPongs = 0;
         else if (msg.t === 'fatal') toast(msg.error || 'Terminal error', { error: true, ms: 6000 });
       } else {
@@ -952,7 +958,15 @@
     }
   });
 
-  els.updateRespawn.addEventListener('click', async () => {
+  // Restarting Claude is the one control here that reaches other people: there
+  // is a single shared session behind every browser, so it stops what Claude is
+  // doing for all of them at once. When anyone else is attached, say who is
+  // affected and what happens before doing it — never after.
+  function othersWatching() {
+    return typeof state.viewers === 'number' ? Math.max(state.viewers - 1, 0) : 0;
+  }
+
+  async function respawnClaude() {
     try {
       const r = await fetch(api('claude/respawn'), { method: 'POST' });
       if (!r.ok) {
@@ -968,6 +982,24 @@
     } catch (err) {
       toast(String(err.message || err), { error: true });
     }
+  }
+
+  els.updateRespawn.addEventListener('click', () => {
+    const others = othersWatching();
+    if (!others) {
+      respawnClaude();
+      return;
+    }
+    els.restartWho.textContent = others === 1
+      ? 'One other browser is looking at this console right now.'
+      : `${others} other browsers are looking at this console right now.`;
+    els.dlgRestart.showModal();
+  });
+
+  els.restartCancel.addEventListener('click', () => els.dlgRestart.close());
+  els.restartConfirm.addEventListener('click', () => {
+    els.dlgRestart.close();
+    respawnClaude();
   });
 
   $('update-cancel').addEventListener('click', () => els.dlgUpdate.close());
@@ -1230,6 +1262,9 @@
       const r = await fetch(api('status'), { cache: 'no-store' });
       if (r.ok) {
         state.status = await r.json();
+        if (state.viewers === null && typeof state.status.viewers === 'number') {
+          state.viewers = state.status.viewers;
+        }
         if (Array.isArray(state.status.tabs)) updateTabs(state.status.tabs);
         renderCustomPrompts(state.status.quickPrompts);
       }
