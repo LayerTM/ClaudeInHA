@@ -10,21 +10,15 @@ const { createRouter } = require('./api');
 const terminal = require('./terminal');
 const promptServer = require('./prompt');
 const { stampAssetVersion } = require('./shell');
+const sources = require('./sources');
 
 const PORT = Number(process.env.CLAUDE_CONSOLE_PORT || 8099);
 const UPLOAD_DIR = process.env.UPLOAD_DIR || '/data/uploads';
 const RETENTION_DAYS = Number(process.env.UPLOAD_RETENTION_DAYS || 14);
 const DEV = process.env.CLAUDE_CONSOLE_DEV === '1';
 
-// Ingress requests arrive exclusively from the Supervisor gateway; loopback
-// is allowed for the add-on watchdog and in-container tooling.
-const ALLOWED_SOURCES = new Set([
-  '172.30.32.2', '::ffff:172.30.32.2',
-  '127.0.0.1', '::1', '::ffff:127.0.0.1',
-]);
-
 function sourceAllowed(socket) {
-  return DEV || ALLOWED_SOURCES.has(socket.remoteAddress);
+  return sources.sourceAllowed(socket, DEV);
 }
 
 const app = express();

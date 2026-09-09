@@ -46,6 +46,10 @@
   const state = {
     ws: null,
     wsAlive: false,
+    // The add-on is initializing and its placeholder holds the ingress port —
+    // an outage with a different cause, and different words, from a dropped
+    // connection.
+    starting: false,
     reconnectDelay: 1000,
     pingTimer: null,
     missedPongs: 0,
@@ -461,12 +465,21 @@
   let reconnectTimer = null;
   let reconnectAttempts = 0;
 
+  // What the outage actually is, in the words that fit it. The add-on answers
+  // the ingress port while it initializes (see server/starting.js) and says so
+  // on /api/health, so a panel that is up while the add-on restarts can tell
+  // "the console is not there yet" from "the connection dropped" — and after a
+  // few backed-off tries a bare "Reconnecting…" reads as frozen, so a longer
+  // outage says it is still working on it.
+  function outageText() {
+    if (state.starting) return 'Starting the console…';
+    return reconnectAttempts >= 3 ? 'Still trying to reconnect…' : 'Reconnecting…';
+  }
+
   function scheduleReconnect() {
     if (reconnectTimer) return;
     reconnectAttempts += 1;
-    // After a few backed-off tries a bare "Reconnecting…" can read as frozen —
-    // soften the wording so a longer outage clearly still means "working on it".
-    if (reconnectAttempts >= 3) showOverlay('Still trying to reconnect…');
+    if (reconnectAttempts >= 3 || state.starting) showOverlay(outageText());
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
       connect();
@@ -480,7 +493,7 @@
     reconnectAttempts = 0;
     state.reconnectDelay = 1000;
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-    showOverlay('Reconnecting…');
+    showOverlay(outageText());
     connect();
   });
 
@@ -502,6 +515,7 @@
       state.reconnectDelay = 1000;
       state.missedPongs = 0;
       reconnectAttempts = 0;
+      state.starting = false;
       hideOverlay();
       fitToContainer();
       send({ t: 'resize', cols: term.cols, rows: term.rows });
@@ -532,11 +546,15 @@
     ws.onclose = async () => {
       state.wsAlive = false;
       clearInterval(state.pingTimer);
-      showOverlay('Reconnecting…');
+      showOverlay(outageText());
       // Expired ingress session answers 401 — a reload re-authenticates.
+      // 503 is the add-on's startup placeholder holding the port: there is
+      // nothing to reconnect to yet, and saying so is the honest wording.
       try {
         const r = await fetch(api('health'), { cache: 'no-store' });
         if (r.status === 401) { location.reload(); return; }
+        state.starting = r.status === 503;
+        showOverlay(outageText());
       } catch { /* network down; keep retrying */ }
       scheduleReconnect();
     };
