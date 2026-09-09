@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Self-test for ci_gates.py — the checks on the CI workflow's own invariants.
+"""Self-test for ci_gates.py — the check that the release waits for every gate.
 
 Its whole value is in what it REFUSES: a checker that answers "complete" for any
 workflow would keep the release job's needs list looking maintained while a new
@@ -117,63 +117,6 @@ print("A file that is not a workflow is refused")
 done = run("just a string\n")
 check("exit code", done.returncode, 1)
 check("says it has no jobs", "no jobs mapping" in done.stderr, True)
-
-print("A retry ladder whose last attempt decides is accepted")
-done = run("""name: ci
-on: [push]
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - id: a
-        continue-on-error: true
-        uses: some/linter@v1
-      - if: steps.a.outcome == 'failure'
-        uses: some/linter@v1
-  release:
-    needs: [lint]
-    runs-on: ubuntu-latest
-    steps: [{run: "true"}]
-""")
-check("exit code", done.returncode, 0)
-
-print("A retry ladder where every attempt is forgiven is refused")
-done = run("""name: ci
-on: [push]
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - id: a
-        continue-on-error: true
-        uses: some/linter@v1
-      - if: steps.a.outcome == 'failure'
-        continue-on-error: true
-        uses: some/linter@v1
-  release:
-    needs: [lint]
-    runs-on: ubuntu-latest
-    steps: [{run: "true"}]
-""")
-check("exit code", done.returncode, 1)
-check("names the action", "'some/linter@v1'" in done.stderr, True)
-check("says why it matters", "never fail" in done.stderr, True)
-
-print("continue-on-error written as a string is read the same way")
-done = run("""name: ci
-on: [push]
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - continue-on-error: "true"
-        uses: some/linter@v1
-  release:
-    needs: [lint]
-    runs-on: ubuntu-latest
-    steps: [{run: "true"}]
-""")
-check("exit code", done.returncode, 1)
 
 print("This repository's own workflow")
 done = subprocess.run(

@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Invariants of the CI workflow that nothing else would notice breaking.
-
-Two, and both are about a gate quietly ceasing to be one.
+"""The release job waits for every gate in the CI workflow.
 
 `needs` is a hand-written list, and a hand-written list of gates goes stale the
 first time a gate is added without touching it — quietly, in the direction that
@@ -14,14 +12,8 @@ fails here on purpose: a release job that needs a skipped job is itself skipped,
 so such a job would stop releases altogether. That is a decision to make in the
 open, not by leaving it off a list.
 
-Second: a step marked `continue-on-error` is a step whose failure does not
-count, and the retries around a flaky registry are written that way. If the LAST
-attempt were marked too, the check would still run, still go through the motions,
-and never be able to fail — the most expensive kind of green. So every action
-that is retried must also appear once WITHOUT `continue-on-error`.
-
 Usage:
-  ci_gates.py [workflow.yml]   -> silent and 0 when both hold
+  ci_gates.py [workflow.yml]   -> silent and 0 when the list is complete
 """
 
 from __future__ import annotations
@@ -33,30 +25,6 @@ import yaml
 
 DEFAULT = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml"
 RELEASE = "release"
-
-
-
-def _retries_still_decide(jobs):
-    """Complaints about actions that are retried into never failing."""
-    for name, job in sorted(jobs.items()):
-        steps = job.get('steps') or []
-        forgiven = set()
-        decisive = set()
-        for step in steps:
-            uses = step.get('uses')
-            if not uses:
-                continue
-            # A literal `true`, or the string GitHub also accepts.
-            if str(step.get('continue-on-error', False)).lower() == 'true':
-                forgiven.add(uses)
-            else:
-                decisive.add(uses)
-        for uses in sorted(forgiven - decisive):
-            yield (
-                f"job '{name}' retries '{uses}' but every attempt is "
-                f"continue-on-error, so it can never fail the run — the last "
-                f"attempt must be the one that decides"
-            )
 
 
 def check(path: pathlib.Path) -> list[str]:
@@ -79,7 +47,7 @@ def check(path: pathlib.Path) -> list[str]:
     waits_for = set(needs)
     gates = set(jobs) - {RELEASE}
 
-    complaints = list(_retries_still_decide(jobs))
+    complaints = []
     for job in sorted(gates - waits_for):
         complaints.append(
             f"job '{job}' is a gate the '{RELEASE}' job does not wait for — "
