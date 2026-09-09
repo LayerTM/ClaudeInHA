@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.52.0] — 2026-09-08
+## [1.52.0] — 2026-09-09
 
 ### Changed
 - **The add-on now builds the same way twice.** The Claude Code binary inside the
@@ -10,11 +10,12 @@
   the only thing standing between the build and the network was trust.
 
   The version is now written down in this repository like every other pinned
-  tool, the binary is downloaded directly, and **its SHA-256 is checked against
-  the checksum the release publishes for that exact version** before anything is
-  allowed to run. No script from the network is executed while the image is
-  built. If the download is corrupted, or the file behind that version ever
-  changes, the build stops instead of shipping it.
+  tool — and with it the SHA-256 of the binary for each architecture, so that
+  **the download is refused unless it matches a checksum this repository
+  records**. Nothing that was downloaded runs before it matches, and no script
+  from the network is executed at any point. If the download is corrupted, or
+  the file behind that version is replaced with a different one, the build stops
+  instead of shipping it.
 
   Nothing changes for you day to day: it is the same Claude Code, the add-on
   still updates it in place, and a newer one still overrides the bundled copy.
