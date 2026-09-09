@@ -73,6 +73,27 @@ test('GET /status with unreadable options → empty quickPrompts', async () => {
   assert.deepEqual(body.quickPrompts, []);
 });
 
+test('GET /status reports how many browsers share the session', async () => {
+  // Injected rather than imported, so this needs no pty: the console passes the
+  // terminal layer's counter, and anything that forgets to gets null — the
+  // warning before a restart must never be skipped because a default said zero.
+  const app = express();
+  app.use('/api', createRouter({ uploadDir: TMP, viewerCount: () => 3 }));
+  const wired = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
+  const bare = express();
+  bare.use('/api', createRouter({ uploadDir: TMP }));
+  const unwired = await new Promise((resolve) => { const s = bare.listen(0, () => resolve(s)); });
+  try {
+    const withCount = await (await fetch(`http://127.0.0.1:${wired.address().port}/api/status`)).json();
+    assert.equal(withCount.viewers, 3);
+    const without = await (await fetch(`http://127.0.0.1:${unwired.address().port}/api/status`)).json();
+    assert.equal(without.viewers, null, 'unwired says it does not know, not "nobody"');
+  } finally {
+    await new Promise((r) => wired.close(r));
+    await new Promise((r) => unwired.close(r));
+  }
+});
+
 test('GET /alerts reflects options (enabled/interval) and active state', async () => {
   writeOptions({ proactive_alerts: true, proactive_alerts_interval_minutes: 30 });
   writeState({ items: [{ line: 'Water leak — kitchen', critical: true }, { line: 'Battery low' }] });

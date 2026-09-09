@@ -65,7 +65,11 @@ function timestamp() {
   return new Date().toISOString().replace(/[-:]/g, '').replace(/\..*$/, '').replace('T', '-');
 }
 
-function createRouter({ uploadDir }) {
+// `viewerCount` is injected rather than imported: the terminal layer pulls in
+// the pty binding, and the API has no other reason to. It defaults to nothing
+// being known rather than to a number, so a caller that forgets to wire it
+// cannot quietly report "nobody else is here".
+function createRouter({ uploadDir, viewerCount = null }) {
   const router = express.Router();
   router.use(express.json({ limit: '256kb' }));
 
@@ -83,6 +87,10 @@ function createRouter({ uploadDir }) {
       uploadDir,
       remoteControl: process.env.REMOTE_CONTROL === 'true',
       quickPrompts,
+      // How many browsers share this session right now, for a page that has
+      // just loaded and has not been told by the socket yet. null means the
+      // console did not wire it up — say nothing rather than guess.
+      viewers: viewerCount ? viewerCount() : null,
     });
   });
 
