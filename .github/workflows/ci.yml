@@ -1,0 +1,255 @@
+name: ci
+
+# Every gate this repository has, in one workflow, so that the release job can
+# depend on all of them for the same commit. They used to live in three separate
+# workflows with identical triggers, which made "release only what passed"
+# unexpressible: `needs` cannot reach across workflows, and the alternative —
+# reacting to another workflow's completion — is a second graph that can
+# disagree with the first about which commit it is talking about.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  prompt-server:
+    name: Prompt server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - name: Install dependencies
+        working-directory: claude-code/app
+        run: npm ci
+      - name: Run tests
+        working-directory: claude-code/app
+        run: npm test
+      - name: Run alerts loop tests (bash + jq)
+        working-directory: claude-code/app
+        run: npm run test:alerts
+
+      - name: Run config-list tests (bash + jq)
+        working-directory: claude-code/app
+        run: npm run test:config
+
+      - name: Run monitoring loop tests (bash)
+        working-directory: claude-code/app
+        run: npm run test:monitor
+
+      - name: Run audit-log hook tests (bash + jq)
+        working-directory: claude-code/app
+        run: npm run test:audit
+
+  lint-js:
+    name: JS lint & types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - name: Install dependencies
+        working-directory: claude-code/app
+        run: npm ci
+      - name: Lint (eslint)
+        working-directory: claude-code/app
+        run: npm run lint
+      - name: Type-check (tsc --checkJs)
+        working-directory: claude-code/app
+        run: npm run typecheck
+
+  addon-linter:
+    name: Add-on linter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Lint the add-on
+        uses: frenck/action-addon-linter@v2
+        with:
+          path: "./claude-code"
+
+  hadolint:
+    name: Dockerfile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.5.0
+        with:
+          dockerfile: claude-code/Dockerfile
+          ignore: DL3003,DL3008,DL3013,DL3018,DL3059,SC2015
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Self-test the scanner
+        working-directory: .github/scripts
+        run: python test_secret_scan.py
+      - name: Scan tracked files for secrets and personal data
+        run: python .github/scripts/secret_scan.py .
+
+  # What a release is allowed to depend on is a list, and a list goes stale the
+  # first time a gate is added without touching it. This asserts the release job
+  # waits for every other job in this file — on the pull request that adds one,
+  # rather than on main after a release has already been cut past it.
+  workflow-gates:
+    name: Workflow gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - name: Test the script that checks the gate list
+        run: python3 .github/scripts/test_ci_gates.py
+      - name: Every gate is a gate the release waits for
+        run: python3 .github/scripts/ci_gates.py
+
+  # The architectures come from the add-on's own files rather than being listed
+  # here, so adding one cannot leave it unbuilt — and the script refuses to answer
+  # when config.yaml and build.yaml disagree about the set.
+  arches:
+    name: Architectures
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.read.outputs.list }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - name: Test the script the matrix comes from
+        run: python3 .github/scripts/test_addon_arches.py
+      - name: Read the architectures the add-on declares
+        id: read
+        run: |
+          list="$(python3 .github/scripts/addon_arches.py)"
+          echo "Declared architectures: ${list}"
+          echo "list=${list}" >> "$GITHUB_OUTPUT"
+
+  # A broken Dockerfile used to be invisible until a user's own update rebuilt
+  # the image on their device. This builds it for every declared architecture,
+  # natively, and publishes nothing.
+  image:
+    name: Add-on image (${{ matrix.arch }})
+    needs: arches
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(needs.arches.outputs.list) }}
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - name: Resolve the platform and base image for ${{ matrix.arch }}
+        id: target
+        run: |
+          case "${{ matrix.arch }}" in
+            amd64)   platform=linux/amd64 ;;
+            aarch64) platform=linux/arm64 ;;
+            *)
+              echo "No Docker platform is mapped for '${{ matrix.arch }}'."
+              echo "It is declared in the add-on but this job does not know how"
+              echo "to build it — add the mapping here rather than dropping it."
+              exit 1
+              ;;
+          esac
+          echo "platform=${platform}" >> "$GITHUB_OUTPUT"
+          echo "from=$(python3 .github/scripts/addon_arches.py --build-from '${{ matrix.arch }}')" >> "$GITHUB_OUTPUT"
+      - name: Refuse to pass by emulating the target
+        run: |
+          # Building arm64 under QEMU would still go green while taking half an
+          # hour and exercising a different code path than users get. If the
+          # native runner is unavailable this must fail loudly, not quietly
+          # emulate: the point of the job is to build what ships.
+          want='${{ steps.target.outputs.platform }}'
+          have="linux/$(dpkg --print-architecture)"
+          if [ "${want}" != "${have}" ]; then
+            echo "This runner is ${have} but the job must build ${want}."
+            echo "Give this architecture a runner that matches it."
+            exit 1
+          fi
+      - name: Build the add-on image (no push)
+        run: |
+          docker build --pull \
+            --platform '${{ steps.target.outputs.platform }}' \
+            --build-arg BUILD_FROM='${{ steps.target.outputs.from }}' \
+            --tag 'addon-image:${{ matrix.arch }}' \
+            claude-code
+      - name: Check the image runs what it shipped
+        run: |
+          # A build that succeeds and produces a binary that cannot execute on
+          # this architecture is the exact failure a user would hit, so ask the
+          # image, not the builder.
+          docker run --rm --platform '${{ steps.target.outputs.platform }}' \
+            --entrypoint /root/.local/bin/claude 'addon-image:${{ matrix.arch }}' --version
+          docker run --rm --platform '${{ steps.target.outputs.platform }}' \
+            --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
+            -e "require('/opt/claude-console/node_modules/node-pty'); console.log('node-pty loads')"
+
+  # Keeps GitHub Releases in lock-step with the add-on version: whenever main
+  # carries a version with no release, this cuts one. It needs every gate above,
+  # so a release exists only for a commit that passed all of them — and it asks
+  # whether the release is already there rather than guessing from which files a
+  # push happened to touch, so a version that missed its release once is picked
+  # up by the next push instead of staying missing forever.
+  release:
+    name: Release
+    needs:
+      - prompt-server
+      - lint-js
+      - addon-linter
+      - hadolint
+      - secret-scan
+      - workflow-gates
+      - arches
+      - image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency: release
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve version from config.yaml
+        id: v
+        run: |
+          version="$(grep -oE '^version:[[:space:]]*"?[0-9]+\.[0-9]+\.[0-9]+' claude-code/config.yaml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          if [ -z "${version}" ]; then
+            echo "Could not parse version from config.yaml" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+          SHA: ${{ github.sha }}
+        run: |
+          tag="v${VERSION}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "Release ${tag} already exists — nothing to do."
+            exit 0
+          fi
+          # Extract this version's section from the changelog for the notes.
+          awk -v ver="${VERSION}" '
+            $0 ~ "^## \\[" ver "\\]" { grab = 1; next }
+            grab && /^## \[/ { exit }
+            grab { print }
+          ' claude-code/CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            printf 'Release %s\n' "${tag}" > notes.md
+          fi
+          gh release create "${tag}" \
+            --title "${tag}" \
+            --notes-file notes.md \
+            --target "${SHA}"
+          echo "Created release ${tag}."
