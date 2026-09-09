@@ -14,6 +14,21 @@ source /usr/local/lib/addon-hooks.sh
 
 bashio::log.info "Initializing Claude Code add-on..."
 
+# --- Hold the ingress port while we initialize ---
+# Everything below takes time — the persistent home, authentication, the Claude
+# version check — and the console cannot listen until it is done. Nothing
+# answering on the ingress port means Home Assistant's panel has nothing to
+# render, so a restart looked like a broken add-on instead of a busy one. This
+# answers from the first second with a page that says the console is starting;
+# it is stopped the moment before the console takes the port over.
+# Absolute path on purpose: this runs before PATH is set below, and the image's
+# node is the one that must serve it.
+CLAUDE_CONSOLE_PORT=8099 /usr/local/bin/node /opt/claude-console/server/starting.js &
+starting_pid=$!
+# If initialization exits early the placeholder must not outlive it and keep the
+# port from the console's next attempt.
+trap 'kill "${starting_pid}" 2>/dev/null || true' EXIT
+
 # --- Persistent HOME ---
 # The Claude binary is installed to /root/.local at build time and copied to
 # /data/home/.local so login state, sessions and updates survive restarts.
@@ -316,6 +331,12 @@ if [ "$(jq -r '.proactive_alerts // false' /data/options.json 2>/dev/null || ech
     bashio::log.info "Proactive alerts enabled (every ${alerts_interval}m)"
     CC_ALERTS_INTERVAL_MINUTES="${alerts_interval}" nohup /usr/local/bin/cc-alerts >/data/alerts.log 2>&1 &
 fi
+
+# Hand the port over: stop the placeholder and wait for it to actually exit, so
+# the console's bind cannot race a socket that is still held.
+kill "${starting_pid}" 2>/dev/null || true
+wait "${starting_pid}" 2>/dev/null || true
+trap - EXIT
 
 bashio::log.info "Starting Claude Console on port ${CLAUDE_CONSOLE_PORT}..."
 exec node /opt/claude-console/server/index.js
