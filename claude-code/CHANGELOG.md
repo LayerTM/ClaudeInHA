@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.54.0] — 2026-09-09
+
+### Changed
+- **Restarting Claude now asks first when someone else is watching.** There is one
+  Claude here, shared by every browser that opens the console — so restarting it
+  stopped whatever it was doing for all of them, and the button said nothing
+  about that. It now says how many other browsers are attached and what the
+  restart does to them, and waits for you to agree. The session itself is
+  untouched: any device can still pick up where another left off.
+- **The console is now sized by the largest screen watching it, not the last one
+  to arrive.** Opening the console on a phone used to shrink the shared window
+  for the desktop already using it, and it stayed shrunk. The window now follows
+  the largest viewer; a smaller screen sees part of it instead of resizing it for
+  everyone.
+
 ## [1.53.0] — 2026-09-09
 
 ### Added
