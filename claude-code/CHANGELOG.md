@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.53.0] — 2026-09-09
+
+### Added
+- **The panel now tells you the console is starting.** Restarting the add-on left
+  the Home Assistant panel blank for as long as the add-on took to get ready —
+  and a blank panel looks exactly like a broken one, with nothing to say whether
+  waiting would help or how long it might take. The panel now shows
+  "Starting the console…" from the first second of the restart and opens the
+  console by itself the moment it is ready. A panel that was already open says
+  the same thing, instead of "Reconnecting…" — there was nothing to reconnect to
+  yet.
+
 ## [1.52.0] — 2026-09-09
 
 ### Changed
