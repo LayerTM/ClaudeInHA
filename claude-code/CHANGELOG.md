@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.55.0] — 2026-09-10
+
+### Changed
+- **The chat-health window now says how much of itself it measured.** The health
+  summary published to the integration carries the span its runs cover, and on an
+  install upgraded from an older version most of those runs predate the add-on
+  recording times at all. The span was then computed from the few that had one —
+  correctly, but with nothing to say so, which made a window of dozens of chats
+  look frozen on a single old date. It now publishes `window_dated` beside the
+  bounds: how many runs they were measured from, so a one-sample point can be
+  told apart from a window that has stopped moving.
+
 ## [1.54.0] — 2026-09-09
 
 ### Changed

@@ -251,11 +251,18 @@ changed without an add-on release.
 | `last_reason` | why the most recent failure failed: a short token such as `model-error` or `timeout`, never prompt text or model output |
 | `last_failure_ts` | when that same failure happened |
 | `window_from_ts` / `window_to_ts` | the span the window actually covers |
+| `window_dated` | how many of `recent` those two bounds were measured from |
 
 Every `*_ts` is **epoch milliseconds**, and **`null` means unknown** — never "now"
 and never `0`. A window seeded from a file written before add-on 1.49.0 has no
 times at all; those runs still count, they simply cannot say when they happened.
 A field that is **absent** rather than null means the add-on predates it.
+
+**Read the span together with `window_dated`.** It says how many runs the bounds
+came from, and it is what makes them readable: `window_dated` equal to `recent`
+means the span covers the whole window, a smaller number means it covers only the
+part that carries times, and `1` means the two bounds are one sample — a point,
+not a span. Undated runs (see above) are the reason the two numbers can differ.
 
 `recent = degraded + successes`, so `recent - degraded` is the number of
 successful runs, and a failure rate is `degraded / recent`.

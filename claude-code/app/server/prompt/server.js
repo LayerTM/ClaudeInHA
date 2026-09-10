@@ -186,6 +186,15 @@ function createChatHealth(cap = 50, persist = null, now = Date.now) {
         // the newest ENTRY, never the time this snapshot was taken.
         window_from_ts: stamps.length ? Math.min(...stamps) : null,
         window_to_ts: stamps.length ? Math.max(...stamps) : null,
+        // How many of `recent` those two bounds were computed from. Without it a
+        // span is unreadable: measured on a live install, 39 runs of which ONE
+        // carried a time published from == to, and that reads as a window frozen
+        // on a date months of chats never moved — when it was one dated sample
+        // among 38 written before entries carried a time at all. The bounds and
+        // the number of samples behind them are one fact, so they are published
+        // together: `window_dated < recent` says the span covers part of the
+        // window, and `window_dated <= 1` says it is a point, not a span.
+        window_dated: stamps.length,
       };
     },
   };
