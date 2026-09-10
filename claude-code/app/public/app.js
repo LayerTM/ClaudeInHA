@@ -23,7 +23,8 @@
     tray: $('btn-tray'), trayMenu: $('menu-tray'), trayBadge: $('tray-badge'),
     actions: $('btn-actions'), actionsMenu: $('menu-actions'),
     alerts: $('btn-alerts'), alertsMenu: $('menu-alerts'), alertsBadge: $('alerts-badge'),
-    paste: $('btn-paste'), attach: $('btn-attach'), update: $('btn-update'),
+    paste: $('btn-paste'), attach: $('btn-attach'),
+    session: $('btn-session'), sessionMenu: $('menu-session'),
     fontDec: $('btn-font-dec'), fontInc: $('btn-font-inc'),
     keys: $('btn-keys'), kiosk: $('btn-kiosk'), help: $('btn-help'),
     search: $('btn-search'), searchBar: $('search-bar'), searchInput: $('search-input'),
@@ -938,7 +939,7 @@
 
   /* ---------------- update ---------------- */
 
-  els.update.addEventListener('click', async () => {
+  function openUpdateDialog() {
     els.updateOutput.classList.add('hidden');
     els.updateRespawn.classList.add('hidden');
     els.updateRun.classList.remove('hidden');
@@ -947,7 +948,7 @@
       ? `Current version: ${state.status.claudeVersion}`
       : '';
     els.dlgUpdate.showModal();
-  });
+  }
 
   els.updateRun.addEventListener('click', async () => {
     els.updateRun.disabled = true;
@@ -995,14 +996,16 @@
       state.currentTab = 0;
       send({ t: 'select', w: 0 });
       renderTabs();
-      toast('Claude restarted on the new version');
+      toast('Claude restarted');
       term.focus();
     } catch (err) {
       toast(String(err.message || err), { error: true });
     }
   }
 
-  els.updateRespawn.addEventListener('click', () => {
+  // Both ways in — the menu, and the button an update reveals — go through this,
+  // so the warning cannot be reached from one and skipped from the other.
+  function askThenRespawn() {
     const others = othersWatching();
     if (!others) {
       respawnClaude();
@@ -1012,6 +1015,25 @@
       ? 'One other browser is looking at this console right now.'
       : `${others} other browsers are looking at this console right now.`;
     els.dlgRestart.showModal();
+  }
+
+  els.updateRespawn.addEventListener('click', askThenRespawn);
+
+  // Updating and restarting are the two things that touch the Claude process, so
+  // they live together behind one button. The restart used to be reachable ONLY
+  // as the last step of an update that changed the version — which meant that on
+  // an up-to-date install there was no way to reach it at all, and no way to see
+  // the warning it carries.
+  els.session.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMenu(els.sessionMenu, els.session);
+  });
+  els.sessionMenu.addEventListener('click', (e) => {
+    const item = e.target.closest('button[data-session]');
+    if (!item) return;
+    closeMenus();
+    if (item.dataset.session === 'update') openUpdateDialog();
+    else askThenRespawn();
   });
 
   els.restartCancel.addEventListener('click', () => els.dlgRestart.close());

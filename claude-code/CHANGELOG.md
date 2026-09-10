@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.56.0] — 2026-09-10
+
+### Changed
+- **Restarting Claude no longer needs an update first.** The restart used to appear
+  only as the last step of an update that changed the version, so on an install
+  that was already current there was no way to reach it — nor the warning it
+  carries when someone else is watching. The ⬆ button is now a small menu with
+  both: update the Claude CLI, or restart Claude on its own. The restart asks the
+  same question either way, and neither touches the add-on itself.
+
 ## [1.55.0] — 2026-09-10
 
 ### Changed

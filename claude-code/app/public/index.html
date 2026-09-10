@@ -53,7 +53,13 @@
     </div>
     <button id="btn-paste" class="btn" title="Paste">📋</button>
     <button id="btn-attach" class="btn" title="Attach file or image">📎</button>
-    <button id="btn-update" class="btn" title="Update Claude CLI">⬆</button>
+    <div class="menu-wrap">
+      <button id="btn-session" class="btn" title="Claude session — update or restart">⬆</button>
+      <div id="menu-session" class="menu hidden">
+        <button data-session="update">⬆ Update Claude CLI…</button>
+        <button data-session="restart">⟳ Restart Claude</button>
+      </div>
+    </div>
     <button id="btn-font-dec" class="btn narrow-hide" title="Smaller font">A−</button>
     <button id="btn-font-inc" class="btn narrow-hide" title="Larger font">A+</button>
     <button id="btn-keys" class="btn" title="Toggle key bar">⌨</button>
@@ -163,7 +169,7 @@
       <p><b>Multi-line prompt:</b> <kbd>Shift</kbd>+<kbd>Enter</kbd> (also <kbd>Option</kbd>/<kbd>Alt</kbd>+<kbd>Enter</kbd> or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>) adds a new line without sending; plain <kbd>Enter</kbd> sends. On phones use the <kbd>⇧⏎</kbd> key on the key bar.</p>
       <p><b>Attach:</b> drag &amp; drop files anywhere, paste an image from the clipboard, or use 📎. The file is stored and its path is typed into the prompt for Claude to read.</p>
       <p><b>Tabs:</b> ✳ is Claude; + opens shell tabs. Exiting Claude shows a restart menu instead of killing the session. Wheel / swipe scrolls history.</p>
-      <p><b>Update:</b> ⬆ button, or run <code>update-claude</code> in a shell tab. Only the Claude session restarts — never the add-on.</p>
+      <p><b>Update and restart:</b> the ⬆ menu updates the Claude CLI, or restarts Claude on its own — the restart says first if anyone else is watching, because there is one Claude here and it stops for all of them. You can also run <code>update-claude</code> in a shell tab. Neither restarts the add-on.</p>
       <p id="help-status"></p>
     </div>
     <div class="dlg-actions">
