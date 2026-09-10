@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.56.1] — 2026-09-10
+
+### Fixed
+- **A toolbar menu no longer stays open behind whatever it opened.** Menus were
+  closed from a list kept by hand, and the menu added in 1.56.0 was not on it, so
+  it hung over the console until something else was clicked. Every menu is closed
+  now, including any added later.
+
 ## [1.56.0] — 2026-09-10
 
 ### Changed

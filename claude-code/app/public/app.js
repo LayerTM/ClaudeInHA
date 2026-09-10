@@ -634,12 +634,12 @@
 
   /* ---------------- copy menu ---------------- */
 
+  // Every menu, not a list of them. A hand-kept list closes the menus somebody
+  // remembered to add to it — the session menu was added and not, so it stayed
+  // open behind the dialog it had just opened, and behind whatever menu opened
+  // next. The markup already says what a menu is; ask it.
   function closeMenus() {
-    els.copyMenu.classList.add('hidden');
-    els.trayMenu.classList.add('hidden');
-    els.ctxMenu.classList.add('hidden');
-    els.actionsMenu.classList.add('hidden');
-    els.alertsMenu.classList.add('hidden');
+    document.querySelectorAll('.menu').forEach((menu) => menu.classList.add('hidden'));
   }
 
   // Menus are position:fixed (the scrollable toolbar would clip absolute
