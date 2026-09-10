@@ -607,6 +607,40 @@ test('createChatHealth: an old failure ages OUT of the window, and stops dating 
   assert.strictEqual(s.consecutive_ok, 3);
 });
 
+test('createChatHealth: the span says how many runs it was measured from', () => {
+  // Measured on a live install: 39 runs of which ONE carried a time — written
+  // before entries had one — so the bounds were equal, and equal bounds beside
+  // `recent: 39` read as a window frozen on a date that months of chats never
+  // moved. The bounds were right; on their own they could not say that they
+  // covered a single sample. `window_dated` is what makes them readable, so it
+  // is asserted with them rather than as a field of its own.
+  let t = 0;
+  const legacy = [
+    { ok: true, reason: null, recovered: false },   // no ts: an older build
+    { ok: true, reason: null, recovered: false },
+  ];
+  const h = createChatHealth(10, { load: () => legacy, save: () => {} }, () => t);
+  t = 7000; h.record(true, null, false);
+  let s = h.snapshot();
+  assert.strictEqual(s.recent, 3, 'all three runs count towards the rate');
+  assert.strictEqual(s.window_dated, 1, 'but only one of them has a time');
+  assert.strictEqual(s.window_from_ts, s.window_to_ts, 'so the span is a point');
+  assert.strictEqual(s.window_from_ts, 7000);
+
+  // And it advances: a second dated run opens the span, and the count grows with
+  // it — the two are read together or not at all.
+  t = 9000; h.record(true, null, false);
+  s = h.snapshot();
+  assert.strictEqual(s.window_dated, 2);
+  assert.strictEqual(s.window_from_ts, 7000, 'the span now covers two samples');
+  assert.strictEqual(s.window_to_ts, 9000, 'and its end moved with the newest run');
+
+  // Once the undated entries age out, the span covers the whole window and says so.
+  for (let i = 0; i < 10; i += 1) { t += 1000; h.record(true, null, false); }
+  s = h.snapshot();
+  assert.strictEqual(s.window_dated, s.recent, 'nothing undated is left');
+});
+
 test('createChatHealth: the window span never ends before it starts', () => {
   // Date.now() is a WALL clock: an NTP step backwards or a corrected RTC puts
   // neighbouring entries out of order. Reading the ends positionally would then
@@ -652,8 +686,10 @@ test('createChatHealth: rolling recent/degraded/recovered/last_reason, capped, t
   assert.deepEqual(h.snapshot(), {
     recent: 0, degraded: 0, recovered: 0, consecutive_ok: 0, consecutive_failed: 0,
     last_reason: null,
-    // the time dimension (#60) — null on an empty window, never 0 or "now".
-    last_failure_ts: null, window_from_ts: null, window_to_ts: null,
+    // the time dimension (#60) — null on an empty window, never 0 or "now" —
+    // and how many runs the bounds were measured from, which is 0 when there
+    // are none rather than absent.
+    last_failure_ts: null, window_from_ts: null, window_to_ts: null, window_dated: 0,
   });
   h.record(true, null, false);
   h.record(false, 'model-error', false);
