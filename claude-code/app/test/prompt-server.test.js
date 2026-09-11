@@ -40,11 +40,13 @@ fs.writeFileSync(process.env.CLAUDE_PROMPT_OPTIONS, JSON.stringify({
   prompt_api: true, api_token: '', prompt_ha_token: HA_LLAT,
   ha_token: '', api_key: '', oauth_token: '', model: '',
   chat_model_voice: 'test-voice-model',
+  // On, so the alerts tests below read alerts-state.json; the off case builds its own app.
+  proactive_alerts: true,
 }));
 
 const security = require('../server/prompt/security');
 const {
-  createRateLimiter, createBudget, fetchSnapshot, resizeSnapshot, createChatHealth, fileStore,
+  createPromptApp, createRateLimiter, createBudget, fetchSnapshot, resizeSnapshot, createChatHealth, fileStore,
 } = require('../server/prompt/server');
 const { createHistoryStore } = require('../server/prompt/history');
 const promptServer = require('../server/prompt');
@@ -911,6 +913,34 @@ test('status: alerts is null for an old-format state file (no items key)', async
   const body = await res.json();
   assert.equal(body.alerts, null, 'old-format {active:[...]} without items → alerts:null');
   fs.rmSync(path.join(TMP, 'alerts-state.json'));
+});
+
+test('status: switching proactive alerts off publishes null, whatever the state file still holds', async () => {
+  // The state file outlives the option (it sits in /data). With alerts switched
+  // off, /api/status must say "no set" even though the last enabled run left a
+  // live-looking set behind — including an active critical alert that nothing
+  // would ever clear. Same file, the option flipped on → off.
+  const dataDir = fs.mkdtempSync(path.join(TMP, 'alerts-toggle-'));
+  const items = [{ key: 'leak:binary_sensor.kitchen', critical: true, line: 'Leak: Kitchen' }];
+  fs.writeFileSync(path.join(dataDir, 'alerts-state.json'), JSON.stringify({ active: items.map((i) => i.key), items }));
+  const statusWith = async (proactiveAlerts) => {
+    const token = 'toggle-token-000000000000000000000000';
+    const app = createPromptApp({
+      token, claudeBin: process.env.CLAUDE_PROMPT_BIN, usageBin: process.env.CLAUDE_PROMPT_USAGE_BIN,
+      mcpConfigPath: '', model: '', workDir: TMP, addonVersion: 'test', redact: (x) => x, audit: () => {},
+      dataDir, proactiveAlerts,
+    });
+    const srv = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+    try {
+      const res = await fetch(`http://127.0.0.1:${srv.address().port}/api/status`, { headers: { Authorization: `Bearer ${token}` } });
+      return (await res.json()).alerts;
+    } finally { srv.close(); }
+  };
+  const on = await statusWith(true);
+  assert.equal(on.active, 1, 'on: the persisted set is published');
+  assert.equal(on.critical, 1);
+  assert.equal(await statusWith(false), null, 'off: null although alerts-state.json still holds an active alert');
+  fs.rmSync(dataDir, { recursive: true });
 });
 
 test('usage: authed report from ha-usage --json', async () => {

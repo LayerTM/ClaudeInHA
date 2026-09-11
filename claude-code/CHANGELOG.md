@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.56.2] — 2026-09-11
+
+### Fixed
+- **Switching proactive alerts off now clears the active-alerts sensor.** The add-on
+  kept publishing the last set the alerts loop had saved, so after alerts were
+  turned off the integration's sensor showed a frozen state that nothing would
+  update — an alert that was active at that moment stayed on for good. With
+  `proactive_alerts` off the status now reports no set, as documented, and the
+  loop's saved state is dropped when the add-on starts, so an anomaly that is still
+  present when alerts are switched back on is notified again.
+
 ## [1.56.1] — 2026-09-10
 
 ### Fixed
