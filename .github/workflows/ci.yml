@@ -46,6 +46,10 @@ jobs:
         working-directory: claude-code/app
         run: npm run test:audit
 
+      - name: Run status line migration tests (bash + jq)
+        working-directory: claude-code/app
+        run: npm run test:statusline
+
   lint-js:
     name: JS lint & types
     runs-on: ubuntu-latest

@@ -11,6 +11,8 @@
 source /usr/local/lib/addon-config.sh
 # shellcheck source=../../../../usr/local/lib/addon-hooks.sh
 source /usr/local/lib/addon-hooks.sh
+# shellcheck source=../../../../usr/local/lib/addon-statusline.sh
+source /usr/local/lib/addon-statusline.sh
 
 bashio::log.info "Initializing Claude Code add-on..."
 
@@ -206,24 +208,14 @@ fi
 
 settings_file=/data/home/.claude/settings.json
 [ -f "${settings_file}" ] || echo '{}' > "${settings_file}"
-cur_sl_cmd="$(jq -r '.statusLine.command // ""' "${settings_file}" 2>/dev/null)"
-# Seed when absent, and migrate our own earlier defaults — the removed 1.2.x
-# cc-statusline script and the 1.43–1.46 bare ccstatusline command — to the
-# width-aware wrapper (cc-statusline-width, which feeds ccstatusline the real
-# tmux pane width so the status line stops truncating at 80 columns). Any other
-# (user-custom) command is left untouched.
-if [ -z "${cur_sl_cmd}" ] \
-   || [ "${cur_sl_cmd}" = "/usr/local/bin/cc-statusline" ] \
-   || [ "${cur_sl_cmd}" = "/usr/local/bin/ccstatusline" ]; then
-    tmp_settings="$(mktemp)"
-    if jq '.statusLine = {type: "command", command: "/usr/local/bin/cc-statusline-width", padding: 0}' \
-          "${settings_file}" > "${tmp_settings}" 2>/dev/null; then
-        mv "${tmp_settings}" "${settings_file}"
-        bashio::log.info "Status line configured (ccstatusline, width-aware)"
-    else
-        rm -f "${tmp_settings}"
-    fi
-fi
+# Seeded when absent; our own earlier defaults are migrated to the width-aware
+# wrapper, and a wrapper installed before the refresh interval existed gets the
+# interval. A user's own command is left untouched — see addon-statusline.sh.
+case "$(statusline_seed_or_migrate "${settings_file}")" in
+    seeded)   bashio::log.info "Status line configured (ccstatusline, width-aware)" ;;
+    migrated) bashio::log.info "Status line updated (redrawn every ${CC_STATUSLINE_REFRESH} s, so it follows the console width)" ;;
+    failed)   bashio::log.warning "Could not write the status line into ${settings_file} — leaving it as it is" ;;
+esac
 
 # --- Safety hooks: backup-before-risky-change, action audit log, needs-input push ---
 # Seeded on a fresh install; on an existing one, only OUR own superseded matcher
