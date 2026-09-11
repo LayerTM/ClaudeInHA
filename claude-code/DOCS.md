@@ -171,8 +171,8 @@ internet-down detection, or set `alert_offline: false` to switch the whole check
 off). Setting `alert_offline_entities: []` (an explicit empty list) while leaving
 `alert_offline: true` watches **nothing** — an explicit way to disable offline
 alerts without turning `alert_offline` off (an *absent* list, by contrast, falls
-back to watching the default gateway). Changes take effect on the next cycle (within
-`proactive_alerts_interval_minutes`) — just save the options, no restart needed.
+back to watching the default gateway). Changes take effect after you save the options
+and restart the add-on — the alerts loop reads its options when it starts.
 
 **Scoping the temperature check.** The temperature alert checks every
 `temperature` sensor by default, which includes **device** temperatures — a NAS,
