@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.56.3] — 2026-09-11
+
+### Fixed
+- **The status line now uses the full width of the console.** Claude starts with the
+  add-on, before any console is open, so its status line was first drawn for 80
+  columns and then kept that way: Claude redraws the line only when something
+  happens (a reply, a mode or model change), not when the terminal is resized. The
+  line stayed cut off with "…" however wide the console was, until the first
+  message. Claude now redraws it every 30 seconds as well, so after opening or
+  resizing the console it catches up within half a minute. Existing installations
+  get the interval on the next start; an interval you have set yourself is kept.
+
+  This is polling: one status line run every 30 seconds while Claude is running,
+  whether or not the console is open. Measured at about 0.13 s of CPU per run on a
+  4-core ARM virtual machine, which is about 0.4 % of one core; slower hardware
+  pays proportionally more. To change it, set `statusLine.refreshInterval` (in
+  seconds) in `/data/home/.claude/settings.json`.
+
 ## [1.56.2] — 2026-09-11
 
 ### Fixed

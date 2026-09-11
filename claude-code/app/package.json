@@ -15,6 +15,7 @@
     "test:config": "bash test/config-list.test.sh",
     "test:monitor": "bash test/cc-monitor.test.sh",
     "test:audit": "bash test/cc-hook-audit.test.sh",
+    "test:statusline": "bash test/cc-statusline.test.sh",
     "lint": "eslint .",
     "typecheck": "tsc -p jsconfig.json"
   },
