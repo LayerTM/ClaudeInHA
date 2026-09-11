@@ -224,6 +224,8 @@ async function start() {
     // The /data root, where the separate cc-alerts service writes alerts-state.json.
     // The server reads that file to publish the active-alerts set on /api/status.
     dataDir: DATA_DIR,
+    // Whether proactive alerts are on — /api/status publishes a set only then.
+    proactiveAlerts: options.proactive_alerts === true,
   });
 
   const server = http.createServer(app);

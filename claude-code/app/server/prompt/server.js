@@ -474,7 +474,7 @@ async function fetchSnapshot(entity, relay, workDir, fetchImpl = fetch) {
 function createPromptApp({
   token, claudeBin, usageBin, mcpConfigPath, model, voiceModel = '', dailyBudgetUsd = 0,
   coreRelayUrl = '', coreRelayToken = '',
-  workDir, addonVersion, redact, audit, stateDir = null, dataDir = null,
+  workDir, addonVersion, redact, audit, stateDir = null, dataDir = null, proactiveAlerts = false,
 }) {
   const app = express();
   app.disable('x-powered-by');
@@ -630,10 +630,12 @@ function createPromptApp({
       prompt_timeout_ms: TIMEOUT_MS,
       // Daily chat spend cap for a budget sensor (limit 0 = unlimited).
       budget: { limit: budget.limit, spent: Number(budget.spent().toFixed(4)) },
-      // Current proactive-alerts set (or null when the alerts loop hasn't run) —
-      // the user's own home entity names/values, so the integration can offer an
-      // active-alerts sensor. See alertsSnapshot() above.
-      alerts: alertsSnapshot(),
+      // Current proactive-alerts set — the user's own home entity names/values, so
+      // the integration can offer an active-alerts sensor. The option decides
+      // whether there is a set at all: off → null, whatever alerts-state.json still
+      // holds from an earlier enabled period. On → alertsSnapshot() above (null until
+      // the loop's first cycle).
+      alerts: proactiveAlerts ? alertsSnapshot() : null,
     });
   });
 

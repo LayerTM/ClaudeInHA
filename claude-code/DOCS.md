@@ -119,7 +119,9 @@ It watches for:
 **Dedupe:** you are notified only when an entity *newly* enters an anomaly. A
 still-open door won't re-notify every cycle — the active anomalies are remembered
 in `/data/alerts-state.json` and dropped when they clear, so the same entity can
-alert again the next time the problem reappears.
+alert again the next time the problem reappears. Turning `proactive_alerts` off clears this
+memory when the add-on next starts, so anything still wrong when you switch alerts
+back on is notified again.
 
 **Quiet hours** (`alert_quiet_hours`, e.g. `22:00-07:00`, empty = off): during
 this window non-critical alerts (battery, temperature, open-at-night, high CO2)
@@ -169,8 +171,8 @@ internet-down detection, or set `alert_offline: false` to switch the whole check
 off). Setting `alert_offline_entities: []` (an explicit empty list) while leaving
 `alert_offline: true` watches **nothing** — an explicit way to disable offline
 alerts without turning `alert_offline` off (an *absent* list, by contrast, falls
-back to watching the default gateway). Changes take effect on the next cycle (within
-`proactive_alerts_interval_minutes`) — just save the options, no restart needed.
+back to watching the default gateway). Changes take effect after you save the options
+and restart the add-on — the alerts loop reads its options when it starts.
 
 **Scoping the temperature check.** The temperature alert checks every
 `temperature` sensor by default, which includes **device** temperatures — a NAS,

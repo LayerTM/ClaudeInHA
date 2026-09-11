@@ -330,6 +330,11 @@ if [ "$(jq -r '.proactive_alerts // false' /data/options.json 2>/dev/null || ech
     alerts_interval=$(jq -r '.proactive_alerts_interval_minutes // 15' /data/options.json 2>/dev/null || echo 15)
     bashio::log.info "Proactive alerts enabled (every ${alerts_interval}m)"
     CC_ALERTS_INTERVAL_MINUTES="${alerts_interval}" nohup /usr/local/bin/cc-alerts >/data/alerts.log 2>&1 &
+else
+    # Off: drop the loop's state. Its active-key list is also the "already notified"
+    # memory, so keeping it would silence an anomaly that is still (or again) active
+    # when alerts are switched back on.
+    rm -f /data/alerts-state.json
 fi
 
 # Hand the port over: stop the placeholder and wait for it to actually exit, so
