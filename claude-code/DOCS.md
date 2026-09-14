@@ -269,6 +269,24 @@ not a span. Undated runs (see above) are the reason the two numbers can differ.
 `recent = degraded + successes`, so `recent - degraded` is the number of
 successful runs, and a failure rate is `degraded / recent`.
 
+### Account limits (`/api/account_limits`)
+
+`/api/usage` reports what **this add-on** spent. `/api/account_limits` reports
+something different: how much of **your account's** limits you have used — across
+every machine and every session, not just the ones that ran here. It is the same
+picture the CLI's `/usage` command shows, published so the integration can turn it
+into sensors: a percentage per limit (the session window, the week, and the week
+for a particular model where your plan has one), with when that limit resets and
+how severe the current level is. There are no token counts and no money in it —
+a subscription's limits are expressed as percentages, so that is what you get.
+
+If you authenticate with an **API key** rather than a subscription, the endpoint
+answers `{"mode": "api_key", "limits": []}`: an API key is billed per request and
+has no such limit buckets, so there is nothing to show, and the integration
+creates no limit sensors instead of showing empty ones. When the account's
+credentials are missing or the upstream service cannot be reached, the endpoint
+returns `503` and the sensors go unavailable — it never reports a made-up `0 %`.
+
 ### Manage automations by chatting
 
 With the companion integration you can **create, edit, and delete automations** by
