@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.56.4] — 2026-09-14
+
+### Added
+- **Your whole account's limit usage, not just this add-on's.** The usage figures
+  the companion integration shows have always been this add-on's own: what Claude
+  spent here, on this machine. They say nothing about the limits your Claude
+  subscription actually runs into, which you also hit from your laptop, your
+  desktop and every other session. A new `/api/account_limits` endpoint publishes
+  the account's rate-limit utilisation — the session bucket, the weekly bucket and
+  a weekly bucket per model where your plan has one — each as a percentage, with
+  when it resets and how severe it is. The integration turns those into sensors,
+  so a dashboard can say "82 % of the week is gone" before Claude stops replying.
+  It carries no token counts and no money: a subscription's limits are percentages.
+  If you sign in with an **API key** instead of a subscription, nothing changes for
+  you — an API key has no such buckets, so the endpoint says so and the integration
+  creates no limit sensors at all, leaving your existing usage and cost sensors
+  exactly as they are.
+
 ## [1.56.3] — 2026-09-11
 
 ### Fixed

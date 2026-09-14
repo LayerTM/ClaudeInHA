@@ -214,6 +214,12 @@ async function start() {
     // the Core TLS decision live in exactly one place.
     coreRelayUrl: relay ? relay.url : '',
     coreRelayToken: relay ? relay.token : '',
+    // For /api/account_limits: which credential the account has, in the same
+    // order everything else here uses (option first, then environment). The
+    // interactive-login case has neither and is read from HOME at call time.
+    apiKey: optionString(options, 'api_key') || process.env.ANTHROPIC_API_KEY || '',
+    oauthToken: optionString(options, 'oauth_token') || process.env.CLAUDE_CODE_OAUTH_TOKEN || '',
+    homeDir: process.env.HOME || '/data/home',
     workDir,
     addonVersion: process.env.ADDON_VERSION || 'unknown',
     redact,

@@ -474,6 +474,11 @@ async function fetchSnapshot(entity, relay, workDir, fetchImpl = fetch) {
 function createPromptApp({
   token, claudeBin, usageBin, mcpConfigPath, model, voiceModel = '', dailyBudgetUsd = 0,
   coreRelayUrl = '', coreRelayToken = '',
+  // Credentials as the add-on already holds them, for /api/account_limits only:
+  // they decide WHICH auth mode the account is in, and the OAuth one is the only
+  // token the account-limits endpoint upstream accepts. Injected rather than read
+  // from the environment inside, so the endpoint is testable without a login.
+  apiKey = '', oauthToken = '', homeDir = '', limitsFetch = fetch,
   workDir, addonVersion, redact, audit, stateDir = null, dataDir = null, proactiveAlerts = false,
 }) {
   const app = express();
@@ -560,6 +565,86 @@ function createPromptApp({
     return usageInFlight;
   }
 
+  // Account-wide rate-limit utilisation for /api/account_limits — the whole
+  // account (every machine, every session), not this add-on's own spend.
+  //
+  // Only a subscription has these buckets. An API key is billed per request, so
+  // upstream has nothing to report for it and would answer for the wrong thing
+  // if asked; the endpoint therefore reports the auth MODE next to the list and
+  // an API-key install gets an empty list rather than an error, so a consumer
+  // creates no entities at all instead of a row of unavailable ones.
+  const LIMITS_URL = process.env.CLAUDE_ACCOUNT_LIMITS_URL || 'https://api.anthropic.com/api/oauth/usage';
+  const LIMITS_TTL_MS = 5 * 60 * 1000;
+  let limitsCache = { value: null, stamp: 0 };
+  let limitsInFlight = null;
+
+  // The OAuth access token as the CLI keeps it: the pasted `oauth_token` option
+  // (or its environment variable) first, otherwise the credential file an
+  // interactive `claude` login writes. Read at call time, so logging in after the
+  // add-on started is picked up without a restart.
+  function oauthAccessToken() {
+    if (oauthToken) return oauthToken;
+    try {
+      const stored = JSON.parse(fs.readFileSync(`${homeDir}/.claude/.credentials.json`, 'utf8'));
+      const saved = stored && stored.claudeAiOauth && stored.claudeAiOauth.accessToken;
+      return typeof saved === 'string' ? saved : '';
+    } catch {
+      return '';
+    }
+  }
+
+  // One upstream entry → one contract entry. An unknown `kind` passes through
+  // unchanged: the list is the account's, not ours, and a bucket we have never
+  // seen is still a real limit the user is subject to. A `kind` or `percent` that
+  // is not what it claims makes the whole payload unparsable (null → 503) — a
+  // limit reported as 0 % would read as "plenty left".
+  function limitEntry(item) {
+    if (!item || typeof item !== 'object') return null;
+    if (typeof item.kind !== 'string' || typeof item.percent !== 'number') return null;
+    const modelName = item.scope && item.scope.model && item.scope.model.display_name;
+    return {
+      kind: item.kind,
+      percent: item.percent,
+      severity: typeof item.severity === 'string' ? item.severity : '',
+      resets_at: typeof item.resets_at === 'string' ? item.resets_at : null,
+      model: typeof modelName === 'string' ? modelName : null,
+    };
+  }
+
+  // Resolves to the report, or null when there is nothing honest to say.
+  function accountLimits() {
+    const accessToken = oauthAccessToken();
+    if (!accessToken) {
+      if (!apiKey) return Promise.resolve(null);
+      return Promise.resolve({ mode: 'api_key', fetched_at: new Date().toISOString(), limits: [] });
+    }
+    if (limitsCache.value && Date.now() - limitsCache.stamp < LIMITS_TTL_MS) {
+      return Promise.resolve(limitsCache.value);
+    }
+    if (limitsInFlight) return limitsInFlight;
+    limitsInFlight = (async () => {
+      try {
+        const resp = await limitsFetch(LIMITS_URL, {
+          headers: { Authorization: `Bearer ${accessToken}`, 'anthropic-beta': 'oauth-2025-04-20' },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!resp.ok) return null;
+        const body = /** @type {any} */ (await resp.json());
+        if (!body || !Array.isArray(body.limits)) return null;
+        const limits = body.limits.map(limitEntry);
+        if (limits.some((entry) => entry === null)) return null;
+        const value = { mode: 'subscription', fetched_at: new Date().toISOString(), limits };
+        limitsCache = { value, stamp: Date.now() };
+        return value;
+      } catch {
+        return null;
+      } finally {
+        limitsInFlight = null;
+      }
+    })();
+    return limitsInFlight;
+  }
+
   // Current proactive-alerts set for /api/status. The deterministic alerts loop
   // (cc-alerts, a SEPARATE service) persists the active anomalies to
   // <dataDir>/alerts-state.json — note the /data root, not the prompt server's own
@@ -644,6 +729,14 @@ function createPromptApp({
     const report = await usageReport();
     if (!report) return res.status(503).json({ error: 'usage unavailable' });
     // Usage is numbers + model names, but redact defensively for consistency.
+    res.json(redactDeep(report, redact));
+  });
+
+  // Account-wide limit utilisation, for the integration's limit sensors. This is
+  // the ACCOUNT (every machine, every session); /api/usage above is this add-on.
+  app.get('/api/account_limits', async (req, res) => {
+    const report = await accountLimits();
+    if (!report) return res.status(503).json({ error: 'account limits unavailable' });
     res.json(redactDeep(report, redact));
   });
 
