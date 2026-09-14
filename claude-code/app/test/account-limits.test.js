@@ -259,6 +259,63 @@ test('cached for minutes, and concurrent callers share one upstream call', async
   } finally { srv.close(); }
 });
 
+test('percent is an integer, and a missing severity is null rather than empty', async () => {
+  // A gauge has no use for 82.4999, and '' would read as a severity the account
+  // actually reported — `resets_at` already answers null for the same situation.
+  const { app } = build({
+    oauthToken: 'token',
+    upstream: () => jsonResponse({ limits: [{ kind: 'session', percent: 82.4999, resets_at: null, scope: null }] }),
+  });
+  const srv = await serve(app);
+  try {
+    const { body } = await srv.get();
+    assert.deepEqual(body.limits, [{
+      kind: 'session', percent: 82, severity: null, resets_at: null, model: null,
+    }]);
+  } finally { srv.close(); }
+});
+
+test('a percent outside 0-100 is not a percentage: 503', async () => {
+  for (const percent of [-5, 140]) {
+    const { app } = build({
+      oauthToken: 'token',
+      upstream: () => jsonResponse({ limits: [{ kind: 'session', percent }] }),
+    });
+    const srv = await serve(app);
+    try {
+      const { status, body } = await srv.get();
+      assert.equal(status, 503, `percent ${percent} → 503`);
+      assert.deepEqual(body, { error: 'account limits unavailable' });
+    } finally { srv.close(); }
+  }
+});
+
+test('the cache belongs to the credential: after a re-login it is not reused', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-limits-relogin-'));
+  fs.mkdirSync(path.join(home, '.claude'));
+  const login = (accessToken) => fs.writeFileSync(
+    path.join(home, '.claude', '.credentials.json'),
+    JSON.stringify({ claudeAiOauth: { accessToken } }),
+  );
+  login('token-of-account-one');
+  const { app, calls } = build({ homeDir: home, upstream: () => jsonResponse(UPSTREAM) });
+  const srv = await serve(app);
+  try {
+    assert.equal((await srv.get()).status, 200);
+    assert.equal(calls.length, 1);
+    assert.equal((await srv.get()).status, 200);
+    assert.equal(calls.length, 1, 'the same credential is served from the cache');
+
+    login('token-of-account-two');
+    assert.equal((await srv.get()).status, 200);
+    assert.equal(calls.length, 2, 'another account is fetched, never answered with the first one\'s figures');
+    assert.equal(calls[1].init.headers.Authorization, 'Bearer token-of-account-two');
+  } finally {
+    srv.close();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test('the endpoint is behind the same bearer auth as the rest', async () => {
   const { app, calls } = build({ oauthToken: 'token', upstream: () => jsonResponse(UPSTREAM) });
   const srv = await serve(app);

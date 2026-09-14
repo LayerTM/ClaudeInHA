@@ -573,10 +573,18 @@ function createPromptApp({
   // if asked; the endpoint therefore reports the auth MODE next to the list and
   // an API-key install gets an empty list rather than an error, so a consumer
   // creates no entities at all instead of a row of unavailable ones.
-  const LIMITS_URL = process.env.CLAUDE_ACCOUNT_LIMITS_URL || 'https://api.anthropic.com/api/oauth/usage';
+  // Fixed, deliberately not overridable: this is where the account's access token
+  // is SENT, and the add-on exports every `environment_vars` entry into this
+  // process — so an override would let one pasted config line ship the credential
+  // to any host, with nothing in the log to show it. The siblings that do take an
+  // environment override are numeric tuning; a credential's destination is not
+  // configuration. Tests inject `limitsFetch` instead.
+  const LIMITS_URL = 'https://api.anthropic.com/api/oauth/usage';
   const LIMITS_TTL_MS = 5 * 60 * 1000;
-  let limitsCache = { value: null, stamp: 0 };
-  let limitsInFlight = null;
+  // Both are keyed on WHICH credential asked, so figures fetched for one account
+  // are never served to the next one after a re-login.
+  let limitsCache = { value: null, stamp: 0, key: '' };
+  let limitsInFlight = null; // { key, promise } while a call is out
 
   // The OAuth access token as the CLI keeps it: the pasted `oauth_token` option
   // (or its environment variable) first, otherwise the credential file an
@@ -600,12 +608,20 @@ function createPromptApp({
   // limit reported as 0 % would read as "plenty left".
   function limitEntry(item) {
     if (!item || typeof item !== 'object') return null;
-    if (typeof item.kind !== 'string' || typeof item.percent !== 'number') return null;
+    if (typeof item.kind !== 'string' || !Number.isFinite(item.percent)) return null;
+    // The contract promises an integer 0–100. A fraction is rounded (a gauge has
+    // no use for 82.4999), and a value outside the range is not a percentage at
+    // all — that payload is unparsable rather than something to clamp into a
+    // plausible-looking number.
+    const percent = Math.round(item.percent);
+    if (percent < 0 || percent > 100) return null;
     const modelName = item.scope && item.scope.model && item.scope.model.display_name;
     return {
       kind: item.kind,
-      percent: item.percent,
-      severity: typeof item.severity === 'string' ? item.severity : '',
+      percent,
+      // null, not '': the same situation `resets_at` answers with null, and an
+      // empty string would read as a severity the account actually reported.
+      severity: typeof item.severity === 'string' ? item.severity : null,
       resets_at: typeof item.resets_at === 'string' ? item.resets_at : null,
       model: typeof modelName === 'string' ? modelName : null,
     };
@@ -618,11 +634,15 @@ function createPromptApp({
       if (!apiKey) return Promise.resolve(null);
       return Promise.resolve({ mode: 'api_key', fetched_at: new Date().toISOString(), limits: [] });
     }
-    if (limitsCache.value && Date.now() - limitsCache.stamp < LIMITS_TTL_MS) {
+    // A short hash of the token, never the token itself — it only has to tell one
+    // credential from another.
+    const credentialKey = crypto.createHash('sha256').update(accessToken).digest('hex').slice(0, 12);
+    if (limitsCache.value && limitsCache.key === credentialKey
+        && Date.now() - limitsCache.stamp < LIMITS_TTL_MS) {
       return Promise.resolve(limitsCache.value);
     }
-    if (limitsInFlight) return limitsInFlight;
-    limitsInFlight = (async () => {
+    if (limitsInFlight && limitsInFlight.key === credentialKey) return limitsInFlight.promise;
+    const promise = (async () => {
       try {
         const resp = await limitsFetch(LIMITS_URL, {
           headers: { Authorization: `Bearer ${accessToken}`, 'anthropic-beta': 'oauth-2025-04-20' },
@@ -634,15 +654,16 @@ function createPromptApp({
         const limits = body.limits.map(limitEntry);
         if (limits.some((entry) => entry === null)) return null;
         const value = { mode: 'subscription', fetched_at: new Date().toISOString(), limits };
-        limitsCache = { value, stamp: Date.now() };
+        limitsCache = { value, stamp: Date.now(), key: credentialKey };
         return value;
       } catch {
         return null;
       } finally {
-        limitsInFlight = null;
+        if (limitsInFlight && limitsInFlight.key === credentialKey) limitsInFlight = null;
       }
     })();
-    return limitsInFlight;
+    limitsInFlight = { key: credentialKey, promise };
+    return promise;
   }
 
   // Current proactive-alerts set for /api/status. The deterministic alerts loop
