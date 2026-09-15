@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.56.7] — 2026-09-15
+
+### Fixed
+- **Remote Control starts in the folder you already trust.** With `remote_control` on,
+  the Remote Control tab ran in a separate folder (`/data/workdir`) that Claude had
+  never been told to trust, so it stopped with "Workspace not trusted" even for a
+  signed-in subscription — and the tab then wrongly said a full login was missing. It
+  now runs in the same folder as the Claude tab, which is the one you accept the trust
+  prompt for, and when it stops it points at the reason Claude printed instead of
+  assuming a login problem.
+
 ## [1.56.6] — 2026-09-15
 
 ### Fixed
