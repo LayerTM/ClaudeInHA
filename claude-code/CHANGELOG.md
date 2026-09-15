@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.56.6] — 2026-09-15
+
+### Fixed
+- **`ha-shot` takes a screenshot of the dashboard again.** Two things stopped it:
+  - Where Home Assistant listens on port 80 (for example on current Home Assistant OS
+    builds), it reported "authentication failed — the HA Token was rejected" with a
+    valid token. The frontend only accepts a token handed to it for the page's own
+    address, and a browser writes that address without the default port, so
+    `http://homeassistant:80` never matched. The address is now taken the way the
+    browser sees it.
+  - Once signed in, it could save the "Loading…" screen instead of the dashboard: it
+    decided the page was ready from internal flags that the current frontend no longer
+    has. It now waits until the frontend has removed its loading screen, and if the
+    dashboard has not rendered within 30 seconds it stops with an error rather than
+    saving a picture of an unfinished page.
+
 ## [1.56.5] — 2026-09-15
 
 ### Changed
