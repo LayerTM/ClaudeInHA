@@ -49,7 +49,8 @@ const cases = {
     language: 'uk',
     surface: 'voice',
     editAutomation: { alias: 'a', triggers: [], actions: [] },
-    haTools: ['mcp__ha__homeassistant__GetLiveContext'],
+    // a catalog with a tool this read may not call, so the hidden-tools list is exercised
+    haTools: ['mcp__ha__homeassistant__GetLiveContext', 'mcp__ha__intent__HassTurnOn'],
     stream: true,
   },
   'write, MCP server and model': {

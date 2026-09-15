@@ -471,8 +471,22 @@ async function fetchSnapshot(entity, relay, workDir, fetchImpl = fetch) {
   return resizeSnapshot(file, workDir);
 }
 
+// The model for one request. Every per-type option is optional and falls back to
+// the chat model, so an install that sets none of them runs exactly as before.
+// A voice turn keeps the voice model first (it existed before the others and
+// voice latency is the reason it exists); then a confirmed action, then a camera
+// question; everything else uses the chat model.
+function resolveChatModel({ surface, mode, vision, models }) {
+  const { model = '', voiceModel = '', writeModel = '', cameraModel = '' } = models || {};
+  if (surface === 'voice' && voiceModel) return voiceModel;
+  if (mode === 'write' && writeModel) return writeModel;
+  if (mode !== 'write' && vision && cameraModel) return cameraModel;
+  return model;
+}
+
 function createPromptApp({
-  token, claudeBin, usageBin, mcpConfigPath, model, voiceModel = '', dailyBudgetUsd = 0,
+  token, claudeBin, usageBin, mcpConfigPath, model, voiceModel = '', writeModel = '', cameraModel = '',
+  dailyBudgetUsd = 0,
   coreRelayUrl = '', coreRelayToken = '',
   // Credentials as the add-on already holds them, for /api/account_limits only:
   // they decide WHICH auth mode the account is in, and the OAuth one is the only
@@ -965,10 +979,12 @@ function createPromptApp({
       // which is how a whole class of silent failures stayed invisible (#58).
       let recoveredFrom = null;
       let spent = 0; // real API cost of EVERY attempt (billed even on a failed/degraded read)
-      // A voice turn uses the (optional) faster voice model; everything else uses
-      // the normal chat model. Resolved ONCE here so the run and the audit can't
-      // disagree about which model actually served the turn (empty → Claude default).
-      const resolvedModel = (body.surface === 'voice' && voiceModel) ? voiceModel : model;
+      // Resolved ONCE here so the run and the audit can't disagree about which
+      // model actually served the turn (empty → Claude default).
+      const resolvedModel = resolveChatModel({
+        surface: body.surface, mode, vision: Boolean(imagePath),
+        models: { model, voiceModel, writeModel, cameraModel },
+      });
       try {
         // 6. Run Claude (stateless, scrubbed, deny-by-default). A read whose run
         //    fails to a TRANSIENT reason is retried (the identical prompt commonly
@@ -1194,4 +1210,5 @@ function createPromptApp({
 
 module.exports = {
   createPromptApp, createRateLimiter, createBudget, createChatHealth, fileStore, fetchSnapshot, resizeSnapshot, Bucket,
+  resolveChatModel,
 };

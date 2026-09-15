@@ -47,6 +47,7 @@ fs.writeFileSync(process.env.CLAUDE_PROMPT_OPTIONS, JSON.stringify({
 const security = require('../server/prompt/security');
 const {
   createPromptApp, createRateLimiter, createBudget, fetchSnapshot, resizeSnapshot, createChatHealth, fileStore,
+  resolveChatModel,
 } = require('../server/prompt/server');
 const { createHistoryStore } = require('../server/prompt/history');
 const promptServer = require('../server/prompt');
@@ -1254,6 +1255,125 @@ test('read: surface="voice" appends a spoken-aloud brevity directive; text/absen
   assert.match(none.json.text, /voice=0\b/, `absent surface omits it, got: ${none.json.text}`);
   // an invalid surface is rejected, not silently ignored
   assert.equal((await post({ prompt: 'hi', surface: 'megaphone' }, { 'X-Claude-Caller': 'user.surf.bad' })).status, 400);
+});
+
+// ---------------------------------------------------------------------------
+// The argument list: what each kind of run declares it needs from the CLI
+// ---------------------------------------------------------------------------
+
+function argValue(args, flag) {
+  const i = args.indexOf(flag);
+  return i === -1 ? undefined : args[i + 1];
+}
+
+test('buildClaudeArgs: a read declares no built-in tools and no settings files', () => {
+  const args = runner.buildClaudeArgs({ mode: 'read', mcpConfigPath: '/cfg/ha-mcp.json' });
+  assert.equal(argValue(args, '--tools'), '', 'no built-in tool is available to a read');
+  assert.equal(argValue(args, '--setting-sources'), '', 'the console settings never reach the child');
+  assert.equal(args.includes('--disallowed-tools'), false, 'the subtracted deny list is gone');
+  assert.equal(argValue(args, '--allowed-tools'), 'mcp__ha__GetLiveContext');
+  assert.equal(argValue(args, '--mcp-config'), '/cfg/ha-mcp.json');
+  assert.equal(argValue(args, '--permission-mode'), 'dontAsk');
+  assert.ok(args.includes('--strict-mcp-config'));
+  assert.equal(args.includes('--model'), false, 'no model flag when none is configured');
+  assert.equal(args.includes('--include-partial-messages'), false, 'no partial messages without a stream');
+  assert.match(argValue(args, '--json-schema'), /"proposal"/, 'the read schema');
+});
+
+test('buildClaudeArgs: a read without the MCP server allows nothing', () => {
+  const args = runner.buildClaudeArgs({ mode: 'read' });
+  assert.equal(argValue(args, '--allowed-tools'), '');
+  assert.equal(args.includes('--mcp-config'), false);
+  assert.equal(argValue(args, '--tools'), '');
+});
+
+test('buildClaudeArgs: a camera read gets Read, scoped by the allowlist to its one snapshot', () => {
+  const args = runner.buildClaudeArgs({
+    mode: 'read', mcpConfigPath: '/cfg/ha-mcp.json', imagePath: '/work/snap-1.jpg',
+    haTools: ['mcp__ha__homeassistant__GetLiveContext'],
+  });
+  assert.equal(argValue(args, '--tools'), 'Read');
+  assert.deepEqual(argValue(args, '--allowed-tools').split(','),
+    ['mcp__ha__homeassistant__GetLiveContext', 'Read(/work/snap-1.jpg)']);
+  assert.equal(argValue(args, '--setting-sources'), '');
+});
+
+test('buildClaudeArgs: a write declares no built-ins and allows exactly the confirmed intents', () => {
+  const args = runner.buildClaudeArgs({
+    mode: 'write', mcpConfigPath: '/cfg/ha-mcp.json', model: 'm-write',
+    intents: [
+      { intent: 'HassTurnOn', targets: ['light.a'] },
+      { intent: 'HassTurnOn', targets: ['light.b'] },
+      { intent: 'HassTurnOff', targets: ['light.c'] },
+    ],
+    haTools: ['mcp__ha__intent__HassTurnOn', 'mcp__ha__intent__HassTurnOff'],
+    // read-only directives must not leak into a write
+    surface: 'voice', editAutomation: { alias: 'x' }, imagePath: '/work/ignored.jpg',
+  });
+  assert.equal(argValue(args, '--tools'), '', 'a write never gets Read, even with an image path');
+  assert.deepEqual(argValue(args, '--allowed-tools').split(','),
+    ['mcp__ha__intent__HassTurnOn', 'mcp__ha__intent__HassTurnOff']);
+  assert.equal(argValue(args, '--model'), 'm-write');
+  assert.equal(argValue(args, '--setting-sources'), '');
+  assert.doesNotMatch(argValue(args, '--json-schema'), /proposal/, 'the write schema');
+  assert.doesNotMatch(argValue(args, '--append-system-prompt'), /spoken aloud|MODIFY an EXISTING/);
+});
+
+test('buildClaudeArgs: published ha tools a run may not call are taken out of context', () => {
+  const catalog = ['mcp__ha__homeassistant__GetLiveContext', 'mcp__ha__intent__HassTurnOn', 'mcp__ha__intent__HassTurnOff'];
+  const read = runner.buildClaudeArgs({ mode: 'read', mcpConfigPath: '/cfg/ha-mcp.json', haTools: catalog });
+  assert.equal(argValue(read, '--allowed-tools'), 'mcp__ha__homeassistant__GetLiveContext');
+  assert.deepEqual(argValue(read, '--disallowed-tools').split(','), ['mcp__ha__intent__HassTurnOn', 'mcp__ha__intent__HassTurnOff']);
+
+  const write = runner.buildClaudeArgs({
+    mode: 'write', mcpConfigPath: '/cfg/ha-mcp.json', haTools: catalog,
+    intents: [{ intent: 'HassTurnOff', targets: ['light.a'] }],
+  });
+  assert.equal(argValue(write, '--allowed-tools'), 'mcp__ha__intent__HassTurnOff');
+  assert.deepEqual(argValue(write, '--disallowed-tools').split(','),
+    ['mcp__ha__homeassistant__GetLiveContext', 'mcp__ha__intent__HassTurnOn'], 'a write no longer sees the read tool');
+
+  // no catalog yet (first run) → nothing is hidden, exactly as before
+  assert.equal(runner.buildClaudeArgs({ mode: 'read', mcpConfigPath: '/cfg/ha-mcp.json' }).includes('--disallowed-tools'), false);
+  // no MCP server → nothing to hide
+  assert.equal(runner.buildClaudeArgs({ mode: 'read', haTools: catalog }).includes('--disallowed-tools'), false);
+});
+
+test('runClaude: tools it hid stay in the returned catalog, so the next run keeps hiding them', async () => {
+  // The stub's init shows only the live-context tool (as the real CLI does once
+  // the others are disallowed). Returning just that would shrink the catalog and
+  // make the following run show every tool again.
+  const out = await runner.runClaude({
+    bin: process.env.CLAUDE_PROMPT_BIN, prompt: 'hello', mode: 'read', mcpConfigPath: '/nonexistent/ha-mcp.json',
+    cwd: TMP, haTools: ['mcp__ha__GetLiveContext', 'mcp__ha__intent__HassTurnOn'],
+  });
+  assert.equal(out.status, 'ok', JSON.stringify(out));
+  assert.deepEqual([...out.haTools].sort(), ['mcp__ha__GetLiveContext', 'mcp__ha__intent__HassTurnOn']);
+});
+
+test('buildClaudeArgs: streaming asks for partial messages', () => {
+  const args = runner.buildClaudeArgs({ mode: 'read', stream: true });
+  assert.ok(args.includes('--include-partial-messages'));
+});
+
+test('resolveChatModel: per-type models are optional and never change an install that sets none', () => {
+  const none = { model: 'chat', voiceModel: '', writeModel: '', cameraModel: '' };
+  for (const [surface, mode, vision] of [
+    ['text', 'read', false], ['voice', 'read', false], ['text', 'write', false], ['text', 'read', true],
+  ]) {
+    assert.equal(resolveChatModel({ surface, mode, vision, models: none }), 'chat', `${surface}/${mode}/${vision}`);
+  }
+  const all = { model: 'chat', voiceModel: 'voice', writeModel: 'write', cameraModel: 'camera' };
+  assert.equal(resolveChatModel({ surface: 'text', mode: 'read', vision: false, models: all }), 'chat');
+  assert.equal(resolveChatModel({ surface: 'text', mode: 'write', vision: false, models: all }), 'write');
+  assert.equal(resolveChatModel({ surface: 'text', mode: 'read', vision: true, models: all }), 'camera');
+  // voice keeps the voice model first, as it always has — for writes and camera reads too
+  assert.equal(resolveChatModel({ surface: 'voice', mode: 'write', vision: false, models: all }), 'voice');
+  assert.equal(resolveChatModel({ surface: 'voice', mode: 'read', vision: true, models: all }), 'voice');
+  // a voice turn without a voice model falls through to the type model
+  assert.equal(resolveChatModel({ surface: 'voice', mode: 'write', vision: false, models: { ...all, voiceModel: '' } }), 'write');
+  // empty everything → Claude's default
+  assert.equal(resolveChatModel({ surface: 'text', mode: 'read', vision: false, models: {} }), '');
 });
 
 test('read: a voice turn uses the faster chat_model_voice; a text turn uses the normal model', async () => {

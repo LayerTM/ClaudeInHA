@@ -225,8 +225,10 @@ deliberately much more restricted than the interactive console:
   different model from the interactive console (`chat_model`) — e.g. a quicker,
   cheaper one for snappy Assist replies — and spoken (voice) turns can use an even
   faster model (`chat_model_voice`), since voice answers are short and lower
-  latency matters more there than raw capability. Both are optional; leave them
-  empty to use the console's model. Replies are also written in your Home
+  latency matters more there than raw capability. Carrying out a confirmed action
+  (`chat_model_write`) and answering from a camera snapshot (`chat_model_camera`)
+  can each have their own model too. All of these are optional; leave them empty
+  to use the console's model. Replies are also written in your Home
   Assistant language, and voice replies are kept to one short, spoken-friendly
   sentence.
 

@@ -209,6 +209,9 @@ async function start() {
     // there, so latency matters more than raw capability. Empty → voice uses the
     // same `model` as text (no change).
     voiceModel: optionString(options, 'chat_model_voice'),
+    // Optional models per request type; empty → the chat model above (no change).
+    writeModel: optionString(options, 'chat_model_write'),
+    cameraModel: optionString(options, 'chat_model_camera'),
     dailyBudgetUsd: Number(options.chat_daily_budget_usd) || 0,
     // Camera snapshots (vision) go through the same relay, so the HA token and
     // the Core TLS decision live in exactly one place.

@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.56.8] — 2026-09-15
+
+### Changed
+- **Chat requests use about half the tokens.** Each Assist request starts a
+  short-lived Claude that answers from your home's state. It used to carry
+  everything the interactive console has: your console settings, hooks, plugins and
+  skills, every built-in tool, and every Home Assistant tool — including the action
+  tools a question can never use. It now gets only what the request needs: for a
+  question, the tool that reads your home; for a confirmed action, exactly the
+  actions you confirmed; for a camera question, those plus reading the one snapshot.
+  Measured on the same requests, before → after: a question 22,300 → 10,400 tokens,
+  a confirmed action 33,300 → 7,400 (it also no longer spends a step trying to read
+  the home first), a camera question 24,600 → 12,400. Repeated identical requests
+  are now served entirely from the prompt cache. Answers are unchanged; the console
+  is unaffected.
+
+### Added
+- **A model per kind of chat request.** Two optional options, `chat_model_write`
+  (carrying out an action you confirmed) and `chat_model_camera` (questions answered
+  from a camera snapshot). Both are empty by default, so an existing installation
+  keeps using `chat_model` exactly as before; a voice turn keeps
+  `chat_model_voice` when that is set.
+
 ## [1.56.7] — 2026-09-15
 
 ### Fixed
