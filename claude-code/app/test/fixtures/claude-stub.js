@@ -245,11 +245,18 @@ function finish(prompt, wantsProposal) {
   // Reflect the --model the server chose (voice turns get the faster voice model).
   const mIdx = args.indexOf('--model');
   const usedModel = mIdx !== -1 ? args[mIdx + 1] : '';
+  // Reflect the PostToolUse hook command the server declared through --settings
+  // (the only settings a chat run gets), so a test can prove the audit reaches it.
+  const sIdx = args.indexOf('--settings');
+  const auditHook = (() => {
+    if (sIdx === -1) return '';
+    try { return JSON.parse(args[sIdx + 1]).hooks.PostToolUse[0].hooks[0].command; } catch { return 'unparseable'; }
+  })();
   const structured = wantsProposal
-    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}${filler}; syslang=${sysLang}; voice=${sysVoice}; edit=${sysEdit}; model=${usedModel}`, proposal, automation: automation || null }
+    ? { text: `answer includes ${apiKey} and ${jwt}; history=${prompt.includes('Earlier in this conversation')}; vision=${prompt.includes('camera snapshot has been saved')}${filler}; syslang=${sysLang}; voice=${sysVoice}; edit=${sysEdit}; model=${usedModel}; audit_hook=${auditHook}`, proposal, automation: automation || null }
     // write mode: reflect what actually reached the child via stdin, so the test
     // can prove the untrusted client prompt is absent and the intents present.
-    : { text: `stdin_has_inject=${prompt.includes('INJECTED')} stdin_has_intent=${prompt.includes('HassTurnOff')}` };
+    : { text: `stdin_has_inject=${prompt.includes('INJECTED')} stdin_has_intent=${prompt.includes('HassTurnOff')} audit_hook=${auditHook}` };
 
   // Fine-grained streaming: when --include-partial-messages is on, emit the
   // StructuredOutput tool input as input_json_delta fragments (wrapped under

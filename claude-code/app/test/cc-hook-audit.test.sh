@@ -233,6 +233,26 @@ check "a fresh install is seeded" "$(hooks_seed_or_migrate "${settings}")" seede
 check "and gets the current matcher" "$(matcher_of)" "${CC_HOOK_AUDIT_MATCHER}"
 check "seeding twice changes nothing" "$(hooks_seed_or_migrate "${settings}")" unchanged
 
+# Chat runs read no settings files, so they are handed the audit hook directly.
+# It must be the entry the console is seeded with, not a second copy of it.
+check "chat runs get the seeded audit entry" \
+    "$(hooks_audit_settings_json | jq -c '.hooks.PostToolUse[0]')" \
+    "$(jq -c '.hooks.PostToolUse[0]' "${settings}")"
+check "and no other hook" "$(hooks_audit_settings_json | jq -c '.hooks | keys')" '["PostToolUse"]'
+runtext="$(cat "${run}")"
+case "${runtext}" in
+    *'export CLAUDE_PROMPT_SETTINGS="$(hooks_audit_settings_json)"'*) pass "the service script hands it to the prompt server" ;;
+    *) fail "the service script hands it to the prompt server" "absent" "present" ;;
+esac
+# After the user's environment_vars, so the config cannot replace the hook.
+envline="$(printf '%s\n' "${runtext}" | awk '/done < <\(config_list environment_vars\)/{print NR; exit}')"
+setline="$(printf '%s\n' "${runtext}" | awk '/export CLAUDE_PROMPT_SETTINGS=/{print NR; exit}')"
+if [ -n "${envline}" ] && [ -n "${setline}" ] && [ "${setline}" -gt "${envline}" ]; then
+    pass "and sets it after the user's environment_vars (${envline} < ${setline})"
+else
+    fail "and sets it after the user's environment_vars" "env=${envline} set=${setline}" "env < set"
+fi
+
 # An existing installation, seeded by v1.4.0 and carried across every update
 # since. This is the case the seed guard skips and the whole point of the block.
 existing='{"hooks":{"PreToolUse":[{"matcher":"Bash|Edit|Write|MultiEdit","hooks":[{"type":"command","command":"/usr/local/bin/cc-hook-backup"}]}],"PostToolUse":[{"matcher":"Bash|Edit|Write|MultiEdit","hooks":[{"type":"command","command":"/usr/local/bin/cc-hook-audit"}]}],"Notification":[{"hooks":[{"type":"command","command":"/usr/local/bin/cc-hook-notify"}]}]}}'

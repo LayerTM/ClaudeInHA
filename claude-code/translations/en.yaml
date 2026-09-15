@@ -229,6 +229,19 @@ configuration:
       replies are short, so lower latency matters more than raw capability. For
       example claude-haiku-4-5-20251001 for near-instant voice answers. Leave empty
       to use the Chat Model above for voice too.
+  chat_model_write:
+    name: Action Model (claude_ha integration)
+    description: >-
+      Optional model for carrying out an action you have already confirmed in the
+      chat. That step only calls the exact Home Assistant action it was given, so a
+      faster, cheaper model is usually enough. Leave empty to use the Chat Model
+      above. A voice turn keeps the Voice Chat Model when one is set.
+  chat_model_camera:
+    name: Camera Model (claude_ha integration)
+    description: >-
+      Optional model for questions answered from a camera snapshot. Leave empty to
+      use the Chat Model above. A voice turn keeps the Voice Chat Model when one is
+      set.
   chat_daily_budget_usd:
     name: Chat Daily Budget (USD)
     description: >-

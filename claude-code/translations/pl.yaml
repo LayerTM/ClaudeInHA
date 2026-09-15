@@ -234,6 +234,19 @@ configuration:
       odpowiedzi głosowe są krótkie, więc niższe opóźnienie liczy się bardziej niż
       moc. Np. claude-haiku-4-5-20251001 dla niemal natychmiastowych odpowiedzi
       głosowych. Zostaw puste, aby dla głosu też użyć „Modelu czatu" powyżej.
+  chat_model_write:
+    name: Model akcji (integracja claude_ha)
+    description: >-
+      Opcjonalny model do wykonania akcji, którą już potwierdziłeś w czacie. Ten
+      krok wywołuje tylko podaną akcję Home Assistant, więc zwykle wystarczy
+      szybszy, tańszy model. Zostaw puste, aby użyć „Modelu czatu" powyżej. Tura
+      głosowa zostaje przy „Modelu głosowym", jeśli jest ustawiony.
+  chat_model_camera:
+    name: Model kamer (integracja claude_ha)
+    description: >-
+      Opcjonalny model do pytań, na które odpowiedź pochodzi ze zdjęcia z kamery.
+      Zostaw puste, aby użyć „Modelu czatu" powyżej. Tura głosowa zostaje przy
+      „Modelu głosowym", jeśli jest ustawiony.
   chat_daily_budget_usd:
     name: Dzienny budżet czatu (USD)
     description: >-

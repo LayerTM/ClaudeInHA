@@ -4,7 +4,11 @@
 // stream-json output. The security posture lives in the invocation itself:
 //   - prompt travels over STDIN — never argv (no flag injection, no `ps` leak)
 //   - deny-by-default permissions (`dontAsk`) + explicit narrow allowlist
-//   - dangerous built-ins stripped from context via --disallowed-tools
+//   - the built-in tool set is declared, not subtracted: --tools names exactly
+//     what the mode needs (nothing, or Read for a camera snapshot)
+//   - --setting-sources '': none of the console's settings files (hooks,
+//     plugins, per-model options) reach this child; --settings passes back
+//     only what it must keep (the audit hook)
 //   - --strict-mcp-config: only OUR scoped HA MCP config is loaded, never the
 //     interactive console's user-configured MCP servers
 //   - scrubbed child env: no Supervisor/HA tokens, no user env vars
@@ -38,26 +42,16 @@ const TEXT_CAP_BYTES = 256 * 1024;
 // context window and the wall-clock timeout are the real bounds.
 const HISTORY_BLOCK_CAP = 24 * 1024;
 
-// Removed from the model's context entirely. Deny rules for names a given CLI
-// version does not know only produce a warning, so over-listing is safe.
-// This list is defense-in-depth: the enforcement layer is `dontAsk`, which
-// auto-denies EVERY tool not in the per-request allowlist.
-const DISALLOWED_TOOLS_ARR = [
-  'Bash', 'Read', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'NotebookRead',
-  'Grep', 'Glob', 'LS', 'WebFetch', 'WebSearch', 'Task', 'Agent', 'TodoWrite',
-  'Skill', 'KillShell', 'BashOutput', 'Workflow', 'ToolSearch', 'SendMessage',
-  'TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList', 'TaskStop', 'TaskOutput',
-  'CronCreate', 'CronDelete', 'CronList', 'Monitor', 'PushNotification',
-  'RemoteTrigger', 'ScheduleWakeup', 'DesignSync', 'EnterWorktree',
-  'ExitWorktree', 'EnterPlanMode', 'ExitPlanMode', 'AskUserQuestion',
-  'Artifact', 'ListMcpResourcesTool', 'ReadMcpResourceTool',
-];
-const DISALLOWED_TOOLS = DISALLOWED_TOOLS_ARR.join(',');
-// Camera vision (read + a fetched snapshot): the allowlist gets a PATH-SCOPED
-// Read of exactly that one snapshot file. A blanket `Read` deny here would
-// override it, so drop `Read` from the deny list in that mode only — the scoped
-// allow rule (plus `dontAsk` denying every unlisted path) is the actual gate.
-const DISALLOWED_TOOLS_VISION = DISALLOWED_TOOLS_ARR.filter((t) => t !== 'Read').join(',');
+// The built-in tools a run can see, declared per mode. `--tools` makes every
+// other built-in unavailable, including ones a future CLI adds; the list this
+// replaced subtracted known names and had already missed three (measured with
+// CLI 2.1.272: ListAgents, ReadMcpResourceDirTool and ReportFindings were still
+// offered). The enforcement layer is still `dontAsk`, which denies any call not
+// on the per-request allowlist — so vision's `Read` is usable only on the one
+// snapshot path the allowlist names.
+const BUILTIN_TOOLS_READ = '';
+const BUILTIN_TOOLS_VISION = 'Read';
+const BUILTIN_TOOLS_WRITE = '';
 
 // ---------------------------------------------------------------------------
 // HA tool names are NOT stable — never pin a full one.
@@ -417,7 +411,7 @@ function wantedHaBasenames(mode, intents) {
 }
 
 function buildClaudeArgs({
-  mode, intents, mcpConfigPath, model, imagePath, language, surface, editAutomation, haTools, stream,
+  mode, intents, mcpConfigPath, model, imagePath, language, surface, editAutomation, haTools, stream, settings,
 }) {
   const read = mode !== 'write';
   const vision = read && Boolean(imagePath);
@@ -433,7 +427,12 @@ function buildClaudeArgs({
     '--verbose',
     '--permission-mode', 'dontAsk',
     '--allowed-tools', allowedTools.join(','),
-    '--disallowed-tools', vision ? DISALLOWED_TOOLS_VISION : DISALLOWED_TOOLS,
+    '--tools', vision ? BUILTIN_TOOLS_VISION : (read ? BUILTIN_TOOLS_READ : BUILTIN_TOOLS_WRITE),
+    // The console's settings files are the user's interactive setup: its hooks,
+    // plugins, skills and per-model options added ~1,300 tokens to every model
+    // call and broke prompt caching between identical requests. This child needs
+    // none of them; credentials are not a setting source and still load.
+    '--setting-sources', '',
     '--json-schema', read ? READ_SCHEMA : WRITE_SCHEMA,
     '--append-system-prompt',
     (read ? READ_SYSTEM_PROMPT : WRITE_SYSTEM_PROMPT)
@@ -446,12 +445,24 @@ function buildClaudeArgs({
     '--strict-mcp-config',
   ];
   if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
+  // What the settings files are still needed for, declared per run: the audit
+  // hook that records each Home Assistant tool call WITH its arguments. The
+  // allowlist gates by tool name only, so the arguments are the record.
+  if (settings) args.push('--settings', settings);
   if (model) args.push('--model', model);
   // Only ask the CLI for fine-grained partial-message events when a streaming
   // consumer is attached. Without this flag stream-json emits whole messages
   // only, so onText would never fire. Requires -p + stream-json + --verbose
   // (all set above); introduced in CLI 1.0.109, present in our bundled 2.x.
   if (stream) args.push('--include-partial-messages');
+  // Every `ha` tool the session publishes but this run is not allowed to call
+  // is taken out of the model's context. Unlisted, a read still carried every
+  // action tool's schema, and a write kept trying GetLiveContext — a denied
+  // call that cost a turn. Built only from the published catalog, so a first
+  // run (no catalog yet) keeps today's behaviour and discovery can only narrow.
+  const unwanted = (Array.isArray(haTools) ? haTools : [])
+    .filter((n) => typeof n === 'string' && n.startsWith(HA_TOOL_PREFIX) && !allowedTools.includes(n));
+  if (mcpConfigPath && unwanted.length) args.push('--disallowed-tools', unwanted.join(','));
   return args;
 }
 
@@ -476,7 +487,7 @@ function buildClaudeArgs({
  * Never rejects.
  */
 function runClaude({
-  bin, prompt, mode, intents, mcpConfigPath, model, cwd, signal, history, imagePath, onText, timeoutMs,
+  bin, settings, prompt, mode, intents, mcpConfigPath, model, cwd, signal, history, imagePath, onText, timeoutMs,
   language, surface, editAutomation, haTools,
 }) {
   return new Promise((resolve) => {
@@ -490,7 +501,7 @@ function runClaude({
     const vision = read && Boolean(imagePath);
     const wantedBasenames = wantedHaBasenames(mode, intents);
     const args = buildClaudeArgs({
-      mode, intents, mcpConfigPath, model, imagePath, language, surface, editAutomation, haTools,
+      mode, intents, mcpConfigPath, model, imagePath, language, surface, editAutomation, haTools, settings,
       stream: Boolean(onText),
     });
 
@@ -605,7 +616,14 @@ function runClaude({
         // tool has run yet (init is the first event), which makes ending safe.
         const sessionTools = Array.isArray(ev.tools)
           ? ev.tools.filter((t) => typeof t === 'string') : [];
-        publishedHaTools = sessionTools.filter((t) => t.startsWith(HA_TOOL_PREFIX));
+        // Tools this run took out of context are still published — init just
+        // cannot show them. Returned too, or the next run's catalog would hold
+        // only what this one was allowed, and it would stop removing the rest.
+        const hiddenHaTools = args.includes('--disallowed-tools')
+          ? args[args.indexOf('--disallowed-tools') + 1].split(',') : [];
+        publishedHaTools = [...new Set([
+          ...sessionTools.filter((t) => t.startsWith(HA_TOOL_PREFIX)), ...hiddenHaTools,
+        ])];
         if (mcpConfigPath) {
           // Read back from the arguments this child was actually given.
           const allowed = new Set(args[args.indexOf('--allowed-tools') + 1].split(','));
