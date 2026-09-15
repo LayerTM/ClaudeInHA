@@ -1,3 +1,5 @@
 build_from:
+  # upstream: github-release hassio-addons/addon-debian-base
   amd64: ghcr.io/hassio-addons/debian-base:9.4.0
+  # upstream: github-release hassio-addons/addon-debian-base
   aarch64: ghcr.io/hassio-addons/debian-base:9.4.0

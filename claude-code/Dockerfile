@@ -40,7 +40,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Node.js from official dist tarballs (latest, deterministic, arch-aware)
-ARG NODE_VERSION=26.8.1
+# upstream: nodejs lts-ready
+ARG NODE_VERSION=26.8.2
 RUN arch="$(dpkg --print-architecture)" \
     && case "${arch}" in \
          amd64) node_arch="x64" ;; \
@@ -82,12 +83,15 @@ RUN arch="$(dpkg --print-architecture)" \
 # fetching the key from the same bucket would prove nothing. If that key gets a
 # documented home, it belongs here: it would let a bump verify that a new version
 # is authentic, where a recorded checksum can only hold it to what was seen.
-ARG CLAUDE_CODE_VERSION=2.1.263
+# upstream: claude-code CLAUDE_DOWNLOAD_BASE latest
+ARG CLAUDE_CODE_VERSION=2.1.272
 # From <version>/manifest.json: .platforms["linux-x64"].checksum and
 # .platforms["linux-arm64"].checksum. A version bump moves these two with it;
 # forgetting stops the build at the checksum rather than at a user's next start.
-ARG CLAUDE_CODE_SHA256_AMD64=26d020351e8112f4006790f3cfce43b4c9df0c1bb1d0e542364d64151b81d5ba
-ARG CLAUDE_CODE_SHA256_ARM64=7d25d7c8ae6c6e009cc7dae4e817f674179fd31fb7761bcd56fee4c2902b4c03
+# upstream: claude-code-sha256 linux-x64
+ARG CLAUDE_CODE_SHA256_AMD64=d81396a668eb76fbddb49a2a5841f1b5d7af96b4c1f6500ced92f2c988f5bcd4
+# upstream: claude-code-sha256 linux-arm64
+ARG CLAUDE_CODE_SHA256_ARM64=214a90efdd16ee0ea81132ffecced588dba394d178cc494f285ba04b5288c8de
 ARG CLAUDE_DOWNLOAD_BASE=https://downloads.claude.ai/claude-code-releases
 # Every fallible step carries its own message. In a single `A && B && C || D`
 # chain the `||` binds to the WHOLE chain, so the first failure jumps straight to
@@ -145,7 +149,9 @@ ENV CHROME_BIN=/usr/bin/chromium
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # --- Home Assistant CLIs (static, arch-aware) ---
+# upstream: github-release home-assistant/cli
 ARG HA_CLI_VERSION=5.5.0
+# upstream: github-release mikefarah/yq
 ARG YQ_VERSION=4.53.6
 RUN arch="$(dpkg --print-architecture)" \
     && case "${arch}" in \
@@ -162,8 +168,11 @@ RUN arch="$(dpkg --print-architecture)" \
 # the HA Token is set): entity/service queries against the Core API.
 # Pillow: Python imaging for ad-hoc crops/resizes of dashboard screenshots
 # (ImageMagick's `magick` covers the CLI side).
+# upstream: pypi homeassistant-cli
 ARG HASS_CLI_VERSION=1.0.0
+# upstream: pypi hass-mcp
 ARG HASS_MCP_VERSION=0.6.0
+# upstream: pypi Pillow
 ARG PILLOW_VERSION=12.3.0
 RUN pip install --no-cache-dir --break-system-packages \
         "homeassistant-cli==${HASS_CLI_VERSION}" \
@@ -172,12 +181,14 @@ RUN pip install --no-cache-dir --break-system-packages \
 
 # --- Playwright MCP (baked, pinned) ---
 # Uses the system Chromium via --executable-path at runtime; no browser download.
-ARG PLAYWRIGHT_MCP_VERSION=0.0.80
+# upstream: npm @playwright/mcp
+ARG PLAYWRIGHT_MCP_VERSION=0.0.81
 RUN npm install -g "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
     && npm cache clean --force
 
 # --- ccstatusline (the rich status line the desktop Claude Code uses) ---
 # Bundled so no runtime npx download is needed; wired as Claude's statusLine.
+# upstream: npm ccstatusline
 ARG CCSTATUSLINE_VERSION=2.2.29
 RUN npm install -g "ccstatusline@${CCSTATUSLINE_VERSION}" \
     && npm cache clean --force
@@ -193,6 +204,7 @@ RUN cd /opt/claude-console \
 
 # Bundled terminal font (JetBrains Mono, OFL) — crisp, consistent glyphs across
 # every client, served locally so nothing is fetched at runtime.
+# upstream: npm @fontsource/jetbrains-mono
 ARG JETBRAINS_MONO_VERSION=5.3.0
 RUN mkdir -p /opt/claude-console/public/fonts \
     && curl -fsSL --retry 3 --retry-delay 2 \

@@ -403,6 +403,59 @@ function shutdown() {
 }
 
 /**
+ * The complete argument list for one claude run. The single place the
+ * invocation is composed: runClaude spawns exactly this, and CI hands the same
+ * lists to the bundled CLI, so a flag the CLI stops accepting fails the build
+ * rather than every request.
+ */
+// What a run needs from the `ha` server, by BASENAME (see the note above):
+// read mode needs live context; write mode needs exactly the confirmed intents.
+function wantedHaBasenames(mode, intents) {
+  return mode !== 'write'
+    ? [LIVE_CONTEXT_BASENAME]
+    : [...new Set(intents.map((i) => i.intent))];
+}
+
+function buildClaudeArgs({
+  mode, intents, mcpConfigPath, model, imagePath, language, surface, editAutomation, haTools, stream,
+}) {
+  const read = mode !== 'write';
+  const vision = read && Boolean(imagePath);
+  let allowedTools = [];
+  if (mcpConfigPath) {
+    allowedTools = [...new Set(wantedHaBasenames(mode, intents).flatMap((b) => resolveHaTools(b, haTools)))];
+  }
+  if (vision) allowedTools.push(`Read(${imagePath})`);
+
+  const args = [
+    '-p',
+    '--output-format', 'stream-json',
+    '--verbose',
+    '--permission-mode', 'dontAsk',
+    '--allowed-tools', allowedTools.join(','),
+    '--disallowed-tools', vision ? DISALLOWED_TOOLS_VISION : DISALLOWED_TOOLS,
+    '--json-schema', read ? READ_SCHEMA : WRITE_SCHEMA,
+    '--append-system-prompt',
+    (read ? READ_SYSTEM_PROMPT : WRITE_SYSTEM_PROMPT)
+      + languageDirective(language)
+      + (read ? voiceDirective(surface) : '')
+      + (read ? editDirective(editAutomation) : ''),
+    // Accepted (though no longer documented) by CLI 2.1.200; bounds agentic
+    // loops as a second ceiling next to the wall-clock timeout.
+    '--max-turns', String(MAX_TURNS),
+    '--strict-mcp-config',
+  ];
+  if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
+  if (model) args.push('--model', model);
+  // Only ask the CLI for fine-grained partial-message events when a streaming
+  // consumer is attached. Without this flag stream-json emits whole messages
+  // only, so onText would never fire. Requires -p + stream-json + --verbose
+  // (all set above); introduced in CLI 1.0.109, present in our bundled 2.x.
+  if (stream) args.push('--include-partial-messages');
+  return args;
+}
+
+/**
  * Run one claude call. Resolves to:
  *   { status: 'ok', text, proposal, automation, toolsUsed, numTurns, costUsd,
  *     truncated, mcpFailed, haTools }
@@ -435,42 +488,11 @@ function runClaude({
       : TIMEOUT_MS;
     const read = mode !== 'write';
     const vision = read && Boolean(imagePath);
-    // What this run needs from the `ha` server, by BASENAME (see the note above):
-    // read mode needs live context; write mode needs exactly the confirmed intents.
-    const wantedBasenames = read
-      ? [LIVE_CONTEXT_BASENAME]
-      : [...new Set(intents.map((i) => i.intent))];
-    let allowedTools = [];
-    if (mcpConfigPath) {
-      allowedTools = [...new Set(wantedBasenames.flatMap((b) => resolveHaTools(b, haTools)))];
-    }
-    if (read && imagePath) allowedTools.push(`Read(${imagePath})`);
-
-    const args = [
-      '-p',
-      '--output-format', 'stream-json',
-      '--verbose',
-      '--permission-mode', 'dontAsk',
-      '--allowed-tools', allowedTools.join(','),
-      '--disallowed-tools', vision ? DISALLOWED_TOOLS_VISION : DISALLOWED_TOOLS,
-      '--json-schema', read ? READ_SCHEMA : WRITE_SCHEMA,
-      '--append-system-prompt',
-      (read ? READ_SYSTEM_PROMPT : WRITE_SYSTEM_PROMPT)
-        + languageDirective(language)
-        + (read ? voiceDirective(surface) : '')
-        + (read ? editDirective(editAutomation) : ''),
-      // Accepted (though no longer documented) by CLI 2.1.200; bounds agentic
-      // loops as a second ceiling next to the wall-clock timeout.
-      '--max-turns', String(MAX_TURNS),
-      '--strict-mcp-config',
-    ];
-    if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
-    if (model) args.push('--model', model);
-    // Only ask the CLI for fine-grained partial-message events when a streaming
-    // consumer is attached. Without this flag stream-json emits whole messages
-    // only, so onText would never fire. Requires -p + stream-json + --verbose
-    // (all set above); introduced in CLI 1.0.109, present in our bundled 2.x.
-    if (onText) args.push('--include-partial-messages');
+    const wantedBasenames = wantedHaBasenames(mode, intents);
+    const args = buildClaudeArgs({
+      mode, intents, mcpConfigPath, model, imagePath, language, surface, editAutomation, haTools,
+      stream: Boolean(onText),
+    });
 
     let child;
     try {
@@ -585,7 +607,8 @@ function runClaude({
           ? ev.tools.filter((t) => typeof t === 'string') : [];
         publishedHaTools = sessionTools.filter((t) => t.startsWith(HA_TOOL_PREFIX));
         if (mcpConfigPath) {
-          const allowed = new Set(allowedTools);
+          // Read back from the arguments this child was actually given.
+          const allowed = new Set(args[args.indexOf('--allowed-tools') + 1].split(','));
           const missed = wantedBasenames.filter((b) => {
             const published = publishedHaTools.filter((n) => haToolBasename(n) === b);
             return published.length > 0 && !published.some((n) => allowed.has(n));
@@ -767,5 +790,5 @@ function runClaude({
 }
 
 module.exports = {
-  runClaude, shutdown, TIMEOUT_MS, safeLangTag, haToolBasename, resolveHaTools,
+  runClaude, buildClaudeArgs, shutdown, TIMEOUT_MS, safeLangTag, haToolBasename, resolveHaTools,
 };

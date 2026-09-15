@@ -11,6 +11,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Canary: once a day (or on demand) the image is built from main with every
+  # upstream pin moved to its latest release, so an upstream that breaks the
+  # add-on turns this run red before a release carries it. Nothing is committed.
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -117,6 +123,41 @@ jobs:
       - name: Every gate is a gate the release waits for
         run: python3 .github/scripts/ci_gates.py
 
+  # Where every upstream pin comes from is declared beside it (see pins.py).
+  # Always runs, so the release can need it; it only asks the upstreams when this
+  # commit carries a version that has no release yet — i.e. on the pull request
+  # that bumps the version and on the push that would cut it. A release therefore
+  # never ships a pin that is behind, and an upstream that cannot be read fails it.
+  pins:
+    name: Upstream pins
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test the script that reads the pins
+        run: python3 .github/scripts/test_pins.py
+      - name: Does this commit carry an unreleased version
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(grep -oE '^version:[[:space:]]*"?[0-9]+\.[0-9]+\.[0-9]+' claude-code/config.yaml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          if [ -z "${version}" ]; then
+            echo "Could not parse version from config.yaml" >&2
+            exit 1
+          fi
+          if gh release view "v${version}" >/dev/null 2>&1; then
+            echo "v${version} is already released — the pins are checked when the version moves."
+            echo "unreleased=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v${version} has no release yet — every pin must match its upstream."
+            echo "unreleased=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Every pin matches its upstream
+        if: steps.release.outputs.unreleased == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/pins.py check
+
   # The architectures come from the add-on's own files rather than being listed
   # here, so adding one cannot leave it unbuilt — and the script refuses to answer
   # when config.yaml and build.yaml disagree about the set.
@@ -151,6 +192,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - name: "Canary: move every pin to its latest upstream release (not committed)"
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 .github/scripts/pins.py bump
+          git diff --stat
       - name: Resolve the platform and base image for ${{ matrix.arch }}
         id: target
         run: |
@@ -196,6 +244,15 @@ jobs:
           docker run --rm --platform '${{ steps.target.outputs.platform }}' \
             --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
             -e "require('/opt/claude-console/node_modules/node-pty'); console.log('node-pty loads')"
+      - name: The bundled CLI accepts every argument list the prompt runner builds
+        run: |
+          # The lists come from the runner inside the image, not from a copy, so
+          # a CLI bump that drops or renames a flag fails here instead of turning
+          # every chat request into an error.
+          docker run --rm --platform '${{ steps.target.outputs.platform }}' \
+            --volume "${PWD}/.github/scripts:/ci:ro" \
+            --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
+            /ci/runner_args_smoke.js /root/.local/bin/claude /opt/claude-console/server/prompt/runner.js
 
   # Keeps GitHub Releases in lock-step with the add-on version: whenever main
   # carries a version with no release, this cuts one. It needs every gate above,
@@ -212,6 +269,7 @@ jobs:
       - hadolint
       - secret-scan
       - workflow-gates
+      - pins
       - arches
       - image
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
