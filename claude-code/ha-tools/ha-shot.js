@@ -35,7 +35,17 @@ async function main() {
       'Profile → Security → Long-lived access tokens.');
   }
 
-  const baseUrl = (process.env.HA_URL || 'http://homeassistant:8123').replace(/\/+$/, '');
+  // The frontend accepts seeded tokens only when `hassUrl` equals the page's
+  // `location.origin`, and an origin never carries its scheme's default port:
+  // with Core on port 80, HA_URL `http://homeassistant:80` is origin
+  // `http://homeassistant`, and the literal string was rejected as a foreign
+  // login. So everything below is built from the origin the browser will see.
+  let baseUrl;
+  try {
+    baseUrl = new URL(process.env.HA_URL || 'http://homeassistant:8123').origin;
+  } catch {
+    fail(`ha-shot: HA_URL "${process.env.HA_URL}" is not a URL`);
+  }
   const clientId = `${baseUrl}/`;
   const m = /^(\d+)[xX](\d+)$/.exec(size);
   if (!m) fail(`ha-shot: bad size "${size}", expected WIDTHxHEIGHT e.g. 1280x800`);
@@ -75,22 +85,30 @@ async function main() {
     const page = await context.newPage();
     await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // Wait for the panel to finish loading (HA is nested shadow DOM).
-    await page.waitForFunction(() => {
+    // Ready = the frontend says so: it removes its own launch screen once the
+    // app has rendered, and by then it holds a connection (`hass`) and a panel.
+    // The panel's DOM exists seconds before that while the "Loading..." screen
+    // still covers it, and the private `_loading` flags this used to read no
+    // longer exist, so a check on them passed at once and captured the splash.
+    // A bad token instead ends on /auth/authorize, so that also stops the wait.
+    const ready = await page.waitForFunction(() => {
+      if (window.location.pathname.startsWith('/auth/authorize')) return true;
       const ha = document.querySelector('home-assistant');
       const main = ha && ha.shadowRoot && ha.shadowRoot.querySelector('home-assistant-main');
       const resolver = main && main.shadowRoot &&
         main.shadowRoot.querySelector('partial-panel-resolver');
-      if (!resolver || resolver._loading) return false;
-      const panel = resolver.children[0];
-      return panel && !panel._loading;
-    }, { timeout: 15000 }).catch(() => { /* handled by the auth-redirect check below */ });
+      return Boolean(ha && ha.hass && resolver && resolver.children[0]
+        && !document.getElementById('ha-launch-screen'));
+    }, { timeout: 30000 }).then(() => true, () => false);
 
-    // A bad/expired token makes HA redirect to /auth/authorize (client-side,
-    // after load) — check AFTER the wait so we don't screenshot a login page.
     if (new URL(page.url()).pathname.startsWith('/auth/authorize')) {
       throw new Error('authentication failed — the HA Token was rejected. ' +
         'Generate a fresh Long-Lived Access Token and update the add-on option.');
+    }
+    // Never save a screenshot of a page that has not rendered: a splash or a
+    // half-built dashboard looks like an answer and is not one.
+    if (!ready) {
+      throw new Error(`the dashboard did not finish loading within 30 s (${page.url()})`);
     }
 
     await page.waitForTimeout(750); // let cards paint
