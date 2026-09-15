@@ -9,6 +9,7 @@
 //   - --setting-sources '': none of the console's settings files (hooks,
 //     plugins, per-model options) reach this child; --settings passes back
 //     only what it must keep (the audit hook)
+//   - --no-session-persistence: a run leaves no transcript on disk
 //   - --strict-mcp-config: only OUR scoped HA MCP config is loaded, never the
 //     interactive console's user-configured MCP servers
 //   - scrubbed child env: no Supervisor/HA tokens, no user env vars
@@ -433,6 +434,9 @@ function buildClaudeArgs({
     // call and broke prompt caching between identical requests. This child needs
     // none of them; credentials are not a setting source and still load.
     '--setting-sources', '',
+    // Each run is stateless (history travels in the prompt), so nothing is saved:
+    // a saved session is a transcript of the home state the run read.
+    '--no-session-persistence',
     '--json-schema', read ? READ_SCHEMA : WRITE_SCHEMA,
     '--append-system-prompt',
     (read ? READ_SYSTEM_PROMPT : WRITE_SYSTEM_PROMPT)

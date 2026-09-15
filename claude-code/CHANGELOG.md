@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.56.9] — 2026-09-15
+
+### Fixed
+- **Chat requests no longer leave a transcript behind.** Every Assist request used
+  to save its session, including the home state it read, under the add-on's
+  storage, and nothing removed them. Requests now save nothing, and the transcripts
+  earlier versions left are removed when the add-on starts.
+- **The chat bridge does not run unaudited.** If the audit hook for chat requests
+  is missing, the add-on log shows an error and the prompt API does not start,
+  instead of carrying out actions that `ha-audit` would not record.
+
 ## [1.56.8] — 2026-09-15
 
 ### Changed
