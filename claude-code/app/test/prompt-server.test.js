@@ -1278,6 +1278,7 @@ test('buildClaudeArgs: a read declares no built-in tools and no settings files',
   assert.equal(argValue(args, '--tools'), '', 'no built-in tool is available to a read');
   assert.equal(argValue(args, '--setting-sources'), '', 'the console settings never reach the child');
   assert.equal(args.includes('--settings'), false, 'no settings are invented when none are given');
+  assert.ok(args.includes('--no-session-persistence'), 'a run saves no transcript');
   assert.equal(args.includes('--disallowed-tools'), false, 'the subtracted deny list is gone');
   assert.equal(argValue(args, '--allowed-tools'), 'mcp__ha__GetLiveContext');
   assert.equal(argValue(args, '--mcp-config'), '/cfg/ha-mcp.json');
@@ -1344,6 +1345,45 @@ test('buildClaudeArgs: the settings a run is given travel with --settings, next 
 test('audit: every chat run carries the audit hook the service script built', async () => {
   const r = await post({ prompt: 'hello' }, { 'X-Claude-Caller': 'user.audit.hook' });
   assert.match(r.json.text, /audit_hook=\/usr\/local\/bin\/cc-hook-audit\b/, r.json.text);
+});
+
+test('start: without the audit hook the prompt API refuses to start, loudly', async () => {
+  const saved = process.env.CLAUDE_PROMPT_SETTINGS;
+  const lines = [];
+  const realLog = console.log;
+  console.log = (msg) => { lines.push(String(msg)); };
+  try {
+    for (const value of ['', '{}', '{"hooks":{"PostToolUse":[{"matcher":"x","hooks":[{"type":"command","command":""}]}]}}']) {
+      process.env.CLAUDE_PROMPT_SETTINGS = value;
+      lines.length = 0;
+      // eslint-disable-next-line no-await-in-loop
+      const stop = await promptServer.start();
+      assert.equal(typeof stop, 'function', JSON.stringify(value));
+      assert.ok(lines.some((l) => /ERROR: CLAUDE_PROMPT_SETTINGS .*prompt API is not started/.test(l)), `${JSON.stringify(value)}: ${lines.join(' | ')}`);
+      assert.ok(!lines.some((l) => /listening/.test(l)), 'nothing was started');
+    }
+  } finally {
+    console.log = realLog;
+    process.env.CLAUDE_PROMPT_SETTINGS = saved;
+  }
+  assert.equal(promptServer.hasAuditHook(saved), true, 'the settings the service script builds pass');
+  assert.equal(promptServer.hasAuditHook('not json'), false);
+});
+
+test('removeSavedPromptSessions: clears the work folder\'s saved sessions once, and nothing else', async () => {
+  const home = fs.mkdtempSync(path.join(TMP, 'home-'));
+  const projects = path.join(home, '.claude', 'projects');
+  const ours = path.join(projects, '-data-claude-prompt-work');
+  const theirs = path.join(projects, '-homeassistant');
+  fs.mkdirSync(path.join(ours, 'memory'), { recursive: true });
+  fs.mkdirSync(theirs, { recursive: true });
+  fs.writeFileSync(path.join(ours, 'a.jsonl'), '{}');
+  fs.writeFileSync(path.join(ours, 'b.jsonl'), '{}');
+  fs.writeFileSync(path.join(theirs, 'c.jsonl'), '{}');
+  assert.equal(await promptServer.removeSavedPromptSessions(home, '/data/claude-prompt/work'), 2);
+  assert.equal(fs.existsSync(ours), false, 'the work folder\'s project directory is gone');
+  assert.equal(fs.existsSync(path.join(theirs, 'c.jsonl')), true, 'the console\'s sessions are untouched');
+  assert.equal(await promptServer.removeSavedPromptSessions(home, '/data/claude-prompt/work'), 0, 'a second start does nothing');
 });
 
 test('buildClaudeArgs: published ha tools a run may not call are taken out of context', () => {

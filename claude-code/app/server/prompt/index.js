@@ -23,9 +23,6 @@ const DATA_DIR = process.env.CLAUDE_PROMPT_DATA || '/data';
 const OPTIONS_FILE = process.env.CLAUDE_PROMPT_OPTIONS || '/data/options.json';
 const CLAUDE_BIN = process.env.CLAUDE_PROMPT_BIN || '/data/home/.local/bin/claude';
 const USAGE_BIN = process.env.CLAUDE_PROMPT_USAGE_BIN || '/usr/local/bin/ha-usage';
-// The settings a chat run gets instead of the console's settings files: the
-// audit hook, as the service script builds it (addon-hooks.sh). Empty in dev.
-const CLAUDE_SETTINGS = process.env.CLAUDE_PROMPT_SETTINGS || '';
 // Dev/test escape hatch only. In the add-on the startup script unsets it after
 // applying user environment_vars, so it can never be set from the config — the
 // Core address is derived (see core-target.js), never supplied.
@@ -93,6 +90,40 @@ async function writeMcpConfig(url, bearer) {
   return file;
 }
 
+// The settings a chat run gets instead of the console's settings files carry
+// the audit hook (built by the service script from addon-hooks.sh). True only
+// when at least one PostToolUse hook command is there to record actions.
+function hasAuditHook(raw) {
+  try {
+    const post = JSON.parse(raw).hooks.PostToolUse;
+    return Array.isArray(post) && post.some((entry) => Array.isArray(entry?.hooks)
+      && entry.hooks.some((h) => typeof h?.command === 'string' && h.command !== ''));
+  } catch {
+    return false;
+  }
+}
+
+// Earlier versions let every chat run save its session — a transcript holding
+// the home state the run read — under Claude's project directory for the work
+// folder, and nothing removed them. Runs no longer save one; this clears what is
+// left. /data survives updates, so it runs at every start and does nothing once
+// the directory is gone. Resolves to the number of transcripts removed.
+async function removeSavedPromptSessions(homeDir, workDir) {
+  // Claude names a folder's project directory after its path with every
+  // character outside [A-Za-z0-9] replaced by '-': /data/claude-prompt/work is
+  // -data-claude-prompt-work, the directory found on installations.
+  const dir = path.join(homeDir, '.claude', 'projects', workDir.replace(/[^A-Za-z0-9]/g, '-'));
+  let entries;
+  try {
+    entries = await fsp.readdir(dir);
+  } catch (err) {
+    if (err.code === 'ENOENT') return 0;
+    throw err;
+  }
+  await fsp.rm(dir, { recursive: true, force: true });
+  return entries.filter((name) => name.endsWith('.jsonl')).length;
+}
+
 async function ensureWorkDir() {
   const dir = path.join(DATA_DIR, 'claude-prompt', 'work');
   await fsp.mkdir(dir, { recursive: true, mode: 0o700 });
@@ -155,6 +186,14 @@ async function start() {
     log('disabled via prompt_api option');
     return () => {};
   }
+  // Without the audit hook every Home Assistant action a chat request takes
+  // would go unrecorded, so the prompt API does not start at all.
+  const claudeSettings = process.env.CLAUDE_PROMPT_SETTINGS || '';
+  if (!hasAuditHook(claudeSettings)) {
+    log(`ERROR: ${claudeSettings ? 'CLAUDE_PROMPT_SETTINGS has no audit hook' : 'CLAUDE_PROMPT_SETTINGS is empty'}`
+      + ' — the prompt API is not started, because chat actions would not be audited');
+    return () => {};
+  }
 
   const token = await loadToken(options);
   // A dedicated restricted-user LLAT (prompt_ha_token) is preferred; the
@@ -182,6 +221,12 @@ async function start() {
     ? await writeMcpConfig(HA_MCP_URL_OVERRIDE || `${relay.url}/api/mcp`, relay.token)
     : await writeMcpConfig('', '');
   const workDir = await ensureWorkDir();
+  try {
+    const removed = await removeSavedPromptSessions(process.env.HOME || '/data/home', workDir);
+    if (removed) log(`removed ${removed} saved chat session transcript(s) left by earlier versions`);
+  } catch (err) {
+    log(`could not remove saved chat sessions: ${err.message}`);
+  }
 
   const redact = buildRedactor([
     token,
@@ -203,7 +248,7 @@ async function start() {
   const app = createPromptApp({
     token,
     claudeBin: CLAUDE_BIN,
-    claudeSettings: CLAUDE_SETTINGS,
+    claudeSettings,
     usageBin: USAGE_BIN,
     mcpConfigPath,
     // A dedicated chat model (e.g. a faster/cheaper one) is preferred; fall back
@@ -264,4 +309,4 @@ async function start() {
   };
 }
 
-module.exports = { start };
+module.exports = { start, hasAuditHook, removeSavedPromptSessions };
