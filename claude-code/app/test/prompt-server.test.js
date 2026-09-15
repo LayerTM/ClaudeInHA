@@ -1386,6 +1386,42 @@ test('removeSavedPromptSessions: clears the work folder\'s saved sessions once, 
   assert.equal(await promptServer.removeSavedPromptSessions(home, '/data/claude-prompt/work'), 0, 'a second start does nothing');
 });
 
+test('runTokens: per model from modelUsage, main model from usage otherwise', () => {
+  const both = runner.runTokens({
+    usage: { input_tokens: 4, output_tokens: 1, cache_read_input_tokens: 9, cache_creation_input_tokens: 2 },
+    modelUsage: {
+      big: { inputTokens: 4, outputTokens: 1, cacheReadInputTokens: 9, cacheCreationInputTokens: 2 },
+      small: { inputTokens: 900, outputTokens: 5 },
+    },
+  }, 'big');
+  assert.deepEqual(both, [
+    { model: 'big', input: 4, output: 1, cacheRead: 9, cacheWrite: 2 },
+    { model: 'small', input: 900, output: 5, cacheRead: 0, cacheWrite: 0 },
+  ], 'the side model counts too');
+  assert.deepEqual(runner.runTokens({ usage: { input_tokens: 3, output_tokens: 2 } }, 'm'),
+    [{ model: 'm', input: 3, output: 2, cacheRead: 0, cacheWrite: 0 }]);
+  assert.deepEqual(runner.runTokens({}, 'm'), []);
+  assert.deepEqual(runner.runTokens(null, 'm'), []);
+});
+
+test('audit + ha-usage: a chat request\'s tokens and cost reach the usage report', async () => {
+  const { status } = await post({ prompt: 'USAGEPROBE how warm is it' }, { 'X-Claude-Caller': 'user.usage.probe' });
+  assert.equal(status, 200);
+  const line = await waitForAuditLine('caller=user.usage.probe');
+  assert.match(line, / tokens=claude-opus-5_1m_:4:153:10439:0,claude-haiku-4-5:903:20:0:0 cost=\$0\.0123$/, line);
+  // Feed exactly that line to the real report, with no transcripts at all.
+  const dir = fs.mkdtempSync(path.join(TMP, 'usage-'));
+  fs.writeFileSync(path.join(dir, 'claude-audit.log'), `${line}\n`);
+  const bin = path.join(__dirname, '..', '..', 'rootfs', 'usr', 'local', 'bin', 'ha-usage');
+  const out = require('node:child_process').execFileSync('python3', [bin, '--json'], {
+    encoding: 'utf8', env: { ...process.env, HOME: dir, CC_AUDIT_DATA_DIR: dir },
+  });
+  const report = JSON.parse(out);
+  assert.deepEqual(report.tokens.today, { input: 907, output: 173, cache_read: 10439, cache_write: 0 });
+  assert.equal(report.prompt_api_cost_usd.today, 0.0123);
+  assert.deepEqual(Object.keys(report.by_model_recent).sort(), ['claude-haiku-4-5', 'claude-opus-5_1m_']);
+});
+
 test('buildClaudeArgs: published ha tools a run may not call are taken out of context', () => {
   const catalog = ['mcp__ha__homeassistant__GetLiveContext', 'mcp__ha__intent__HassTurnOn', 'mcp__ha__intent__HassTurnOff'];
   const read = runner.buildClaudeArgs({ mode: 'read', mcpConfigPath: '/cfg/ha-mcp.json', haTools: catalog });

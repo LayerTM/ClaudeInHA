@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.56.10] — 2026-09-15
+
+### Fixed
+- **Chat requests count in token usage again.** Since 1.56.9 chat requests keep no
+  session history, and that history was where their tokens were counted. Each
+  chat request's audit line now records the tokens it used, per model and across
+  retries, next to its cost, and `ha-usage` (and the integration's token and cost
+  sensors) read chat usage from those lines. Chat tokens from before 1.56.9 were
+  counted from the history that release removed, so they are no longer in the
+  all-time totals.
+- **Chat cost is read only from the prompt API's own audit lines.** The cost total
+  summed any `cost=$…` it found in the audit log, including the arguments of an
+  action recorded there, which could inflate it. The cost of a retried request
+  now also includes every attempt, as the daily budget already did.
+
 ## [1.56.9] — 2026-09-15
 
 ### Fixed

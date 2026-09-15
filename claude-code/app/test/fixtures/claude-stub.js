@@ -276,6 +276,13 @@ function finish(prompt, wantsProposal) {
     type: 'result', subtype: 'success', is_error: false,
     result: JSON.stringify(structured), structured_output: structured,
     num_turns: 2, total_cost_usd: 0.0123,
+    // Shaped as CLI 2.1.272 reports it: `usage` holds the main model only, and
+    // `modelUsage` also has the side model a run calls.
+    usage: { input_tokens: 4, output_tokens: 153, cache_read_input_tokens: 10439, cache_creation_input_tokens: 0 },
+    modelUsage: {
+      'claude-opus-5[1m]': { inputTokens: 4, outputTokens: 153, cacheReadInputTokens: 10439, cacheCreationInputTokens: 0 },
+      'claude-haiku-4-5': { inputTokens: 903, outputTokens: 20, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 },
+    },
   });
   process.exit(0);
 }

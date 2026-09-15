@@ -411,6 +411,33 @@ function wantedHaBasenames(mode, intents) {
     : [...new Set(intents.map((i) => i.intent))];
 }
 
+// The tokens one run used, per model, from its result event. `usage` there covers
+// the main model only: a run also calls a small side model, whose tokens appear
+// only in `modelUsage` (measured on CLI 2.1.272: about 900 input tokens a run)
+// while `total_cost_usd` includes them. So `modelUsage` is read when present.
+function runTokens(envelope, initModel) {
+  const n = (v) => (Number.isInteger(v) && v > 0 ? v : 0);
+  const perModel = envelope && envelope.modelUsage;
+  if (perModel && typeof perModel === 'object' && Object.keys(perModel).length > 0) {
+    return Object.entries(perModel).map(([modelName, u]) => ({
+      model: modelName,
+      input: n(u && u.inputTokens),
+      output: n(u && u.outputTokens),
+      cacheRead: n(u && u.cacheReadInputTokens),
+      cacheWrite: n(u && u.cacheCreationInputTokens),
+    }));
+  }
+  const u = envelope && envelope.usage;
+  if (!u || typeof u !== 'object') return [];
+  return [{
+    model: initModel || 'unknown',
+    input: n(u.input_tokens),
+    output: n(u.output_tokens),
+    cacheRead: n(u.cache_read_input_tokens),
+    cacheWrite: n(u.cache_creation_input_tokens),
+  }];
+}
+
 function buildClaudeArgs({
   mode, intents, mcpConfigPath, model, imagePath, language, surface, editAutomation, haTools, stream, settings,
 }) {
@@ -472,10 +499,10 @@ function buildClaudeArgs({
 
 /**
  * Run one claude call. Resolves to:
- *   { status: 'ok', text, proposal, automation, toolsUsed, numTurns, costUsd,
+ *   { status: 'ok', text, proposal, automation, toolsUsed, numTurns, costUsd, tokens,
  *     truncated, mcpFailed, haTools }
  *   { status: 'timeout', haTools }
- *   { status: 'error', reason, message, numTurns?, toolsUsed?, costUsd?, haTools? }
+ *   { status: 'error', reason, message, numTurns?, toolsUsed?, costUsd?, tokens?, haTools? }
  *     reason ∈ spawn-failed | aborted | stream-cap | no-result | model-error | max-turns
  *              | tool-name-mismatch
  *     (no-result and model-error are transient — safe to retry a read;
@@ -530,6 +557,7 @@ function runClaude({
     let lineBuffer = '';
     let stderrBuf = '';
     let resultEnvelope = null;
+    let initModel = '';
     let mcpFailed = false;
     // A RELIABLE ha-MCP-reachability signal for `/api/status.ha_mcp_connected`,
     // separate from the init snapshot (which is often stale right after a
@@ -609,6 +637,7 @@ function runClaude({
         }
       }
       if (ev.type === 'system' && ev.subtype === 'init') {
+        if (typeof ev.model === 'string') initModel = ev.model;
         const servers = Array.isArray(ev.mcp_servers) ? ev.mcp_servers : [];
         mcpInitConnected = servers.some((s) => s && s.name === 'ha' && s.status === 'connected');
         mcpFailed = Boolean(mcpConfigPath) && !mcpInitConnected;
@@ -755,6 +784,7 @@ function runClaude({
           numTurns: resultEnvelope.num_turns ?? null,
           toolsUsed,
           costUsd: resultEnvelope.total_cost_usd ?? null,
+          tokens: runTokens(resultEnvelope, initModel),
           haTools: publishedHaTools,
         });
         return;
@@ -790,6 +820,7 @@ function runClaude({
         toolsUsed,
         numTurns: resultEnvelope.num_turns ?? null,
         costUsd: resultEnvelope.total_cost_usd ?? null,
+        tokens: runTokens(resultEnvelope, initModel),
         truncated,
         // The init snapshot can show the `ha` MCP server not-yet-connected while
         // it actually connects a moment later and serves the tool fine (observed
@@ -812,5 +843,5 @@ function runClaude({
 }
 
 module.exports = {
-  runClaude, buildClaudeArgs, shutdown, TIMEOUT_MS, safeLangTag, haToolBasename, resolveHaTools,
+  runClaude, buildClaudeArgs, runTokens, shutdown, TIMEOUT_MS, safeLangTag, haToolBasename, resolveHaTools,
 };

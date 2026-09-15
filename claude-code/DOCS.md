@@ -41,7 +41,7 @@ per-session setup:
 | `ha-check` | Validate the HA configuration (run before any restart) |
 | `ha-state [entity\|domain.]` | Query entity states, e.g. `ha-state light.kitchen`, `ha-state light.` |
 | `ha-shot <path> [out.png] [WxH]` | Screenshot a Lovelace dashboard to PNG, e.g. `ha-shot /lovelace/0 /tmp/d.png 1280x800` (needs **HA Token**) |
-| `ha-usage [days]` | Summarize Claude token usage (today / N days / all-time, per model) and prompt-API cost |
+| `ha-usage [days]` | Summarize Claude token usage (today / N days / all-time, per model) and prompt-API cost. Console usage comes from Claude's session history; chat requests from the prompt API's lines in the audit log |
 | `ha-audit [N]` | Show what Claude has changed: service calls, edits under your config, Core restarts, safety backups, and every change made through a connected tool server (dashboard edits included). Reads are not recorded; a preview is marked `(dry-run)` |
 | `yq` | Edit YAML config files |
 | `hass-cli` | Entity/service queries (needs **HA Token**) |
