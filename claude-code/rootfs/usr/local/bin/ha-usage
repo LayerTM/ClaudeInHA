@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Summarise Claude usage for this add-on.
 
-Tokens come from the Claude Code session transcripts under
-``$HOME/.claude/projects`` (every interactive and headless run is recorded
-there with a per-message ``usage`` block). Dollar figures come from the
-prompt-API calls the add-on already records in ``/data/claude-audit.log``.
+Console tokens come from the Claude Code session transcripts under
+``$HOME/.claude/projects`` (a per-message ``usage`` block). Chat requests (the
+prompt API) save no transcript: their tokens and cost come only from the
+``prompt[...]`` lines the prompt server writes to ``/data/claude-audit.log``.
 
 Usage:
     ha-usage [DAYS]      # recent window for the per-model breakdown (default 7)
@@ -22,13 +22,36 @@ from datetime import datetime, timezone
 
 HOME = os.environ.get("HOME", "/data/home")
 PROJECTS = os.path.join(HOME, ".claude", "projects")
-AUDIT_LOG = "/data/claude-audit.log"
+# Same override convention as cc-hook-audit, so the parsing can be tested.
+AUDIT_LOG = os.path.join(os.environ.get("CC_AUDIT_DATA_DIR", "/data"), "claude-audit.log")
+
+# The prompt server's work folder (server/prompt/index.js) and the transcript
+# folder Claude names after it (every character outside [A-Za-z0-9] becomes "-").
+# Chat runs are counted from the audit log, so that folder is never scanned: a
+# transcript left there must not be counted a second time.
+PROMPT_WORK_DIR = "/data/claude-prompt/work"
+PROMPT_PROJECT = re.sub(r"[^A-Za-z0-9]", "-", PROMPT_WORK_DIR)
+
+# A line the prompt server wrote: its own timestamp, then `prompt[<kind>]`. Only
+# these carry chat spend. Anything else in the log — a hook's record of a tool
+# call, whose arguments the model chose — is never read for numbers.
+PROMPT_LINE = re.compile(r"^(\d{4}-\d{2}-\d{2}) \d{2}:\d{2}:\d{2}  prompt\[[a-z-]+\] ")
+COST_FIELD = re.compile(r" cost=\$([0-9]+\.[0-9]+)(?= |$)")
+TOKENS_FIELD = re.compile(r" tokens=(\S+)")
 
 TOKEN_KEYS = (
     "input_tokens",
     "output_tokens",
     "cache_creation_input_tokens",
     "cache_read_input_tokens",
+)
+
+# The order of the counts in an audit line's tokens field.
+TOKEN_KEYS_CHAT = (
+    "input_tokens",
+    "output_tokens",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
 )
 
 
@@ -47,6 +70,8 @@ def collect_tokens():
     msgs_by_day: dict[str, int] = defaultdict(int)
 
     for path in glob.glob(os.path.join(PROJECTS, "*", "*.jsonl")):
+        if os.path.basename(os.path.dirname(path)) == PROMPT_PROJECT:
+            continue
         try:
             fh = open(path, encoding="utf-8", errors="ignore")
         except OSError:
@@ -101,27 +126,61 @@ def line_for(label: str, totals: dict[str, int]) -> str:
     )
 
 
-def audit_costs():
-    """Return (today_cost, total_cost, has_data) from the prompt-API audit log."""
-    if not os.path.exists(AUDIT_LOG):
-        return 0.0, 0.0, False
+def collect_chat():
+    """Chat spend from the prompt server's audit lines.
+
+    Returns (by_day, by_day_model, today_cost, total_cost, seen). Tokens use the
+    transcript keys so they add to the console totals. A line written before
+    tokens were recorded counts its cost and no tokens.
+    """
+    by_day: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    by_day_model: dict[tuple[str, str], dict[str, int]] = defaultdict(lambda: defaultdict(int))
     today = _today()
     today_cost = total_cost = 0.0
     seen = False
-    rx = re.compile(r"cost=\$([0-9]+\.[0-9]+)")
     try:
-        for line in open(AUDIT_LOG, encoding="utf-8", errors="ignore"):
-            m = rx.search(line)
-            if not m:
-                continue
-            seen = True
-            amt = float(m.group(1))
-            total_cost += amt
-            if line[:10] == today:
-                today_cost += amt
+        # newline="\n": a record ends at a newline only. A carriage return inside
+        # a recorded argument must not start a line that could pass for ours.
+        fh = open(AUDIT_LOG, encoding="utf-8", errors="ignore", newline="\n")
     except OSError:
-        return 0.0, 0.0, False
-    return today_cost, total_cost, seen
+        return by_day, by_day_model, 0.0, 0.0, False
+    with fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            head = PROMPT_LINE.match(line)
+            if not head:
+                continue
+            day = head.group(1)
+            costs = COST_FIELD.findall(line)
+            if costs:
+                seen = True
+                amt = float(costs[-1])
+                total_cost += amt
+                if day == today:
+                    today_cost += amt
+            tokens = TOKENS_FIELD.search(line)
+            for entry in tokens.group(1).split(",") if tokens else []:
+                parts = entry.rsplit(":", 4)
+                if len(parts) != 5 or not all(p.isdigit() for p in parts[1:]):
+                    continue
+                model, counts = parts[0], [int(p) for p in parts[1:]]
+                for key, value in zip(TOKEN_KEYS_CHAT, counts):
+                    by_day[day][key] += value
+                    by_day_model[(day, model)][key] += value
+    return by_day, by_day_model, today_cost, total_cost, seen
+
+
+def collect_all():
+    """Console transcripts plus chat audit lines, merged by day and by model."""
+    by_day, by_day_model, msgs_by_day = collect_tokens()
+    chat_day, chat_model, today_cost, total_cost, seen = collect_chat()
+    for day, tots in chat_day.items():
+        for k, v in tots.items():
+            by_day[day][k] += v
+    for key, tots in chat_model.items():
+        for k, v in tots.items():
+            by_day_model[key][k] += v
+    return by_day, by_day_model, msgs_by_day, (today_cost, total_cost, seen)
 
 
 def _short(t: dict[str, int]) -> dict[str, int]:
@@ -136,7 +195,7 @@ def _short(t: dict[str, int]) -> dict[str, int]:
 
 def build_report(days: int) -> dict:
     """Structured usage report — the shape the prompt API's /api/usage returns."""
-    by_day, by_day_model, msgs_by_day = collect_tokens()
+    by_day, by_day_model, msgs_by_day, costs = collect_all()
     today = _today()
     recent = window_days(days)
     all_days = list(by_day.keys())
@@ -151,7 +210,7 @@ def build_report(days: int) -> dict:
         if t.get("output_tokens", 0) or t.get("input_tokens", 0)
     }
 
-    today_cost, total_cost, _ = audit_costs()
+    today_cost, total_cost, _ = costs
     return {
         "projects": PROJECTS,
         "window_days": days,
@@ -183,13 +242,13 @@ def main(argv: list[str]) -> int:
         print(json.dumps(report))
         return 0
 
-    by_day, by_day_model, msgs_by_day = collect_tokens()
+    by_day, by_day_model, msgs_by_day, costs = collect_all()
     today = _today()
 
     print(f"Claude usage — {PROJECTS}\n")
 
     if not by_day:
-        print("  No session transcripts yet — run Claude in the console first.")
+        print("  No usage recorded yet.")
     else:
         recent = window_days(days)
         all_days = list(by_day.keys())
@@ -219,7 +278,7 @@ def main(argv: list[str]) -> int:
         all_msgs = sum(msgs_by_day.values())
         print(f"\nAssistant messages: today {today_msgs:,} · {days}d {recent_msgs:,} · all {all_msgs:,}")
 
-    today_cost, total_cost, seen = audit_costs()
+    today_cost, total_cost, seen = costs
     if seen:
         print("\nPrompt-API cost (claude_ha integration, from ha-audit)")
         print(f"  Today: ${today_cost:.4f}   Total: ${total_cost:.4f}")

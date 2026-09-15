@@ -56,6 +56,10 @@ jobs:
         working-directory: claude-code/app
         run: npm run test:statusline
 
+      - name: Run usage report tests (bash + python3)
+        working-directory: claude-code/app
+        run: npm run test:usage
+
   lint-js:
     name: JS lint & types
     runs-on: ubuntu-latest

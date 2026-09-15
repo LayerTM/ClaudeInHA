@@ -484,6 +484,24 @@ function resolveChatModel({ surface, mode, vision, models }) {
   return model;
 }
 
+// What a chat request spent, as the audit line states it: the tokens of every
+// attempt per model, then the cost of every attempt. These two fields are the
+// one record of chat spend — ha-usage reads chat tokens and cost from them only.
+// Format: ` tokens=<model>:<in>:<out>:<cache read>:<cache write>[,…] cost=$<usd>`.
+function addRunTokens(total, tokens) {
+  for (const t of Array.isArray(tokens) ? tokens : []) {
+    const key = sanitizeId(t.model, 64) || 'unknown';
+    const acc = total.get(key) || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    acc.input += t.input; acc.output += t.output; acc.cacheRead += t.cacheRead; acc.cacheWrite += t.cacheWrite;
+    total.set(key, acc);
+  }
+}
+
+function spendFields(tokens, costUsd) {
+  const list = [...tokens].map(([m, t]) => `${m}:${t.input}:${t.output}:${t.cacheRead}:${t.cacheWrite}`).join(',');
+  return `${list ? ` tokens=${list}` : ''} cost=$${costUsd.toFixed(4)}`;
+}
+
 function createPromptApp({
   token, claudeBin, claudeSettings = '', usageBin, mcpConfigPath, model, voiceModel = '', writeModel = '', cameraModel = '',
   dailyBudgetUsd = 0,
@@ -979,6 +997,7 @@ function createPromptApp({
       // which is how a whole class of silent failures stayed invisible (#58).
       let recoveredFrom = null;
       let spent = 0; // real API cost of EVERY attempt (billed even on a failed/degraded read)
+      const spentTokens = new Map(); // tokens of every attempt, per model
       // Resolved ONCE here so the run and the audit can't disagree about which
       // model actually served the turn (empty → Claude default).
       const resolvedModel = resolveChatModel({
@@ -1028,6 +1047,7 @@ function createPromptApp({
             timeoutMs: attempts === 1 ? undefined : Math.max(0, TIMEOUT_MS - (Date.now() - started)),
           });
           spent += Number(outcome.costUsd) || 0;
+          addRunTokens(spentTokens, outcome.tokens);
           // Learn the published tool names from EVERY attempt (success or not) —
           // this is what makes the next run track an HA rename on its own.
           if (Array.isArray(outcome.haTools) && outcome.haTools.length > 0) {
@@ -1091,7 +1111,7 @@ function createPromptApp({
         text: DEGRADE_TEXT[language], proposal: null, tools_used: [], truncated: false, degraded: true,
       };
       if (outcome.status === 'timeout') {
-        audit(`prompt[${mode}] ${base} status=504 dur=${seconds}s`);
+        audit(`prompt[${mode}] ${base} status=504 dur=${seconds}s${spendFields(spentTokens, spent)}`);
         if (mode === 'read') chatHealth.record(false, 'timeout', false);
         if (streaming) { streamDone(degradedBody); return undefined; }
         return res.status(504).json({ error: 'timeout' });
@@ -1102,7 +1122,7 @@ function createPromptApp({
         const reason = outcome.reason || 'unknown';
         const diag = `reason=${reason} attempts=${attempts} turns=${outcome.numTurns ?? '?'}`
           + ` tools=${(outcome.toolsUsed || []).map((t) => sanitizeId(t, 64)).join('|') || '-'}`
-          + ` cost=$${spent.toFixed(4)}`;
+          + spendFields(spentTokens, spent);
         console.error(`[prompt] run failed (${caller}): ${reason} — ${redact(outcome.message || 'unknown')}`);
         // Read: never let the chat die — degrade to a friendly 200 (the run already
         // retried where it could). Write: fail honestly with 500 — a state-changing
@@ -1152,14 +1172,13 @@ function createPromptApp({
       const automation = outcome.automation ? redactDeep(outcome.automation, redact) : null;
       const toolsUsed = outcome.toolsUsed.map((t) => redact(t));
 
-      const cost = outcome.costUsd == null ? '' : ` cost=$${Number(outcome.costUsd).toFixed(4)}`;
       audit(
         `prompt[${mode}] ${base} status=200 dur=${seconds}s turns=${outcome.numTurns ?? '?'}`
         + ` tools=${outcome.toolsUsed.map((t) => sanitizeId(t, 64)).join('|') || '-'}`
         + ` out=${Buffer.byteLength(text, 'utf8')}B${outcome.truncated ? ' truncated' : ''}`
         + `${attempts > 1 ? ` attempts=${attempts} recovered=${recoveredFrom}` : ''}`
         + `${outcome.mcpFailed ? ' mcp=FAILED' : ''}${proposal ? ' proposal=yes' : ''}`
-        + `${automation ? ' automation=draft' : ''}${cost}`,
+        + `${automation ? ' automation=draft' : ''}${spendFields(spentTokens, spent)}`,
       );
       if (outcome.mcpFailed) {
         console.error('[prompt] HA MCP server did not connect — check the add-on log for the resolved Core address, that the Model Context Protocol Server integration is installed, and the HA token');
