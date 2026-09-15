@@ -10,11 +10,17 @@
   tools a question can never use. It now gets only what the request needs: for a
   question, the tool that reads your home; for a confirmed action, exactly the
   actions you confirmed; for a camera question, those plus reading the one snapshot.
-  Measured on the same requests, before → after: a question 22,400 → 10,400 tokens,
-  a confirmed action 33,300 → 7,400 (it also no longer spends a step trying to read
-  the home first), a camera question 24,600 → 12,400. Repeated identical requests
-  are now served entirely from the prompt cache. Answers are unchanged; the console
-  is unaffected.
+  Measured on the same requests, input tokens before → after: a question
+  22,400 → 10,400, a confirmed action 33,300 → 7,400 (it also no longer spends a
+  step trying to read the home first), a camera question 24,600 → 12,400. A
+  repeated identical request is usually served from the prompt cache; a camera
+  question that finds the cache cold writes it and costs more than before, and the
+  ones after it cost about a third. Answers are unchanged; the console is
+  unaffected, and every Home Assistant action a chat request takes is still written
+  to the audit log with its arguments.
+- **Chat requests no longer read the console's settings:** a `model` or `env` saved
+  in the console's Claude settings no longer reaches Assist, while the `chat_model`
+  options still do.
 
 ### Added
 - **A model per kind of chat request.** Two optional options, `chat_model_write`

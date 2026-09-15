@@ -36,6 +36,13 @@ process.env.CLAUDE_PROMPT_OPTIONS = path.join(TMP, 'options.json');
 process.env.CLAUDE_PROMPT_BIN = path.join(__dirname, 'fixtures', 'claude-stub.js');
 process.env.CLAUDE_PROMPT_USAGE_BIN = path.join(__dirname, 'fixtures', 'usage-stub.js');
 process.env.ANTHROPIC_API_KEY = 'sk-ant-api03-EXAMPLEparent00000000';
+// The settings the service script hands the prompt server, built by the SAME
+// shell function it calls — so this suite fails if that definition and the
+// runner stop agreeing.
+const HOOKS_LIB = path.join(__dirname, '..', '..', 'rootfs', 'usr', 'local', 'lib', 'addon-hooks.sh');
+process.env.CLAUDE_PROMPT_SETTINGS = require('node:child_process')
+  .execFileSync('bash', ['-c', 'source "$1" && hooks_audit_settings_json', 'bash', HOOKS_LIB], { encoding: 'utf8' })
+  .trim();
 fs.writeFileSync(process.env.CLAUDE_PROMPT_OPTIONS, JSON.stringify({
   prompt_api: true, api_token: '', prompt_ha_token: HA_LLAT,
   ha_token: '', api_key: '', oauth_token: '', model: '',
@@ -983,7 +990,7 @@ test('write: the untrusted prompt never reaches the child; intents do', async ()
     intents: [{ intent: 'HassTurnOff', targets: ['switch.heater'] }],
   });
   assert.equal(status, 200);
-  assert.equal(json.text, 'stdin_has_inject=false stdin_has_intent=true');
+  assert.equal(json.text, 'stdin_has_inject=false stdin_has_intent=true audit_hook=/usr/local/bin/cc-hook-audit');
 });
 
 test('read: happy path with deep redaction, proposal, tools_used', async () => {
@@ -1270,6 +1277,7 @@ test('buildClaudeArgs: a read declares no built-in tools and no settings files',
   const args = runner.buildClaudeArgs({ mode: 'read', mcpConfigPath: '/cfg/ha-mcp.json' });
   assert.equal(argValue(args, '--tools'), '', 'no built-in tool is available to a read');
   assert.equal(argValue(args, '--setting-sources'), '', 'the console settings never reach the child');
+  assert.equal(args.includes('--settings'), false, 'no settings are invented when none are given');
   assert.equal(args.includes('--disallowed-tools'), false, 'the subtracted deny list is gone');
   assert.equal(argValue(args, '--allowed-tools'), 'mcp__ha__GetLiveContext');
   assert.equal(argValue(args, '--mcp-config'), '/cfg/ha-mcp.json');
@@ -1317,6 +1325,25 @@ test('buildClaudeArgs: a write declares no built-ins and allows exactly the conf
   assert.equal(argValue(args, '--setting-sources'), '');
   assert.doesNotMatch(argValue(args, '--json-schema'), /proposal/, 'the write schema');
   assert.doesNotMatch(argValue(args, '--append-system-prompt'), /spoken aloud|MODIFY an EXISTING/);
+});
+
+test('buildClaudeArgs: the settings a run is given travel with --settings, next to no settings files', () => {
+  const settings = process.env.CLAUDE_PROMPT_SETTINGS;
+  for (const mode of ['read', 'write']) {
+    const args = runner.buildClaudeArgs({
+      mode, mcpConfigPath: '/cfg/ha-mcp.json', settings, intents: [{ intent: 'HassTurnOff', targets: ['light.a'] }],
+    });
+    assert.equal(argValue(args, '--settings'), settings, mode);
+    assert.equal(argValue(args, '--setting-sources'), '', mode);
+  }
+  const hooks = JSON.parse(settings).hooks;
+  assert.deepEqual(Object.keys(hooks), ['PostToolUse'], 'only the audit hook, nothing else from the console');
+  assert.match(hooks.PostToolUse[0].matcher, /\^mcp__/, 'the matcher covers the Home Assistant tools');
+});
+
+test('audit: every chat run carries the audit hook the service script built', async () => {
+  const r = await post({ prompt: 'hello' }, { 'X-Claude-Caller': 'user.audit.hook' });
+  assert.match(r.json.text, /audit_hook=\/usr\/local\/bin\/cc-hook-audit\b/, r.json.text);
 });
 
 test('buildClaudeArgs: published ha tools a run may not call are taken out of context', () => {

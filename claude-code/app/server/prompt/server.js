@@ -485,7 +485,7 @@ function resolveChatModel({ surface, mode, vision, models }) {
 }
 
 function createPromptApp({
-  token, claudeBin, usageBin, mcpConfigPath, model, voiceModel = '', writeModel = '', cameraModel = '',
+  token, claudeBin, claudeSettings = '', usageBin, mcpConfigPath, model, voiceModel = '', writeModel = '', cameraModel = '',
   dailyBudgetUsd = 0,
   coreRelayUrl = '', coreRelayToken = '',
   // Credentials as the add-on already holds them, for /api/account_limits only:
@@ -996,6 +996,7 @@ function createPromptApp({
           // eslint-disable-next-line no-await-in-loop
           outcome = await runClaude({
             bin: claudeBin,
+            settings: claudeSettings,
             prompt,
             mode,
             intents: intents || [],

@@ -7,7 +7,8 @@
 //   - the built-in tool set is declared, not subtracted: --tools names exactly
 //     what the mode needs (nothing, or Read for a camera snapshot)
 //   - --setting-sources '': none of the console's settings files (hooks,
-//     plugins, per-model options) reach this child
+//     plugins, per-model options) reach this child; --settings passes back
+//     only what it must keep (the audit hook)
 //   - --strict-mcp-config: only OUR scoped HA MCP config is loaded, never the
 //     interactive console's user-configured MCP servers
 //   - scrubbed child env: no Supervisor/HA tokens, no user env vars
@@ -410,7 +411,7 @@ function wantedHaBasenames(mode, intents) {
 }
 
 function buildClaudeArgs({
-  mode, intents, mcpConfigPath, model, imagePath, language, surface, editAutomation, haTools, stream,
+  mode, intents, mcpConfigPath, model, imagePath, language, surface, editAutomation, haTools, stream, settings,
 }) {
   const read = mode !== 'write';
   const vision = read && Boolean(imagePath);
@@ -444,6 +445,10 @@ function buildClaudeArgs({
     '--strict-mcp-config',
   ];
   if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
+  // What the settings files are still needed for, declared per run: the audit
+  // hook that records each Home Assistant tool call WITH its arguments. The
+  // allowlist gates by tool name only, so the arguments are the record.
+  if (settings) args.push('--settings', settings);
   if (model) args.push('--model', model);
   // Only ask the CLI for fine-grained partial-message events when a streaming
   // consumer is attached. Without this flag stream-json emits whole messages
@@ -482,7 +487,7 @@ function buildClaudeArgs({
  * Never rejects.
  */
 function runClaude({
-  bin, prompt, mode, intents, mcpConfigPath, model, cwd, signal, history, imagePath, onText, timeoutMs,
+  bin, settings, prompt, mode, intents, mcpConfigPath, model, cwd, signal, history, imagePath, onText, timeoutMs,
   language, surface, editAutomation, haTools,
 }) {
   return new Promise((resolve) => {
@@ -496,7 +501,7 @@ function runClaude({
     const vision = read && Boolean(imagePath);
     const wantedBasenames = wantedHaBasenames(mode, intents);
     const args = buildClaudeArgs({
-      mode, intents, mcpConfigPath, model, imagePath, language, surface, editAutomation, haTools,
+      mode, intents, mcpConfigPath, model, imagePath, language, surface, editAutomation, haTools, settings,
       stream: Boolean(onText),
     });
 

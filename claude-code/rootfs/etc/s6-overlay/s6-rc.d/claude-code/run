@@ -285,6 +285,9 @@ export CLAUDE_PROMPT_DATA=/data
 export CLAUDE_PROMPT_OPTIONS=/data/options.json
 export CLAUDE_PROMPT_BIN=/data/home/.local/bin/claude
 export CLAUDE_PROMPT_USAGE_BIN=/usr/local/bin/ha-usage
+# Chat runs read no settings files, so the audit hook the console gets from
+# settings.json is handed to them explicitly — built from the same definition.
+export CLAUDE_PROMPT_SETTINGS="$(hooks_audit_settings_json)"
 # NOT set: the prompt server derives Core's address itself and puts a loopback
 # relay in front of it (see app/server/prompt/core-target.js). Unset here, after
 # user environment_vars are applied, so the destination the HA token is sent to

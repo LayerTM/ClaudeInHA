@@ -13,7 +13,8 @@
 // refuses to run with no prompt. So the one outcome that proves the whole list
 // was accepted is that refusal, and anything else — including success — fails.
 //
-// Usage: node runner_args_smoke.js <claude binary> <runner.js>
+// Usage: node runner_args_smoke.js <claude binary> <runner.js> [addon-hooks.sh]
+// (the hooks library defaults to the image's own copy)
 
 'use strict';
 
@@ -24,12 +25,18 @@ const path = require('node:path');
 
 const NO_INPUT = 'Input must be provided either through stdin or as a prompt argument';
 
-const [bin, runnerPath] = process.argv.slice(2);
+const [bin, runnerPath, hooksLib = '/usr/local/lib/addon-hooks.sh'] = process.argv.slice(2);
 if (!bin || !runnerPath) {
   console.error('usage: runner_args_smoke.js <claude binary> <runner.js>');
   process.exit(2);
 }
 const { buildClaudeArgs } = require(path.resolve(runnerPath));
+// The settings chat runs are given, built by the service script's own function.
+const settings = spawnSync('bash', ['-c', 'source "$1" && hooks_audit_settings_json', 'bash', hooksLib], { encoding: 'utf8' });
+if (settings.status !== 0 || !settings.stdout.trim()) {
+  console.error(`could not build the chat settings from ${hooksLib}: ${settings.stderr || settings.error}`);
+  process.exit(2);
+}
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'args-smoke-'));
 const mcpConfigPath = path.join(home, 'ha-mcp.json');
@@ -52,11 +59,13 @@ const cases = {
     // a catalog with a tool this read may not call, so the hidden-tools list is exercised
     haTools: ['mcp__ha__homeassistant__GetLiveContext', 'mcp__ha__intent__HassTurnOn'],
     stream: true,
+    settings: settings.stdout.trim(),
   },
   'write, MCP server and model': {
     mode: 'write',
     mcpConfigPath,
     model: 'sonnet',
+    settings: settings.stdout.trim(),
     intents: [
       { intent: 'HassTurnOn', targets: ['light.a'], risk: 'low' },
       { intent: 'HassTurnOff', targets: ['light.b'], risk: 'low' },

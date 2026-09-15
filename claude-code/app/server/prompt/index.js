@@ -23,6 +23,9 @@ const DATA_DIR = process.env.CLAUDE_PROMPT_DATA || '/data';
 const OPTIONS_FILE = process.env.CLAUDE_PROMPT_OPTIONS || '/data/options.json';
 const CLAUDE_BIN = process.env.CLAUDE_PROMPT_BIN || '/data/home/.local/bin/claude';
 const USAGE_BIN = process.env.CLAUDE_PROMPT_USAGE_BIN || '/usr/local/bin/ha-usage';
+// The settings a chat run gets instead of the console's settings files: the
+// audit hook, as the service script builds it (addon-hooks.sh). Empty in dev.
+const CLAUDE_SETTINGS = process.env.CLAUDE_PROMPT_SETTINGS || '';
 // Dev/test escape hatch only. In the add-on the startup script unsets it after
 // applying user environment_vars, so it can never be set from the config — the
 // Core address is derived (see core-target.js), never supplied.
@@ -200,6 +203,7 @@ async function start() {
   const app = createPromptApp({
     token,
     claudeBin: CLAUDE_BIN,
+    claudeSettings: CLAUDE_SETTINGS,
     usageBin: USAGE_BIN,
     mcpConfigPath,
     // A dedicated chat model (e.g. a faster/cheaper one) is preferred; fall back

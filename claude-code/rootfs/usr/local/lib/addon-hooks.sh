@@ -45,6 +45,24 @@ CC_HOOK_BACKUP_MATCHER='Bash|Edit|Write|MultiEdit'
 # the user's.
 CC_HOOK_AUDIT_SUPERSEDED_MATCHERS='Bash|Edit|Write|MultiEdit'
 
+# hooks_audit_entry_json
+# The audit hook's PostToolUse entry as compact JSON. The one definition of that
+# entry: the seed below writes it into the console's settings.json, and
+# hooks_audit_settings_json hands it to the prompt API's chat runs, which read no
+# settings files and would otherwise record nothing.
+hooks_audit_entry_json() {
+    jq -cn --arg matcher "${CC_HOOK_AUDIT_MATCHER}" --arg cmd "${CC_HOOK_AUDIT_CMD}" \
+        '{matcher: $matcher, hooks: [{type: "command", command: $cmd}]}'
+}
+
+# hooks_audit_settings_json
+# A settings object carrying ONLY the audit hook, for `claude --settings`.
+hooks_audit_settings_json() {
+    local entry
+    entry="$(hooks_audit_entry_json)" || return 1
+    jq -cn --argjson entry "${entry}" '{hooks: {PostToolUse: [$entry]}}'
+}
+
 # hooks_seed_or_migrate <settings-file>
 # Prints exactly one word: seeded | migrated | unchanged | failed
 # Never removes or rewrites a hook the add-on did not install.
@@ -56,15 +74,16 @@ hooks_seed_or_migrate() {
 
     # No hooks at all — a fresh install. Seed the whole block.
     if [ "$(jq -r '(.hooks // {}) | length' "${sf}" 2>/dev/null)" = "0" ]; then
+        local audit_entry
+        audit_entry="$(hooks_audit_entry_json)" || { printf 'failed\n'; return 1; }
         tmp="$(mktemp)" || { printf 'failed\n'; return 1; }
-        if jq --arg audit "${CC_HOOK_AUDIT_MATCHER}" \
+        if jq --argjson audit_entry "${audit_entry}" \
               --arg backup "${CC_HOOK_BACKUP_MATCHER}" \
-              --arg audit_cmd "${CC_HOOK_AUDIT_CMD}" \
               --arg backup_cmd "${CC_HOOK_BACKUP_CMD}" \
               --arg notify_cmd "${CC_HOOK_NOTIFY_CMD}" '
                 .hooks = {
                     PreToolUse:   [{matcher: $backup, hooks: [{type: "command", command: $backup_cmd}]}],
-                    PostToolUse:  [{matcher: $audit,  hooks: [{type: "command", command: $audit_cmd}]}],
+                    PostToolUse:  [$audit_entry],
                     Notification: [{hooks: [{type: "command", command: $notify_cmd}]}]
                 }' "${sf}" > "${tmp}" 2>/dev/null; then
             mv "${tmp}" "${sf}"
