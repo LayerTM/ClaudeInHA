@@ -8,14 +8,19 @@
 export HOME=/data/home
 export PATH="/data/home/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-cd /data/workdir 2>/dev/null || cd /
+# No `cd`: the console opens this window in the same working directory as the
+# Claude tab (tmux.js workdir()). Remote Control refuses a folder the user has
+# not trusted, and the one they trust is the one they already use in the
+# Claude tab; a directory of its own here made it fail even when signed in.
 
 while true; do
     claude remote-control
     echo ""
-    echo "Remote Control stopped. It needs a full claude.ai login"
-    echo "(Pro/Max/Team) — an API key or setup-token is not enough."
-    echo "Log in from the Claude tab (run 'claude', then /login), then:"
+    echo "Remote Control stopped — the reason is in the message above."
+    echo "  • Not signed in: it needs a full claude.ai login (Pro/Max/Team); an API"
+    echo "    key or setup-token is not enough. Run 'claude', then /login, in the Claude tab."
+    echo "  • Workspace not trusted: open the Claude tab and accept the trust prompt"
+    echo "    for $(pwd)."
     echo "  r) retry Remote Control    s) drop to shell"
     echo ""
     # `|| sleep 3` prevents a busy loop if ever run without a tty (EOF on read).
