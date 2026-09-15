@@ -10,7 +10,7 @@
   tools a question can never use. It now gets only what the request needs: for a
   question, the tool that reads your home; for a confirmed action, exactly the
   actions you confirmed; for a camera question, those plus reading the one snapshot.
-  Measured on the same requests, before → after: a question 22,300 → 10,400 tokens,
+  Measured on the same requests, before → after: a question 22,400 → 10,400 tokens,
   a confirmed action 33,300 → 7,400 (it also no longer spends a step trying to read
   the home first), a camera question 24,600 → 12,400. Repeated identical requests
   are now served entirely from the prompt cache. Answers are unchanged; the console
