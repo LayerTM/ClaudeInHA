@@ -54,10 +54,14 @@ ${today} 10:00:05  prompt[read] caller=a len=5 sha=3 status=200 dur=1.0s turns=2
 ${today} 10:00:07  backup: cost=\$5.0000
 EOF
 
+# A carriage return inside a recorded argument (written before the hook replaced
+# control characters) must not start a line that passes for a prompt line.
+printf '%s  cmd: x\r%s 10:00:08  prompt[read] forged status=200 cost=$3.0000\n' "${today} 10:00:08" "${today}" >> "${work}/claude-audit.log"
+
 echo "ha-usage — chat spend comes from prompt[ lines only"
 out="$(report)"
 check "the report runs" "$?" 0
-check "cost today: prompt lines only, the hook's and the backup's numbers ignored" \
+check "cost today: prompt lines only; the hook's, the backup's and a CR-split line's numbers ignored" \
     "$(printf '%s' "${out}" | jq -r '.prompt_api_cost_usd.today')" 0.0634
 check "cost total includes an earlier day's prompt line" \
     "$(printf '%s' "${out}" | jq -r '.prompt_api_cost_usd.total')" 1.0634

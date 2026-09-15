@@ -14,6 +14,9 @@
   summed any `cost=$…` it found in the audit log, including the arguments of an
   action recorded there, which could inflate it. The cost of a retried request
   now also includes every attempt, as the daily budget already did.
+- **One audit record, one line.** A newline or carriage return inside a recorded
+  argument could start a line of its own in the audit log; the audit and backup
+  hooks now write every control character as a space.
 
 ## [1.56.9] — 2026-09-15
 

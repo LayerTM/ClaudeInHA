@@ -139,7 +139,9 @@ def collect_chat():
     today_cost = total_cost = 0.0
     seen = False
     try:
-        fh = open(AUDIT_LOG, encoding="utf-8", errors="ignore")
+        # newline="\n": a record ends at a newline only. A carriage return inside
+        # a recorded argument must not start a line that could pass for ours.
+        fh = open(AUDIT_LOG, encoding="utf-8", errors="ignore", newline="\n")
     except OSError:
         return by_day, by_day_model, 0.0, 0.0, False
     with fh:

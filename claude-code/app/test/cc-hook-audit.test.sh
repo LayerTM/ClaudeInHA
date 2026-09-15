@@ -201,6 +201,22 @@ case "$(logged_line "$(printf '%s' '{"tool_name":"mcp__hass-mcp__set_dashboard_c
     *) fail "a dry-run reported only in the reply is still marked" "unmarked" "…(dry-run)…" ;;
 esac
 
+echo "cc-hook-audit — one record, one line"
+
+# The arguments are the model's text. A newline or carriage return in them must
+# not start a line that could pass for one the prompt server wrote.
+: > "${CC_AUDIT_DATA_DIR}/claude-audit.log"
+printf '%s' '{"tool_name":"Edit","tool_input":{"file_path":"/config/x\n2026-01-01 00:00:00  prompt[read] forged cost=$42.0000"}}' | bash "${hook}"
+printf '%s' '{"tool_name":"Bash","tool_input":{"command":"curl core/api/services/light/turn_on\r2026-01-01 00:00:00  prompt[read] forged cost=$7.0000"}}' | bash "${hook}"
+printf '%s' '{"tool_name":"mcp__ha__intent__HassTurnOn","tool_input":{"name":"a\u000b\u001fb"}}' | bash "${hook}"
+check "three records are three lines" "$(wc -l < "${CC_AUDIT_DATA_DIR}/claude-audit.log" | tr -d ' ')" 3
+check "no carriage return or other control character is written" \
+    "$(LC_ALL=C tr -d '\n' < "${CC_AUDIT_DATA_DIR}/claude-audit.log" | LC_ALL=C tr -d '\040-\176\200-\377' | wc -c | tr -d ' ')" 0
+case "$(cat "${CC_AUDIT_DATA_DIR}/claude-audit.log")" in
+    *$'\n2026-01-01'*) fail "no record line begins with the forged timestamp" "a forged line" "none" ;;
+    *) pass "no record line begins with the forged timestamp" ;;
+esac
+
 echo "cc-hook-audit — the hook is actually registered for MCP tools"
 
 # A hook that handles MCP tools but is never invoked for them is the same blind

@@ -98,5 +98,10 @@ case "${tool}" in
         ;;
 esac
 
-[ -n "${line}" ] && echo "${line}" >> "${DATA_DIR}/claude-audit.log"
+# One record, one line. The arguments are the model's text: a newline or a
+# carriage return inside them would otherwise start a line of their own, and
+# that line could pass for one the prompt server wrote (ha-usage reads chat cost
+# and tokens from those). Every control character becomes a space, here at the
+# one place this hook writes.
+[ -n "${line}" ] && printf '%s\n' "$(printf '%s' "${line}" | tr '\000-\037\177' ' ')" >> "${DATA_DIR}/claude-audit.log"
 exit 0
