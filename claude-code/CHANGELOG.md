@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.56.5] — 2026-09-15
+
+### Changed
+- **Bundled components updated to their latest releases.**
+  - Claude Code 2.1.263 → 2.1.272 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md)).
+    This is the version a new installation starts with, and the one used when
+    `auto_update` is off; with `auto_update` on (the default) Claude still updates
+    itself at start as before.
+  - Node.js 26.8.1 → 26.8.2 ([changelog](https://github.com/nodejs/node/blob/main/doc/changelogs/CHANGELOG_V26.md#26.8.2)):
+    OpenSSL 3.5.8, npm 11.19.1.
+  - Playwright MCP 0.0.80 → 0.0.81 ([release notes](https://github.com/microsoft/playwright-mcp/releases/tag/v0.0.81)):
+    adds `browser_webmcp_list` / `browser_webmcp_call` for pages that publish WebMCP
+    tools, and closes a headless browser after an hour without tool calls (the next
+    call starts a new one).
+- **Releases can no longer ship an outdated component.** Every pinned upstream in the
+  image now names where its releases come from, right beside the pin. A release is
+  refused while any of them is behind, and a daily build on the newest releases of all
+  of them catches an upstream that breaks the add-on before a release carries it —
+  including a Claude Code update that stops accepting an option the chat bridge
+  passes to it.
+
 ## [1.56.4] — 2026-09-14
 
 ### Added
