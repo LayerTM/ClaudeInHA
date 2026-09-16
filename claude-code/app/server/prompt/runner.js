@@ -415,12 +415,20 @@ function wantedHaBasenames(mode, intents) {
 // the main model only: a run also calls a small side model, whose tokens appear
 // only in `modelUsage` (measured on CLI 2.1.272: about 900 input tokens a run)
 // while `total_cost_usd` includes them. So `modelUsage` is read when present.
+// The model the API served, as the console's own transcripts name it. The CLI
+// reports a context-window variant chosen by alias with a bracketed suffix
+// (`claude-opus-5[1m]`), while the messages it records carry the model alone
+// (`claude-opus-5`), so the suffix is dropped and one model keeps one name.
+function servedModel(name) {
+  return String(name).replace(/\[[^\]]*\]$/, '');
+}
+
 function runTokens(envelope, initModel) {
   const n = (v) => (Number.isInteger(v) && v > 0 ? v : 0);
   const perModel = envelope && envelope.modelUsage;
   if (perModel && typeof perModel === 'object' && Object.keys(perModel).length > 0) {
     return Object.entries(perModel).map(([modelName, u]) => ({
-      model: modelName,
+      model: servedModel(modelName),
       input: n(u && u.inputTokens),
       output: n(u && u.outputTokens),
       cacheRead: n(u && u.cacheReadInputTokens),
@@ -430,7 +438,7 @@ function runTokens(envelope, initModel) {
   const u = envelope && envelope.usage;
   if (!u || typeof u !== 'object') return [];
   return [{
-    model: initModel || 'unknown',
+    model: initModel ? servedModel(initModel) : 'unknown',
     input: n(u.input_tokens),
     output: n(u.output_tokens),
     cacheRead: n(u.cache_read_input_tokens),

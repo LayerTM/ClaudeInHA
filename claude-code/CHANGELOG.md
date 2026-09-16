@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **One model, one row in the per-model token list.** A chat model chosen with a
+  context-window suffix, such as `claude-opus-5[1m]`, was listed as
+  `claude-opus-5_1m_`, next to the same model's console row as `claude-opus-5`.
+  Chat requests now name the model as the console does, so its tokens add up in
+  one row.
+
 ## [1.56.10] — 2026-09-15
 
 ### Fixed
