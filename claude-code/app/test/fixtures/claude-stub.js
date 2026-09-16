@@ -40,6 +40,11 @@ function liveContextTool(prompt) {
 }
 
 function run(prompt) {
+  // ENVDUMP records the environment this child was given, in its working
+  // directory, so a test can pin exactly what the runner passes to the CLI.
+  if (prompt.includes('ENVDUMP')) {
+    fs.writeFileSync(path.join(process.cwd(), 'stub-env.json'), JSON.stringify(process.env));
+  }
   const hasMcp = args.includes('--mcp-config');
   const schemaIdx = args.indexOf('--json-schema');
   const wantsProposal = schemaIdx !== -1 && args[schemaIdx + 1].includes('"proposal"');
