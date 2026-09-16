@@ -1,0 +1,83 @@
+name: hygiene
+
+# A reusable check that a repository carries no traces of the machine it was
+# written on — absolute home or temporary paths, symlinks pointing outside the
+# clone, transcript URLs, attribution trailers in tracked files.
+#
+# It is defined once and called by every repository that wants it:
+#
+#   jobs:
+#     hygiene:
+#       uses: LayerTM/ClaudeInHA/.github/workflows/hygiene-scan.yml@main
+#
+# The caller passes nothing: the scanner discovers what to check from the tree it
+# is pointed at. The rules therefore exist in one place, and a repository adopts
+# them by adding a caller rather than a copy.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository being checked
+        uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # The scanner lives beside this workflow file, and a caller pins the
+      # workflow by ref. Taking the script from that same ref is what makes the
+      # pin mean anything: a caller runs the scanner it referenced, never
+      # whatever happens to be on the default branch today. When the caller is
+      # this repository, the checkout above is already that revision.
+      - name: Locate the scanner for this revision
+        id: tool
+        env:
+          OWN_REF: ${{ github.job_workflow_ref }}
+          THIS_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          here=".github/scripts"
+          if [ -z "${OWN_REF}" ]; then
+            printf 'dir=%s\nrepo=\nref=\n' "${here}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          repo="$(printf '%s' "${OWN_REF}" | cut -d/ -f1,2)"
+          ref="${OWN_REF##*@}"
+          if [ -z "${repo}" ] || [ "${ref}" = "${OWN_REF}" ]; then
+            echo "Could not read this workflow's own revision from '${OWN_REF}'." >&2
+            exit 1
+          fi
+          if [ "${repo}" = "${THIS_REPO}" ]; then
+            printf 'dir=%s\nrepo=\nref=\n' "${here}" >> "$GITHUB_OUTPUT"
+          else
+            printf 'dir=.hygiene-tool/%s\nrepo=%s\nref=%s\n' \
+              "${here}" "${repo}" "${ref}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Only when the caller is another repository. `.hygiene-tool` is untracked
+      # there, and the scanner reads tracked files only, so it never scans itself.
+      - name: Fetch the scanner
+        if: steps.tool.outputs.repo != ''
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.tool.outputs.repo }}
+          ref: ${{ steps.tool.outputs.ref }}
+          path: .hygiene-tool
+
+      - name: Self-test the scanner
+        working-directory: ${{ steps.tool.outputs.dir }}
+        run: python test_hygiene_scan.py
+
+      - name: Scan the tracked files
+        env:
+          SCANNER: ${{ steps.tool.outputs.dir }}/hygiene_scan.py
+        run: python "${SCANNER}" .

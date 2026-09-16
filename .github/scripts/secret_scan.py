@@ -41,7 +41,6 @@ PATTERNS: dict[str, "re.Pattern[str]"] = {
     "hardcoded password": re.compile(
         r"(?i)\bpassword\b\s*[:=]\s*[\"'][^\"'{}<\s]{4,}[\"']"
     ),
-    "personal macOS path": re.compile(r"/Users/[a-z]"),
     "personal email (gmail)": re.compile(r"[A-Za-z0-9._%+-]+@gmail\.com"),
     "private LAN IP": re.compile(r"\b(?:192\.168|10\.0\.0)\.\d{1,3}\b"),
 }
