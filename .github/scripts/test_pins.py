@@ -133,6 +133,15 @@ for label, url, body in [
      "https://api.github.com/repos/hassio-addons/addon-debian-base/releases/latest", b'"v9.4.0"'),
     ("Node.js index with a release that is not an object", "https://nodejs.org/dist/index.json", b'["v26.8.1"]'),
     ("manifest whose platforms is a list", f"{BASE}/2.1.263/manifest.json", b'{"platforms": []}'),
+    ("npm version that is a number", "https://registry.npmjs.org/ccstatusline/latest", b'{"version": 2}'),
+    ("npm version that is a larger number", "https://registry.npmjs.org/ccstatusline/latest", b'{"version": 3}'),
+    ("GitHub tag that is a number",
+     "https://api.github.com/repos/hassio-addons/addon-debian-base/releases/latest", b'{"tag_name": 9.4}'),
+    ("pypi version that is null", "https://pypi.org/pypi/hass-mcp/json", b'{"info": {"version": null}}'),
+    ("checksum that is a number", f"{BASE}/2.1.263/manifest.json",
+     json.dumps({"platforms": {"linux-x64": {"checksum": int("1" * 64)}, "linux-arm64": {"checksum": OLD_ARM}}}).encode()),
+    ("Node.js release whose version is a number", "https://nodejs.org/dist/index.json",
+     b'[{"version": 26, "lts": false}]'),
 ]:
     code, out = run_safely(answers(**{url: body}))
     check(f"{label} -> exit 2", code, 2)
