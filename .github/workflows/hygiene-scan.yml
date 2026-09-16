@@ -14,9 +14,14 @@ name: hygiene
 # is pointed at. The rules therefore exist in one place, and a repository adopts
 # them by adding a caller rather than a copy.
 #
-# `tool_ref` exists only for the case below where the runner does not report this
-# workflow's own revision; a caller that is happy with this repository's default
-# branch leaves it out.
+# A runner has been measured not to report this workflow's own revision even for
+# such a full reference. When it does not, the revision in `uses:` selects the
+# workflow but cannot select the scanner, which is then taken from this
+# repository's default branch and the log says so. A caller that needs the
+# scanner pinned too states the same revision a second time:
+#
+#     with:
+#       tool_ref: v1.2.3
 
 on:
   workflow_call:
