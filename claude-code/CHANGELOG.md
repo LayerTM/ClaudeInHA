@@ -16,7 +16,9 @@
   old.
 - **Old chat transcripts are removed even when the prompt API is off.** Since
   1.56.9 the transcripts earlier versions saved are removed at start, but only
-  when the prompt API was switched on. They are now removed at every start.
+  when the prompt API was switched on. They are now removed at every start. If
+  removing one fails (the add-on log says so), its tokens now count as console
+  usage in `ha-usage` and the token sensors until it is removed.
 
 ## [1.56.10] — 2026-09-15
 
