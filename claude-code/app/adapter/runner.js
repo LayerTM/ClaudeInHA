@@ -17,7 +17,7 @@
 
 const { spawn } = require('node:child_process');
 const { StringDecoder } = require('node:string_decoder');
-const { validateProposal, validateAutomationDraft } = require('./security');
+const { validateProposal, validateAutomationDraft } = require('../server/prompt/security');
 
 // Wall-clock ceiling per claude run; tunable for slow hardware via the
 // add-on's environment_vars (CLAUDE_PROMPT_TIMEOUT_MS), bounded 10s..10min.

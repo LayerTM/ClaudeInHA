@@ -8,7 +8,7 @@
 
 ## Checklist
 
-- [ ] `npm test` passes (run in `claude-code/app`)
+- [ ] `npm test` passes in the assembled add-on (`claude-code/core/assemble.sh <core archive> claude-code <dir>`, then run in `<dir>/app`)
 - [ ] `npm run lint` (eslint) and `npm run typecheck` (tsc --checkJs) pass
 - [ ] `npm run test:alerts` passes if the alerts loop changed
 - [ ] `python .github/scripts/secret_scan.py .` is clean — no tokens/secrets committed

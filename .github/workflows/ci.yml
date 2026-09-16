@@ -30,34 +30,40 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "26"
+      - name: Assemble the add-on with its pinned core
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          .github/scripts/core_archive.sh "${RUNNER_TEMP}/core"
+          claude-code/core/assemble.sh "${RUNNER_TEMP}/core/core.tar" claude-code "${RUNNER_TEMP}/addon"
       - name: Install dependencies
-        working-directory: claude-code/app
+        working-directory: ${{ runner.temp }}/addon/app
         run: npm ci
       - name: Run tests
-        working-directory: claude-code/app
+        working-directory: ${{ runner.temp }}/addon/app
         run: npm test
       - name: Run alerts loop tests (bash + jq)
-        working-directory: claude-code/app
+        working-directory: ${{ runner.temp }}/addon/app
         run: npm run test:alerts
 
       - name: Run config-list tests (bash + jq)
-        working-directory: claude-code/app
+        working-directory: ${{ runner.temp }}/addon/app
         run: npm run test:config
 
       - name: Run monitoring loop tests (bash)
-        working-directory: claude-code/app
+        working-directory: ${{ runner.temp }}/addon/app
         run: npm run test:monitor
 
       - name: Run audit-log hook tests (bash + jq)
-        working-directory: claude-code/app
+        working-directory: ${{ runner.temp }}/addon/app
         run: npm run test:audit
 
       - name: Run status line migration tests (bash + jq)
-        working-directory: claude-code/app
+        working-directory: ${{ runner.temp }}/addon/app
         run: npm run test:statusline
 
       - name: Run usage report tests (bash + python3)
-        working-directory: claude-code/app
+        working-directory: ${{ runner.temp }}/addon/app
         run: npm run test:usage
 
   lint-js:
@@ -68,14 +74,20 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "26"
+      - name: Assemble the add-on with its pinned core
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          .github/scripts/core_archive.sh "${RUNNER_TEMP}/core"
+          claude-code/core/assemble.sh "${RUNNER_TEMP}/core/core.tar" claude-code "${RUNNER_TEMP}/addon"
       - name: Install dependencies
-        working-directory: claude-code/app
+        working-directory: ${{ runner.temp }}/addon/app
         run: npm ci
       - name: Lint (eslint)
-        working-directory: claude-code/app
+        working-directory: ${{ runner.temp }}/addon/app
         run: npm run lint
       - name: Type-check (tsc --checkJs)
-        working-directory: claude-code/app
+        working-directory: ${{ runner.temp }}/addon/app
         run: npm run typecheck
 
   addon-linter:
@@ -200,6 +212,43 @@ jobs:
           echo "Declared architectures: ${list}"
           echo "list=${list}" >> "$GITHUB_OUTPUT"
 
+  # The add-on is built on the ha-agent-core release its lock pins. A pin is
+  # merged only once that release exists and publishes this very lock, and a
+  # version once pinned keeps its URL, commit and digest.
+  core-release:
+    name: Pinned core is released
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - name: The lock is well formed and keeps what main pinned
+        run: |
+          lock=claude-code/core/core.lock.json
+          previous=()
+          if git show origin/main:"${lock}" > "${RUNNER_TEMP}/previous.lock.json" 2>/dev/null; then
+            previous=(--previous-lock "${RUNNER_TEMP}/previous.lock.json")
+          fi
+          node claude-code/core/verify-core.js check --lock "${lock}" \
+            --adapter-api "$(node -p 'require(process.argv[1]).adapterApi' "${PWD}/${lock}")" "${previous[@]}"
+      - name: The pinned version is published with this lock
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          lock=claude-code/core/core.lock.json
+          version="$(node -p 'require(process.argv[1]).version' "${PWD}/${lock}")"
+          if ! gh release download "v${version}" --repo LayerTM/ha-agent-core \
+               --pattern core.lock.json --dir "${RUNNER_TEMP}/published"; then
+            echo "ha-agent-core v${version} is not released; this pin cannot be merged yet."
+            exit 1
+          fi
+          node -e 'require("node:assert").deepStrictEqual(require(process.argv[1]), require(process.argv[2]))' \
+            "${PWD}/${lock}" "${RUNNER_TEMP}/published/core.lock.json"
+          echo "ha-agent-core v${version} is published with this lock."
+
   # A broken Dockerfile used to be invisible until a user's own update rebuilt
   # the image on their device. This builds it for every declared architecture,
   # natively, and publishes nothing.
@@ -249,9 +298,27 @@ jobs:
             echo "Give this architecture a runner that matches it."
             exit 1
           fi
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - name: Fetch the pinned core
+        id: core
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source="$(.github/scripts/core_archive.sh "${RUNNER_TEMP}/core")"
+          echo "source=${source}" >> "$GITHUB_OUTPUT"
       - name: Build the add-on image (no push)
         run: |
+          # Once the pinned core is released the image fetches it itself, as it
+          # does on a user's device; before that, the packed archive stands in
+          # for the download and is still checked against the lock.
+          archive=()
+          if [ '${{ steps.core.outputs.source }}' = packed ]; then
+            archive=(--build-context "core-archive=${RUNNER_TEMP}/core")
+          fi
           docker build --pull \
+            "${archive[@]}" \
             --platform '${{ steps.target.outputs.platform }}' \
             --build-arg BUILD_FROM='${{ steps.target.outputs.from }}' \
             --tag 'addon-image:${{ matrix.arch }}' \
@@ -274,7 +341,7 @@ jobs:
           docker run --rm --platform '${{ steps.target.outputs.platform }}' \
             --volume "${PWD}/.github/scripts:/ci:ro" \
             --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
-            /ci/runner_args_smoke.js /root/.local/bin/claude /opt/claude-console/server/prompt/runner.js
+            /ci/runner_args_smoke.js /root/.local/bin/claude /opt/claude-console/adapter/runner.js
       - name: Start-up, launch, update and digest behave as recorded
         run: |
           # The service script, the Claude tab launcher, both update paths,
@@ -303,6 +370,7 @@ jobs:
       - workflow-gates
       - pins
       - arches
+      - core-release
       - image
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest

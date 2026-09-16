@@ -19,29 +19,3 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
-
-  # npm dependencies for the web console (express / ws / node-pty / busboy /
-  # @xterm / eslint / tsc).
-  - package-ecosystem: npm
-    directory: "/claude-code/app"
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: "deps"
-    labels: ["dependencies"]
-    groups:
-      npm-app:
-        patterns: ["*"]
-
-  # npm dependencies for the ha-shot screenshot helper (playwright-core drives
-  # the system Chromium). Separate manifest + lockfile from the console app.
-  - package-ecosystem: npm
-    directory: "/claude-code/ha-tools"
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: "deps"
-    labels: ["dependencies"]
-    groups:
-      npm-ha-tools:
-        patterns: ["*"]

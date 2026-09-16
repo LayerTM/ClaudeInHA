@@ -28,9 +28,9 @@ module.exports = [
 
   js.configs.recommended,
 
-  // Server + tests + fixtures: Node, CommonJS.
+  // Server, engine adapter, tests + fixtures: Node, CommonJS.
   {
-    files: ['server/**/*.js', 'test/**/*.js', 'eslint.config.js'],
+    files: ['server/**/*.js', 'adapter/**/*.js', 'test/**/*.js', 'eslint.config.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'commonjs',

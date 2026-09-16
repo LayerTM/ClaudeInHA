@@ -58,7 +58,7 @@ const {
 } = require('../server/prompt/server');
 const { createHistoryStore } = require('../server/prompt/history');
 const promptServer = require('../server/prompt');
-const runner = require('../server/prompt/runner');
+const runner = require('../adapter/runner');
 
 // ---------------------------------------------------------------------------
 // Unit tests: security primitives
