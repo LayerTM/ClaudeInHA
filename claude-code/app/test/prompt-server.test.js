@@ -1401,6 +1401,13 @@ test('runTokens: per model from modelUsage, main model from usage otherwise', ()
   assert.deepEqual(runner.runTokens({ usage: { input_tokens: 3, output_tokens: 2 } }, 'm'),
     [{ model: 'm', input: 3, output: 2, cacheRead: 0, cacheWrite: 0 }]);
   assert.deepEqual(runner.runTokens({}, 'm'), []);
+  // A model chosen by a context-window alias is named as the API served it, the
+  // way console transcripts name it, whichever field the tokens come from.
+  assert.deepEqual(runner.runTokens({
+    modelUsage: { 'claude-opus-5[1m]': { inputTokens: 1 }, 'claude-opus-5': { inputTokens: 2 } },
+  }, 'claude-opus-5[1m]').map((t) => t.model), ['claude-opus-5', 'claude-opus-5']);
+  assert.deepEqual(runner.runTokens({ usage: { input_tokens: 1 } }, 'claude-opus-5[1m]')[0].model, 'claude-opus-5');
+  assert.deepEqual(runner.runTokens({ usage: { input_tokens: 1 } }, 'x[a]b')[0].model, 'x[a]b', 'only a trailing suffix');
   assert.deepEqual(runner.runTokens(null, 'm'), []);
 });
 
@@ -1408,18 +1415,27 @@ test('audit + ha-usage: a chat request\'s tokens and cost reach the usage report
   const { status } = await post({ prompt: 'USAGEPROBE how warm is it' }, { 'X-Claude-Caller': 'user.usage.probe' });
   assert.equal(status, 200);
   const line = await waitForAuditLine('caller=user.usage.probe');
-  assert.match(line, / tokens=claude-opus-5_1m_:4:153:10439:0,claude-haiku-4-5:903:20:0:0 cost=\$0\.0123$/, line);
-  // Feed exactly that line to the real report, with no transcripts at all.
+  assert.match(line, / tokens=claude-opus-5:4:153:10439:0,claude-haiku-4-5:903:20:0:0 cost=\$0\.0123$/, line);
+  // Feed exactly that line to the real report, next to one console message of
+  // the same model as the console's own transcript names it.
   const dir = fs.mkdtempSync(path.join(TMP, 'usage-'));
   fs.writeFileSync(path.join(dir, 'claude-audit.log'), `${line}\n`);
+  const projects = path.join(dir, '.claude', 'projects', '-homeassistant');
+  fs.mkdirSync(projects, { recursive: true });
+  fs.writeFileSync(path.join(projects, 'console.jsonl'), `${JSON.stringify({
+    timestamp: new Date().toISOString(),
+    message: { model: 'claude-opus-5', usage: { input_tokens: 1, output_tokens: 1 } },
+  })}\n`);
   const bin = path.join(__dirname, '..', '..', 'rootfs', 'usr', 'local', 'bin', 'ha-usage');
   const out = require('node:child_process').execFileSync('python3', [bin, '--json'], {
     encoding: 'utf8', env: { ...process.env, HOME: dir, CC_AUDIT_DATA_DIR: dir },
   });
   const report = JSON.parse(out);
-  assert.deepEqual(report.tokens.today, { input: 907, output: 173, cache_read: 10439, cache_write: 0 });
+  assert.deepEqual(report.tokens.today, { input: 908, output: 174, cache_read: 10439, cache_write: 0 });
   assert.equal(report.prompt_api_cost_usd.today, 0.0123);
-  assert.deepEqual(Object.keys(report.by_model_recent).sort(), ['claude-haiku-4-5', 'claude-opus-5_1m_']);
+  // One model, one row: the chat and the console name it the same way.
+  assert.deepEqual(Object.keys(report.by_model_recent).sort(), ['claude-haiku-4-5', 'claude-opus-5']);
+  assert.equal(report.by_model_recent['claude-opus-5'].input, 5);
 });
 
 test('buildClaudeArgs: published ha tools a run may not call are taken out of context', () => {

@@ -7,6 +7,13 @@
   now cut to 300 bytes, like the recorded command and arguments already were,
   and a whole record to 1000 bytes, so a very long record can no longer be split
   by a line the prompt API writes at the same moment.
+- **One model, one row in the per-model token list.** A chat model chosen with a
+  context-window suffix, such as `claude-opus-5[1m]`, was listed as
+  `claude-opus-5_1m_`, next to the same model's console row as `claude-opus-5`.
+  Chat requests now name the model as the console does, so its tokens add up in
+  one row. Requests made before this update keep the old name, so both rows can
+  appear in the recent per-model list until those requests are more than 7 days
+  old.
 
 ## [1.56.10] — 2026-09-15
 
