@@ -4,9 +4,10 @@
 # Chat requests keep no transcript, so their tokens and cost come from the
 # prompt server's own `prompt[...]` audit lines and nowhere else. The same log
 # also holds the audit hook's record of each tool call, whose arguments the model
-# chose: a number there must never be counted. And the prompt work folder's
-# transcript directory is never scanned, so a transcript left in it cannot be
-# counted a second time.
+# chose: a number there must never be counted. Transcripts are read from every
+# project directory: the prompt server removes the ones earlier versions saved
+# for chat requests before anything else at start, so the report does not need
+# to know where they were.
 #
 # Requires: bash + python3 + jq. A missing dependency FAILS rather than skipping.
 #
@@ -39,10 +40,8 @@ usage_line() { # <input> <output> <cache read> <cache write> <model>
 
 report() { HOME="${work}/home" CC_AUDIT_DATA_DIR="${work}" python3 "${bin}" --json; }
 
-mkdir -p "${work}/home/.claude/projects/-homeassistant" "${work}/home/.claude/projects/-data-claude-prompt-work"
+mkdir -p "${work}/home/.claude/projects/-homeassistant"
 usage_line 10 20 30 40 console-model > "${work}/home/.claude/projects/-homeassistant/console.jsonl"
-# A transcript an earlier version left in the prompt work folder's directory.
-usage_line 5000 5000 5000 5000 chat-model > "${work}/home/.claude/projects/-data-claude-prompt-work/old.jsonl"
 
 cat > "${work}/claude-audit.log" <<EOF
 ${today} 10:00:01  prompt[read] caller=a len=5 sha=1 status=200 dur=1.0s turns=2 tools=- out=9B tokens=big_1m_:4:153:10439:0,small:903:20:0:0 cost=\$0.0123
@@ -72,8 +71,12 @@ check "all-time tokens add the earlier day's line" \
     "$(printf '%s' "${out}" | jq -r '.tokens.all_time.input')" 919
 check "models: malformed tokens entries add none, older days fall outside the window" \
     "$(printf '%s' "${out}" | jq -r '.by_model_recent | keys | join(",")')" "big_1m_,console-model,small"
-check "the prompt work folder's transcript is not counted" \
-    "$(printf '%s' "${out}" | jq -r '.by_model_recent | has("chat-model")')" false
+# A transcript whose removal failed is read like any other one.
+left="${work}/left"
+mkdir -p "${left}/home/.claude/projects/-data-claude-prompt-work"
+usage_line 7 0 0 0 left-model > "${left}/home/.claude/projects/-data-claude-prompt-work/old.jsonl"
+check "a transcript left in the chat work folder's directory is counted" \
+    "$(HOME="${left}/home" CC_AUDIT_DATA_DIR="${left}" python3 "${bin}" --json | jq -r '.by_model_recent["left-model"].input')" 7
 check "messages count the console transcript only" \
     "$(printf '%s' "${out}" | jq -r '.messages.today')" 1
 
