@@ -112,11 +112,23 @@ jobs:
       - name: Scan tracked files for secrets and personal data
         run: python .github/scripts/secret_scan.py .
 
-  # Defined once, beside this file, and called by every repository that wants it
-  # — so the rules live in one place rather than in a copy per repository.
+  # A repository is copied onto machines nothing like the one it was written on.
+  # An absolute home or temporary path, a symlink pointing outside the clone, a
+  # link to an authoring transcript or an attribution trailer left in a tracked
+  # file all work on exactly one computer and are dead everywhere else.
   hygiene:
     name: Repository hygiene
-    uses: ./.github/workflows/hygiene-scan.yml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Self-test the scanner
+        working-directory: .github/scripts
+        run: python test_hygiene_scan.py
+      - name: Scan tracked files for traces of one machine
+        run: python .github/scripts/hygiene_scan.py .
 
   # What a release is allowed to depend on is a list, and a list goes stale the
   # first time a gate is added without touching it. This asserts the release job
