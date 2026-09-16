@@ -85,13 +85,34 @@ if [ -n "${CC_SKILLS_GIT:-}" ]; then
             && log "skills_git cloned" || log "skills_git clone failed"
     fi
     if [ -d "${cache}" ]; then
+        # The skills the repository provided on the previous run, so one removed
+        # from it is removed here too. Only names on that list are ever removed:
+        # a skill of the user's own is not, and neither is a bundled HA skill of
+        # the same name (the pack above owns it). Until the list exists (the
+        # first run after an update), nothing is removed.
+        names_file=/data/home/.claude/.skills-git-names
+        synced=()
         for d in "${cache}"/*/; do
             [ -f "${d}SKILL.md" ] || continue
             name="$(basename "${d}")"
-            # Mirror (not overlay) so skills deleted upstream don't linger.
             rm -rf "/data/home/.claude/skills/${name}"
             cp -r "${d}" /data/home/.claude/skills/ 2>/dev/null
+            synced+=("${name}")
         done
+        if [ -f "${names_file}" ]; then
+            while IFS= read -r old; do
+                case "${old}" in ''|.|..|*/*) continue ;; esac
+                still=0
+                for name in "${synced[@]}"; do
+                    [ "${name}" = "${old}" ] && still=1 && break
+                done
+                [ "${still}" = 1 ] && continue
+                [ -e "/opt/ha-skills/${old}" ] && continue
+                rm -rf "/data/home/.claude/skills/${old}"
+                log "skills_git: removed ${old}, which the repository no longer has"
+            done < "${names_file}"
+        fi
+        printf '%s\n' "${synced[@]}" > "${names_file}"
         log "skills_git skills synced"
     fi
 fi

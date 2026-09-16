@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Fixed
+- **A skill removed from `skills_git` is removed from the add-on.** Skills
+  deleted from the repository used to stay in `~/.claude/skills`. They are now
+  removed on the next start; your own skills and the bundled ones are left
+  alone. Skills deleted from the repository before this update are not known to
+  the add-on and stay until you remove them.
 - **Every audit record is written whole.** The file path of a recorded edit is
   now cut to 300 bytes, like the recorded command and arguments already were,
   and a whole record to 1000 bytes, so a very long record can no longer be split

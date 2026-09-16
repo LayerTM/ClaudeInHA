@@ -356,6 +356,22 @@ gitc commit -qam two
 GIT_IN="${repo}" provision
 yes_ "skills_git: pulled on the next run" grep -q 'skills_git pulled' "${P}/provision.out"
 eq "skills_git: the skill follows the repository" "$(cat /data/home/.claude/skills/alpha/SKILL.md)" alpha-v2
+mkdir -p /data/home/.claude/skills/mine-too "${repo}/beta" "${repo}/ha-automation"
+echo my-own > /data/home/.claude/skills/mine-too/SKILL.md
+echo beta > "${repo}/beta/SKILL.md"
+echo shadow > "${repo}/ha-automation/SKILL.md"
+gitc add -A
+gitc commit -qm three
+GIT_IN="${repo}" provision
+eq "skills_git: a skill added to the repository arrives" "$(cat /data/home/.claude/skills/beta/SKILL.md 2>/dev/null)" beta
+gitc rm -rq alpha ha-automation
+gitc commit -qm four
+GIT_IN="${repo}" provision
+no_ "skills_git: a skill removed from the repository is removed" test -e /data/home/.claude/skills/alpha
+yes_ "skills_git: the removal is logged" grep -q 'skills_git: removed alpha' "${P}/provision.out"
+eq "skills_git: the skills it still has stay" "$(cat /data/home/.claude/skills/beta/SKILL.md 2>/dev/null)" beta
+yes_ "skills_git: a bundled skill of the same name is kept" cmp -s /data/home/.claude/skills/ha-automation/SKILL.md /opt/ha-skills/ha-automation/SKILL.md
+eq "skills_git: a skill of the user's own stays" "$(cat /data/home/.claude/skills/mine-too/SKILL.md 2>/dev/null)" my-own
 
 rm -f /usr/local/sbin/node
 
