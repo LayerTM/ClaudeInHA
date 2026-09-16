@@ -217,6 +217,24 @@ case "$(cat "${CC_AUDIT_DATA_DIR}/claude-audit.log")" in
     *) pass "no record line begins with the forged timestamp" ;;
 esac
 
+echo "cc-hook-audit — every record is short enough for one write"
+
+# A long record can reach the log in more than one write(), and a line the
+# prompt server appends in between would then split it. Every part a model
+# chooses is capped: the edited path like the command and the arguments, and the
+# whole record where the log is written.
+long_path="/homeassistant/$(printf 'p%.0s' $(seq 1 5000)).yaml"
+line="$(logged_line "$(filecall Edit "${long_path}")")"
+check "a long edited path is cut to 300 bytes" "$(printf '%s' "${line#*Edit: }" | wc -c | tr -d ' ')" 300
+case "${line}" in
+    *"Edit: /homeassistant/ppp"*) pass "the cut path still names the file it starts with" ;;
+    *) fail "the cut path still names the file it starts with" "${line:0:60}" "…Edit: /homeassistant/ppp…" ;;
+esac
+long_tool="mcp__ha__set_$(printf 'x%.0s' $(seq 1 5000))"
+line="$(logged_line "$(printf '{"tool_name":"%s","tool_input":{}}' "${long_tool}")")"
+check "a record with a long tool name is cut to 1000 bytes" "$(printf '%s' "${line}" | wc -c | tr -d ' ')" 1000
+check "a long record is still one line" "$(logged "$(printf '{"tool_name":"%s","tool_input":{}}' "${long_tool}")")" 1
+
 echo "cc-hook-audit — the hook is actually registered for MCP tools"
 
 # A hook that handles MCP tools but is never invoked for them is the same blind
