@@ -7,7 +7,9 @@
   deleted from the repository used to stay in `~/.claude/skills`. They are now
   removed on the next start; your own skills and the bundled ones are left
   alone. Skills deleted from the repository before this update are not known to
-  the add-on and stay until you remove them.
+  the add-on and stay until you remove them. A skill the repository provided is
+  removed with any changes you made to it in the add-on, so keep your own edits
+  under a name of your own.
 - **Every audit record is written whole.** The file path of a recorded edit is
   now cut to 300 bytes, like the recorded command and arguments already were,
   and a whole record to 1000 bytes, so a very long record can no longer be split
