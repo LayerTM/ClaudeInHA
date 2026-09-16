@@ -14,6 +14,9 @@
   one row. Requests made before this update keep the old name, so both rows can
   appear in the recent per-model list until those requests are more than 7 days
   old.
+- **Old chat transcripts are removed even when the prompt API is off.** Since
+  1.56.9 the transcripts earlier versions saved are removed at start, but only
+  when the prompt API was switched on. They are now removed at every start.
 
 ## [1.56.10] — 2026-09-15
 

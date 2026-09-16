@@ -28,6 +28,9 @@ const USAGE_BIN = process.env.CLAUDE_PROMPT_USAGE_BIN || '/usr/local/bin/ha-usag
 // Core address is derived (see core-target.js), never supplied.
 const HA_MCP_URL_OVERRIDE = process.env.CLAUDE_PROMPT_HA_MCP_URL || '';
 const DISCOVERY_SERVICE = 'claude_ha';
+// Where chat runs work. Stated once: the removal of the sessions earlier
+// versions saved derives Claude's transcript folder from it.
+const WORK_DIR = path.join(DATA_DIR, 'claude-prompt', 'work');
 
 function log(msg) {
   console.log(`[prompt] ${msg}`);
@@ -125,9 +128,8 @@ async function removeSavedPromptSessions(homeDir, workDir) {
 }
 
 async function ensureWorkDir() {
-  const dir = path.join(DATA_DIR, 'claude-prompt', 'work');
-  await fsp.mkdir(dir, { recursive: true, mode: 0o700 });
-  return dir;
+  await fsp.mkdir(WORK_DIR, { recursive: true, mode: 0o700 });
+  return WORK_DIR;
 }
 
 function supervisorRequest(pathname, options = {}) {
@@ -181,6 +183,15 @@ async function announceDiscovery(token) {
 // Start the prompt server. Returns a shutdown function; never throws in a way
 // that should take the console down — the caller catches and logs.
 async function start() {
+  // Before anything else, so the transcripts are gone whether or not the
+  // prompt API is switched on.
+  try {
+    const removed = await removeSavedPromptSessions(process.env.HOME || '/data/home', WORK_DIR);
+    if (removed) log(`removed ${removed} saved chat session transcript(s) left by earlier versions`);
+  } catch (err) {
+    log(`could not remove saved chat sessions: ${err.message}`);
+  }
+
   const options = readOptions();
   if (options.prompt_api === false) {
     log('disabled via prompt_api option');
@@ -221,12 +232,6 @@ async function start() {
     ? await writeMcpConfig(HA_MCP_URL_OVERRIDE || `${relay.url}/api/mcp`, relay.token)
     : await writeMcpConfig('', '');
   const workDir = await ensureWorkDir();
-  try {
-    const removed = await removeSavedPromptSessions(process.env.HOME || '/data/home', workDir);
-    if (removed) log(`removed ${removed} saved chat session transcript(s) left by earlier versions`);
-  } catch (err) {
-    log(`could not remove saved chat sessions: ${err.message}`);
-  }
 
   const redact = buildRedactor([
     token,

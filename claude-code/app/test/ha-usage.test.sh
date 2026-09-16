@@ -39,10 +39,8 @@ usage_line() { # <input> <output> <cache read> <cache write> <model>
 
 report() { HOME="${work}/home" CC_AUDIT_DATA_DIR="${work}" python3 "${bin}" --json; }
 
-mkdir -p "${work}/home/.claude/projects/-homeassistant" "${work}/home/.claude/projects/-data-claude-prompt-work"
+mkdir -p "${work}/home/.claude/projects/-homeassistant"
 usage_line 10 20 30 40 console-model > "${work}/home/.claude/projects/-homeassistant/console.jsonl"
-# A transcript an earlier version left in the prompt work folder's directory.
-usage_line 5000 5000 5000 5000 chat-model > "${work}/home/.claude/projects/-data-claude-prompt-work/old.jsonl"
 
 cat > "${work}/claude-audit.log" <<EOF
 ${today} 10:00:01  prompt[read] caller=a len=5 sha=1 status=200 dur=1.0s turns=2 tools=- out=9B tokens=big_1m_:4:153:10439:0,small:903:20:0:0 cost=\$0.0123

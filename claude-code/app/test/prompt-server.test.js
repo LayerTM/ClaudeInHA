@@ -1347,6 +1347,31 @@ test('audit: every chat run carries the audit hook the service script built', as
   assert.match(r.json.text, /audit_hook=\/usr\/local\/bin\/cc-hook-audit\b/, r.json.text);
 });
 
+test('start: saved chat sessions are removed even when the prompt API is off', async () => {
+  const optionsFile = process.env.CLAUDE_PROMPT_OPTIONS;
+  const savedOptions = fs.readFileSync(optionsFile, 'utf8');
+  const savedHome = process.env.HOME;
+  const home = fs.mkdtempSync(path.join(TMP, 'home-off-'));
+  const project = path.join(home, '.claude', 'projects', path.join(TMP, 'claude-prompt', 'work').replace(/[^A-Za-z0-9]/g, '-'));
+  fs.mkdirSync(project, { recursive: true });
+  fs.writeFileSync(path.join(project, 'old.jsonl'), '{}');
+  const realLog = console.log;
+  const lines = [];
+  console.log = (msg) => { lines.push(String(msg)); };
+  try {
+    fs.writeFileSync(optionsFile, JSON.stringify({ ...JSON.parse(savedOptions), prompt_api: false }));
+    process.env.HOME = home;
+    const stop = await promptServer.start();
+    assert.equal(typeof stop, 'function');
+    assert.ok(lines.some((l) => /disabled via prompt_api option/.test(l)), lines.join(' | '));
+    assert.equal(fs.existsSync(project), false, 'the transcripts are gone although the API stays off');
+  } finally {
+    console.log = realLog;
+    process.env.HOME = savedHome;
+    fs.writeFileSync(optionsFile, savedOptions);
+  }
+});
+
 test('start: without the audit hook the prompt API refuses to start, loudly', async () => {
   const saved = process.env.CLAUDE_PROMPT_SETTINGS;
   const lines = [];
