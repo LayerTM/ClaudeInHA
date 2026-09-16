@@ -40,12 +40,20 @@ mkfake() {
 FAKE_VERSION=$2
 [ "${3:-0}" = 1 ] && exit 127
 { printf '%s|%s|%s|' "\$(readlink -f "\$0")" "\$(pwd)" "\$HOME"; [ \$# -gt 0 ] && printf '%q ' "\$@"; echo; } >> /pins/claude.log
+for a in "\$@"; do printf '%s' "\$a" | jq -Rs .; done | jq -cs . >> /pins/claude-args.jsonl
 if [ -f /pins/log-env ]; then env | cut -d= -f1 | sort | tr '\n' , >> /pins/claude-env.log; echo >> /pins/claude-env.log; fi
-case "\$1" in
+# What is installed lives in /pins/*-list, in the shape the real CLI lists it,
+# so provisioning sees what an earlier run added.
+case "\$*" in
     --version) echo "\${FAKE_VERSION} (Claude Code)" ;;
     update) if [ -f /pins/update-fails ]; then echo "update refused" >&2; exit 3; fi; echo "checked for updates" ;;
-    install) sed -i "s/^FAKE_VERSION=.*/FAKE_VERSION=\$2/" "\$(readlink -f "\$0")"; echo "installed \$2" ;;
-    plugin|mcp) : ;;
+    "install "*) sed -i "s/^FAKE_VERSION=.*/FAKE_VERSION=\$2/" "\$(readlink -f "\$0")"; echo "installed \$2" ;;
+    "plugin marketplace list") cat /pins/mp-list 2>/dev/null ;;
+    "plugin marketplace add "*) echo "  added (\$4)" >> /pins/mp-list ;;
+    "plugin list") cat /pins/plugin-list 2>/dev/null ;;
+    "plugin install "*) echo "  ❯ \$3" >> /pins/plugin-list ;;
+    "mcp list") cat /pins/mcp-list 2>/dev/null ;;
+    "mcp add "*) echo "\$3: registered" >> /pins/mcp-list ;;
     *)
         if [ "\$HOME" = /tmp/cc-skipcheck ]; then
             [ -f /pins/skipcheck-refuses ] && echo "--dangerously-skip-permissions cannot be used with root/sudo privileges"
@@ -92,7 +100,8 @@ options() {
 reset() {
     rm -rf /data /homeassistant /tmp/cc-skipcheck
     rm -f "${P}"/claude.log "${P}"/claude-env.log "${P}"/console-* "${P}"/update-fails "${P}"/skipcheck-refuses \
-        "${P}"/claude-silent "${P}"/log-env "${P}"/init-ran "${P}"/launched "${P}"/sleep.log "${P}"/notify.log "${P}"/curl.log
+        "${P}"/claude-silent "${P}"/log-env "${P}"/init-ran "${P}"/launched "${P}"/sleep.log "${P}"/notify.log "${P}"/curl.log \
+        "${P}"/claude-args.jsonl "${P}"/mp-list "${P}"/plugin-list "${P}"/mcp-list "${P}"/shell-ran
     mkdir -p /data
 }
 
@@ -117,7 +126,32 @@ expected_claude_md() {
     if [ -n "${1:-}" ]; then printf "\n\n---\n\n# User Custom Instructions\n\n%s\n" "$1"; fi
 }
 
-AUDIT_SETTINGS="$(bash -c 'source /usr/local/lib/addon-hooks.sh && hooks_audit_settings_json')"
+# The audit hook the prompt API is handed, stated here rather than rebuilt with
+# the same helper the service script uses, so a change to that helper shows up.
+AUDIT_SETTINGS='{"hooks":{"PostToolUse":[{"matcher":"Bash|Edit|Write|MultiEdit|^mcp__","hooks":[{"type":"command","command":"/usr/local/bin/cc-hook-audit"}]}]}}'
+
+# The names the service script hands to the console, started from an empty
+# environment (fresh install, api_key, model, auto_update off, one user
+# variable). bashio's own bookkeeping (LOG_FD, __BASHIO_*) and the shell's
+# (PWD, SHLVL, _) are left out: they belong to the tools, not to this add-on.
+# A change here that is intended is made by editing this list.
+EXPECTED_CONSOLE_ENV="ADDON_VERSION ANTHROPIC_API_KEY ANTHROPIC_MODEL CLAUDE_CONSOLE_DEV CLAUDE_CONSOLE_PORT
+CLAUDE_PROMPT_BIN CLAUDE_PROMPT_DATA CLAUDE_PROMPT_DEV CLAUDE_PROMPT_OPTIONS CLAUDE_PROMPT_PORT
+CLAUDE_PROMPT_SETTINGS CLAUDE_PROMPT_USAGE_BIN DISABLE_AUTOUPDATER HA_URL HOME IS_SANDBOX LANG PATH
+PINS_FOO REMOTE_CONTROL TERM UPLOAD_DIR UPLOAD_RETENTION_DAYS USE_BUILTIN_RIPGREP"
+check_console_env_names() {
+    local got want added removed
+    got="$(jq -r 'keys[]' "${P}/console-env.json" | grep -vE '^(LOG_FD|__BASHIO_.*|PWD|SHLVL|_)$' | sort)"
+    want="$(tr ' ' '\n' <<< "${EXPECTED_CONSOLE_ENV}" | sed '/^$/d' | sort)"
+    added="$(comm -23 <(echo "${got}") <(echo "${want}") | tr '\n' ' ')"
+    removed="$(comm -13 <(echo "${got}") <(echo "${want}") | tr '\n' ' ')"
+    if [ -z "${added}${removed}" ]; then
+        ok "console environment has exactly the recorded names"
+    else
+        bad "console environment has exactly the recorded names" \
+            "added: [${added}] missing: [${removed}] — if the service script changed this on purpose, update EXPECTED_CONSOLE_ENV in ${BASH_SOURCE[0]}"
+    fi
+}
 
 # --- 1. service script, fresh install -----------------------------------------
 echo "# service script: fresh install"
@@ -130,11 +164,7 @@ run_service
 eq "service script exits 0 after handing over to the console" "$?" 0
 eq "console is started as the last step" "$(cat "${P}/console-args" 2>/dev/null)" "/opt/claude-console/server/index.js"
 eq "persistent CLI is seeded from the image" "$(persistent_version)" "${IMG}"
-# Started from an empty environment, so every name here comes from the service
-# script or from bashio, which runs it in production too.
-eq "console environment has exactly the recorded names" \
-    "$(jq -r 'keys[]' "${P}/console-env.json" | grep -v '^_$' | tr '\n' ' ')" \
-    "ADDON_VERSION ANTHROPIC_API_KEY ANTHROPIC_MODEL CLAUDE_CONSOLE_DEV CLAUDE_CONSOLE_PORT CLAUDE_PROMPT_BIN CLAUDE_PROMPT_DATA CLAUDE_PROMPT_DEV CLAUDE_PROMPT_OPTIONS CLAUDE_PROMPT_PORT CLAUDE_PROMPT_SETTINGS CLAUDE_PROMPT_USAGE_BIN DISABLE_AUTOUPDATER HA_URL HOME IS_SANDBOX LANG LOG_FD PATH PINS_FOO PWD REMOTE_CONTROL SHLVL TERM UPLOAD_DIR UPLOAD_RETENTION_DAYS USE_BUILTIN_RIPGREP __BASHIO_BIN __BASHIO_LIB_DIR "
+check_console_env_names
 eq "PATH" "$(envv PATH)" "/data/home/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 eq "HOME" "$(envv HOME)" /data/home
 eq "IS_SANDBOX" "$(envv IS_SANDBOX)" 1
@@ -234,6 +264,99 @@ eq "service script exits 0" "$?" 0
 eq "a CLI that does not run is reinstalled from the image" "$(persistent_version)" "${IMG}"
 yes_ "the reinstall is reported" grep -q 'Persistent Claude binary is missing or incompatible' "${P}/run.out"
 eq "login state survives the reinstall" "$(cat /data/home/.claude/.credentials.json)" keep-me
+# --- 5. service script, the two remaining version-sync branches ----------------
+echo "# service script: persistent CLI equal to the image, image CLI unreadable"
+reset
+mkfake /data/home/.local/bin/claude "${IMG}"
+options '{"auto_update":false}'
+run_service
+yes_ "equal versions: the version is reported" grep -q "Claude Code version: ${IMG}" "${P}/run.out"
+no_ "equal versions: nothing is synced" grep -q 'syncing to persistent storage' "${P}/run.out"
+reset
+mkfake /data/home/.local/bin/claude 9.0.0
+mkfake /root/.local/bin/claude "${IMG}" 1
+options '{"auto_update":false}'
+run_service
+eq "image CLI unreadable: the start goes on" "$?" 0
+yes_ "image CLI unreadable: the sync is skipped with a warning" grep -q 'Could not determine Claude version for binary sync' "${P}/run.out"
+eq "image CLI unreadable: the persistent CLI is kept" "$(persistent_version)" 9.0.0
+mkfake /root/.local/bin/claude "${IMG}"
+
+# --- 6. provisioning, run on its own ---------------------------------------------
+echo "# provision-extras"
+provision() {
+    env -i PATH="${BASE_PATH}" HOME=/root HA_TOKEN="${HA_TOKEN_IN:-}" HA_URL=http://homeassistant:8123 \
+        CC_USER_MARKETPLACES="${MP_IN:-}" CC_USER_PLUGINS="${PL_IN:-}" CC_SKILLS_GIT="${GIT_IN:-}" \
+        /usr/local/bin/provision-extras > "${P}/provision.out" 2>&1
+}
+changes() { claude_calls | grep -E '^(plugin marketplace add|plugin install|mcp add) ' | cut -d' ' -f1-4 | tr '\n' ';'; }
+lists() { claude_calls | grep -E '^(plugin marketplace list|plugin list|mcp list)$' | tr '\n' ';'; }
+change_count() { claude_calls | grep -cE '^(plugin marketplace add|plugin install|mcp add) '; }
+
+reset
+mkfake /data/home/.local/bin/claude "${IMG}"
+HA_TOKEN_IN=EXAMPLE-ha-provision provision
+eq "first run installs the whole bundled set" "$(change_count)" 16
+rm -f "${P}/claude.log"
+HA_TOKEN_IN=EXAMPLE-ha-provision provision
+eq "second run installs nothing" "$(changes)" ""
+eq "second run only reads what is installed" "$(lists)" "plugin marketplace list;plugin list;mcp list;mcp list;"
+yes_ "second run completes" grep -q 'provisioning complete' "${P}/provision.out"
+
+rm -f "${P}/claude.log"
+grep -v 'hookify@' "${P}/plugin-list" > "${P}/plugin-list.new"
+mv "${P}/plugin-list.new" "${P}/plugin-list"
+MP_IN='owner/market' PL_IN='extra@market' provision
+eq "only what is missing is installed, user additions included" "$(changes)" \
+    "plugin marketplace add owner/market;plugin install hookify@claude-plugins-official;plugin install extra@market;"
+
+reset
+mkfake /data/home/.local/bin/claude "${IMG}"
+printf '%s\n' '  official (anthropics/claude-plugins-official)' '  other (anthropics/skills-extra)' > "${P}/mp-list"
+provision
+eq "a marketplace is matched by its whole source, not by a longer one" \
+    "$(changes | tr ';' '\n' | grep '^plugin marketplace add' | tr '\n' ';')" "plugin marketplace add anthropics/skills;"
+no_ "no HA token: hass-mcp is not registered" grep -q '|mcp add hass-mcp' "${P}/claude.log"
+
+reset
+mkfake /data/home/.local/bin/claude "${IMG}"
+mkdir -p /data/home/.claude
+flock /data/home/.claude/.provision.lock sleep 4 &
+locker=$!
+sleep 0.5
+provision
+wait "${locker}"
+yes_ "a second concurrent run skips" grep -q 'provisioning already running — skipping' "${P}/provision.out"
+no_ "a skipped run calls nothing" test -s "${P}/claude.log"
+
+reset
+mkfake /data/home/.local/bin/claude "${IMG}"
+mkdir -p /data/home/.claude/skills/ha-automation /data/home/.claude/skills/mine
+echo edited > /data/home/.claude/skills/ha-automation/SKILL.md
+echo my-own > /data/home/.claude/skills/mine/SKILL.md
+provision
+yes_ "a bundled skill edited in place is restored" cmp -s /data/home/.claude/skills/ha-automation/SKILL.md /opt/ha-skills/ha-automation/SKILL.md
+eq "a skill of the user's own is left alone" "$(cat /data/home/.claude/skills/mine/SKILL.md)" my-own
+
+repo=/pins/skills-repo
+rm -rf "${repo}"
+mkdir -p "${repo}/alpha" "${repo}/notes"
+echo alpha-v1 > "${repo}/alpha/SKILL.md"
+echo not-a-skill > "${repo}/notes/README.md"
+gitc() { git -C "${repo}" -c user.name=pins -c user.email=pins@localhost "$@" > /dev/null 2>&1; }
+git init -q "${repo}"
+gitc add -A
+gitc commit -qm one
+GIT_IN="${repo}" provision
+yes_ "skills_git: cloned" grep -q 'skills_git cloned' "${P}/provision.out"
+eq "skills_git: a directory with SKILL.md becomes a skill" "$(cat /data/home/.claude/skills/alpha/SKILL.md 2>/dev/null)" alpha-v1
+no_ "skills_git: a directory without SKILL.md does not" test -e /data/home/.claude/skills/notes
+echo alpha-v2 > "${repo}/alpha/SKILL.md"
+gitc commit -qam two
+GIT_IN="${repo}" provision
+yes_ "skills_git: pulled on the next run" grep -q 'skills_git pulled' "${P}/provision.out"
+eq "skills_git: the skill follows the repository" "$(cat /data/home/.claude/skills/alpha/SKILL.md)" alpha-v2
+
 rm -f /usr/local/sbin/node
 
 # --- 5. the Claude tab (start-claude) ------------------------------------------
@@ -279,6 +402,26 @@ options '{"bypass_permissions":true,"launch_command":"touch /pins/launched"}'
 start_claude
 yes_ "launch_command replaces the Claude launch" test -e "${P}/launched"
 eq "launch_command: the CLI itself is not launched" "$(first_launch)" ""
+
+# The restart menu, each choice typed as a user would.
+menu() {
+    reset
+    mkfake /data/home/.local/bin/claude "${IMG}"
+    mkdir -p /data/workdir
+    options '{"bypass_permissions":false}'
+    printf '%b' "$1" > "${P}/menu-input"
+    env -i PATH="${BASE_PATH}" HOME=/root timeout 4 bashio /usr/local/bin/start-claude < "${P}/menu-input" > "${P}/start.out" 2>&1
+}
+calls_seq() { head -"$1" "${P}/claude-args.jsonl" | jq -c . | tr '\n' ' '; }
+menu 'c'
+eq "menu c: the last conversation is resumed" "$(calls_seq 3)" '[] ["--version"] ["--continue"] '
+menu 'r'
+eq "menu r: Claude is launched again" "$(calls_seq 3)" '[] ["--version"] [] '
+menu 'u'
+eq "menu u: the CLI is updated, then launched again" "$(calls_seq 6)" '[] ["--version"] ["--version"] ["update"] ["--version"] [] '
+menu 'stouch /pins/shell-ran\nexit\n'
+yes_ "menu s: a shell runs what is typed into it" test -e "${P}/shell-ran"
+eq "menu s: after the shell, Claude is launched again" "$(calls_seq 3)" '[] ["--version"] [] '
 
 # --- 6. update-claude ------------------------------------------------------------
 echo "# update-claude"
@@ -373,8 +516,10 @@ eq "digest: settles for 120 s first" "$(sed -n 1p "${P}/sleep.log")" 120
 yes_ "digest: then sleeps until the target time" bash -c '[[ "$(sed -n 2p /pins/sleep.log)" =~ ^[0-9]+$ ]] && [ "$(sed -n 2p /pins/sleep.log)" -le 86400 ]'
 eq "digest: states are fetched from the Supervisor" "$(head -1 "${P}/curl.log")" \
     "-sS -H Authorization:\\ Bearer\\ EXAMPLE-sup http://supervisor/core/api/states "
-yes_ "digest: Claude is called with no tools" bash -c 'cut -d"|" -f4- /pins/claude.log | head -1 | grep -q "^-p --allowed-tools '"''"' "'
-yes_ "digest: the snapshot is in the prompt" grep -qF 'Pins Weather' "${P}/claude.log"
+eq "digest: Claude is called with exactly -p, an empty tool list and the prompt" \
+    "$(head -1 "${P}/claude-args.jsonl" | jq -c '[length, .[0], .[1], .[2]]')" '[4,"-p","--allowed-tools",""]'
+yes_ "digest: the prompt carries the snapshot as data" \
+    bash -c 'head -1 /pins/claude-args.jsonl | jq -e ".[3] | contains(\"====HOME SNAPSHOT====\") and contains(\"Pins Weather\")" > /dev/null'
 no_ "digest: no Supervisor or HA credential in Claude's environment" grep -qE '(^|,)(SUPERVISOR_TOKEN|SUPERVISOR_API_TOKEN|HA_TOKEN|HASS_TOKEN)(,|$)' "${P}/claude-env.log"
 eq "digest: the answer is pushed with its title" "$(head -1 "${P}/notify.log")" "Good morning from the pins|Claude · Morning briefing"
 
