@@ -397,12 +397,6 @@ function shutdown() {
   children.clear();
 }
 
-/**
- * The complete argument list for one claude run. The single place the
- * invocation is composed: runClaude spawns exactly this, and CI hands the same
- * lists to the bundled CLI, so a flag the CLI stops accepting fails the build
- * rather than every request.
- */
 // What a run needs from the `ha` server, by BASENAME (see the note above):
 // read mode needs live context; write mode needs exactly the confirmed intents.
 function wantedHaBasenames(mode, intents) {
@@ -446,6 +440,12 @@ function runTokens(envelope, initModel) {
   }];
 }
 
+/**
+ * The complete argument list for one claude run. The single place the
+ * invocation is composed: runClaude spawns exactly this, and CI hands the same
+ * lists to the bundled CLI, so a flag the CLI stops accepting fails the build
+ * rather than every request.
+ */
 function buildClaudeArgs({
   mode, intents, mcpConfigPath, model, imagePath, language, surface, editAutomation, haTools, stream, settings,
 }) {
