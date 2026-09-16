@@ -275,6 +275,15 @@ jobs:
             --volume "${PWD}/.github/scripts:/ci:ro" \
             --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
             /ci/runner_args_smoke.js /root/.local/bin/claude /opt/claude-console/server/prompt/runner.js
+      - name: Start-up, launch, update and digest behave as recorded
+        run: |
+          # The service script, the Claude tab launcher, both update paths,
+          # provisioning and the morning digest, run inside the image against a
+          # recording stand-in for the CLI. What they set up and call is pinned
+          # so that moving this code elsewhere can be checked against it.
+          docker run --rm --platform '${{ steps.target.outputs.platform }}' \
+            --volume "${PWD}/claude-code/app/test/image:/pins-src:ro" \
+            --entrypoint bash 'addon-image:${{ matrix.arch }}' /pins-src/behaviour-pins.sh
 
   # Keeps GitHub Releases in lock-step with the add-on version: whenever main
   # carries a version with no release, this cuts one. It needs every gate above,
