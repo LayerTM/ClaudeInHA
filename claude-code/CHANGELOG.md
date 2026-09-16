@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.56.12] — 2026-09-16
+
+### Changed
+- **The console, the chat API and the shared helper scripts now come from
+  [ha-agent-core](https://github.com/LayerTM/ha-agent-core) 0.1.0.** The add-on
+  pins that release and checks the downloaded archive against the recorded
+  SHA-256 before it builds anything from it. What is specific to Claude Code
+  stays in this add-on. Nothing changes for you: the same options, commands,
+  paths under `/data`, chat answers and console. Your login, settings, hooks,
+  uploads and daily chat spend carry over as they are.
+- **Node.js updated to its latest release.**
+  - Node.js 26.8.2 → 26.9.0.
+
 ## [1.56.11] — 2026-09-16
 
 ### Changed
