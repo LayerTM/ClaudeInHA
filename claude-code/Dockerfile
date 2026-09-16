@@ -41,7 +41,7 @@ RUN apt-get update \
 
 # Node.js from official dist tarballs (latest, deterministic, arch-aware)
 # upstream: nodejs lts-ready
-ARG NODE_VERSION=26.8.2
+ARG NODE_VERSION=26.9.0
 RUN arch="$(dpkg --print-architecture)" \
     && case "${arch}" in \
          amd64) node_arch="x64" ;; \
