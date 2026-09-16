@@ -1,6 +1,13 @@
 # Changelog
 
-## [Unreleased]
+## [1.56.11] — 2026-09-16
+
+### Changed
+- **Bundled Claude Code updated to its latest release.**
+  - Claude Code 2.1.272 → 2.1.273 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md)).
+    This is the version a new installation starts with, and the one used when
+    `auto_update` is off; with `auto_update` on (the default) Claude still updates
+    itself at start as before.
 
 ### Fixed
 - **A skill removed from `skills_git` is removed from the add-on.** Skills
