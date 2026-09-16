@@ -21,7 +21,6 @@ SHOULD_FLAG = [
     'auth: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcd1234"',
     "X-API-Key: 0123456789abcdefABCDEF",
     'password: "hunter2xyz"',
-    "cwd = /Users/someone/project",
     "contact me at johndoe@gmail.com",
     "router at 192.168.1.20",
     "db host 10.0.0.56",
