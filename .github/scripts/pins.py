@@ -101,17 +101,27 @@ class Upstream:
         except ValueError as err:
             raise PinError(f"{url} did not return JSON: {err}") from err
 
+    def field(self, url: str, *path):
+        """One value inside a JSON answer. An answer of any other shape is unreadable."""
+        value = self.json(url)
+        for step in path:
+            try:
+                value = value[step]
+            except (KeyError, IndexError, TypeError) as err:
+                raise PinError(f"{url} has no {'.'.join(map(str, path))}") from err
+        return value
+
     def latest(self, pin: "Pin", pins: list["Pin"]) -> str:
         kind, args = pin.kind, pin.args
         if kind == "pypi" and len(args) == 1:
             url = f"https://pypi.org/pypi/{args[0]}/json"
-            return clean_version(str(self.json(url)["info"]["version"]), url)
+            return clean_version(str(self.field(url, "info", "version")), url)
         if kind == "npm" and len(args) == 1:
             url = f"https://registry.npmjs.org/{args[0]}/latest"
-            return clean_version(str(self.json(url)["version"]), url)
+            return clean_version(str(self.field(url, "version")), url)
         if kind == "github-release" and len(args) == 1:
             url = f"https://api.github.com/repos/{args[0]}/releases/latest"
-            return clean_version(str(self.json(url)["tag_name"]), url)
+            return clean_version(str(self.field(url, "tag_name")), url)
         if kind == "nodejs" and args == ["lts-ready"]:
             return self.nodejs(pin)
         if kind == "claude-code" and len(args) == 2:
@@ -123,10 +133,7 @@ class Upstream:
             version = owner.target if owner.target else owner.value
             base = arg_value(pin.file, owner.args[0], pins)
             url = f"{base.rstrip('/')}/{version}/manifest.json"
-            try:
-                checksum = str(self.json(url)["platforms"][args[0]]["checksum"])
-            except (KeyError, TypeError) as err:
-                raise PinError(f"{url} has no checksum for {args[0]}") from err
+            checksum = str(self.field(url, "platforms", args[0], "checksum"))
             if not SHA256.match(checksum):
                 raise PinError(f"{url} gave {checksum!r} for {args[0]}, not a SHA-256")
             return checksum
@@ -140,6 +147,8 @@ class Upstream:
         by_major: dict[int, list[str]] = {}
         lts_majors: set[int] = set()
         for rel in releases:
+            if not isinstance(rel, dict):
+                raise PinError(f"{url} lists a release that is not an object: {rel!r}")
             version = clean_version(str(rel.get("version", "")), url)
             major = version_key(version)[0]
             by_major.setdefault(major, []).append(version)

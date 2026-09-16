@@ -117,6 +117,27 @@ del table["https://pypi.org/pypi/hass-mcp/json"]
 code, out = run(repo(), table, "check")
 check("an unreadable upstream fails closed (exit 2, not 0)", code, 2)
 
+def run_safely(table: dict[str, bytes]) -> tuple[object, str]:
+    """Like run(), but an exception escaping main() is the result, not a crash."""
+    try:
+        return run(repo(), table, "check")
+    except Exception as err:  # noqa: BLE001 — the escape itself is what is asserted
+        return type(err).__name__, ""
+
+
+for label, url, body in [
+    ("pypi answer without info.version", "https://pypi.org/pypi/hass-mcp/json", b'{"info": {}}'),
+    ("pypi answer that is a list", "https://pypi.org/pypi/hass-mcp/json", b'["0.6.0"]'),
+    ("npm answer without version", "https://registry.npmjs.org/ccstatusline/latest", b'{"name": "ccstatusline"}'),
+    ("GitHub answer that is a string",
+     "https://api.github.com/repos/hassio-addons/addon-debian-base/releases/latest", b'"v9.4.0"'),
+    ("Node.js index with a release that is not an object", "https://nodejs.org/dist/index.json", b'["v26.8.1"]'),
+    ("manifest whose platforms is a list", f"{BASE}/2.1.263/manifest.json", b'{"platforms": []}'),
+]:
+    code, out = run_safely(answers(**{url: body}))
+    check(f"{label} -> exit 2", code, 2)
+    check(f"{label} -> the upstream is named", url in out, True)
+
 code, _ = run(repo(), answers(**{f"{BASE}/latest": b"<html>maintenance</html>"}), "check")
 check("an answer that is not a version fails closed", code, 2)
 
