@@ -76,7 +76,7 @@ case "${tool}" in
         # this hook because the matcher's `Edit` is an unanchored regex. Both keys
         # are read so adding it here is not a silent no-op.
         fp="$(printf '%s' "${input}" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' 2>/dev/null)"
-        case "${fp}" in /homeassistant/*|/config/*) line="${ts}  ${tool}: ${fp}" ;; esac
+        case "${fp}" in /homeassistant/*|/config/*) line="${ts}  ${tool}: $(printf '%s' "${fp}" | head -c 300)" ;; esac
         ;;
     mcp__*)
         # Read-only verbs, matched on the tool's own name (the part after the
@@ -102,6 +102,9 @@ esac
 # carriage return inside them would otherwise start a line of their own, and
 # that line could pass for one the prompt server wrote (ha-usage reads chat cost
 # and tokens from those). Every control character becomes a space, here at the
-# one place this hook writes.
-[ -n "${line}" ] && printf '%s\n' "$(printf '%s' "${line}" | tr '\000-\037\177' ' ')" >> "${DATA_DIR}/claude-audit.log"
+# one place this hook writes. The record is also cut to 1000 bytes there, so it
+# reaches the log in a single write whatever part of it the model chose (a tool
+# name has no length limit of its own); a longer one could be split by a line
+# the prompt server appends at the same moment.
+[ -n "${line}" ] && printf '%s\n' "$(printf '%s' "${line}" | tr '\000-\037\177' ' ' | head -c 1000)" >> "${DATA_DIR}/claude-audit.log"
 exit 0

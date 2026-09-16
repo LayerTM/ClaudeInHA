@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **Every audit record is written whole.** The file path of a recorded edit is
+  now cut to 300 bytes, like the recorded command and arguments already were,
+  and a whole record to 1000 bytes, so a very long record can no longer be split
+  by a line the prompt API writes at the same moment.
+
 ## [1.56.10] — 2026-09-15
 
 ### Fixed
