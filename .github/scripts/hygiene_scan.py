@@ -50,9 +50,12 @@ RULES: list[Rule] = [
     # under a data directory writes /data/home/... , which contains "/home/"
     # without being anybody's home directory — and a path assembled from a
     # variable, "${work}/home/x", is a temporary directory, not this machine.
+    # The one place a leading slash is not a segment boundary is a file:// URL,
+    # which is how such a path reaches a README or a launch configuration, so
+    # that scheme is matched explicitly rather than excluded with everything else.
     Rule(
         "machine-path",
-        re.compile(r"(?<![A-Za-z0-9._/})-])"
+        re.compile(r"(?<![A-Za-z0-9._/})-])(?:file://)?"
                    r"(?:/Users/[A-Za-z0-9._-]+/"
                    r"|/home/[A-Za-z0-9._-]+/"
                    r"|/private/tmp/[A-Za-z0-9._-]+"

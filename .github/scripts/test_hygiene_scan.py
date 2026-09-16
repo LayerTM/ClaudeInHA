@@ -39,6 +39,8 @@ VECTORS: dict[str, list[str]] = {
         "socket at /private/tmp/session-4/ipc",
         "cache /var/folders/9k/abcd1234/T/build",
         r"path = C:\Users\someone\src",
+        "see file:///Users/someone/project/notes.md",
+        "launch: file:///home/builder/app/index.html",
     ],
     "transcript-url": [
         "see https://claude.ai/code/session_01ABCDEFxyz for the discussion",
