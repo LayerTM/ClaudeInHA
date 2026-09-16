@@ -25,13 +25,6 @@ PROJECTS = os.path.join(HOME, ".claude", "projects")
 # Same override convention as cc-hook-audit, so the parsing can be tested.
 AUDIT_LOG = os.path.join(os.environ.get("CC_AUDIT_DATA_DIR", "/data"), "claude-audit.log")
 
-# The prompt server's work folder (server/prompt/index.js) and the transcript
-# folder Claude names after it (every character outside [A-Za-z0-9] becomes "-").
-# Chat runs are counted from the audit log, so that folder is never scanned: a
-# transcript left there must not be counted a second time.
-PROMPT_WORK_DIR = "/data/claude-prompt/work"
-PROMPT_PROJECT = re.sub(r"[^A-Za-z0-9]", "-", PROMPT_WORK_DIR)
-
 # A line the prompt server wrote: its own timestamp, then `prompt[<kind>]`. Only
 # these carry chat spend. Anything else in the log — a hook's record of a tool
 # call, whose arguments the model chose — is never read for numbers.
@@ -70,8 +63,6 @@ def collect_tokens():
     msgs_by_day: dict[str, int] = defaultdict(int)
 
     for path in glob.glob(os.path.join(PROJECTS, "*", "*.jsonl")):
-        if os.path.basename(os.path.dirname(path)) == PROMPT_PROJECT:
-            continue
         try:
             fh = open(path, encoding="utf-8", errors="ignore")
         except OSError:
