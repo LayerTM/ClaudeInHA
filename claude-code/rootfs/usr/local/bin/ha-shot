@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-# Screenshot a Home Assistant dashboard. See: ha-shot --help
-exec node /opt/ha-tools/ha-shot.js "$@"

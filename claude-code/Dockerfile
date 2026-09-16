@@ -1,5 +1,5 @@
 ARG BUILD_FROM
-FROM ${BUILD_FROM}
+FROM ${BUILD_FROM} AS base
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -51,6 +51,29 @@ RUN arch="$(dpkg --print-architecture)" \
     && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" \
        | tar -xJ -C /usr/local --strip-components=1 --no-same-owner \
     && node --version && npm --version
+
+# --- ha-agent-core (pinned, checksum-verified) ---
+# The console, the prompt server, tmux wiring and the shared helper scripts come
+# from the ha-agent-core release pinned in core/core.lock.json. Only the lock
+# chooses the URL and the expected SHA-256; core/verify-core.js is the reviewed
+# copy kept in this repository, never the one inside the archive.
+FROM base AS core-archive
+COPY core/core.lock.json core/verify-core.js /tmp/core/
+RUN url="$(node /tmp/core/verify-core.js url --lock /tmp/core/core.lock.json)" \
+    && { curl -fsSL --proto '=https' --retry 3 --retry-delay 2 -o /core.tar "${url}" \
+         || { echo "Could not download ha-agent-core from ${url}"; exit 1; }; }
+
+# The add-on's own files plus the core, merged only after the archive matches the
+# lock and neither side claims a path of the other (core/assemble.sh).
+FROM base AS assembly
+COPY core /tmp/core
+COPY app /tmp/addon/app
+COPY rootfs /tmp/addon/rootfs
+COPY --from=core-archive /core.tar /tmp/core.tar
+RUN /tmp/core/assemble.sh /tmp/core.tar /tmp/addon /addon
+
+FROM base
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # --- Claude Code native binary (pinned, checksum-verified) ---
 # Not `curl https://claude.ai/install.sh | bash`: that executes whatever the
@@ -197,7 +220,7 @@ RUN npm install -g "ccstatusline@${CCSTATUSLINE_VERSION}" \
 RUN git config --system url."https://github.com/".insteadOf "git@github.com:"
 
 # Web console app
-COPY app /opt/claude-console
+COPY --from=assembly /addon/app /opt/claude-console
 RUN cd /opt/claude-console \
     && npm ci --omit=dev \
     && npm cache clean --force
@@ -215,7 +238,7 @@ RUN mkdir -p /opt/claude-console/public/fonts \
         -o /opt/claude-console/public/fonts/jetbrains-mono-700.woff2
 
 # ha-shot helper dependencies (playwright-core drives the system Chromium)
-COPY ha-tools /opt/ha-tools
+COPY --from=assembly /addon/ha-tools /opt/ha-tools
 RUN cd /opt/ha-tools \
     && npm ci --omit=dev \
     && npm cache clean --force
@@ -224,7 +247,7 @@ RUN cd /opt/ha-tools \
 COPY skills /opt/ha-skills
 
 # S6 services, scripts, default CLAUDE.md
-COPY rootfs /
+COPY --from=assembly /addon/rootfs /
 
 RUN chmod +x /etc/s6-overlay/s6-rc.d/claude-code/run \
              /etc/s6-overlay/s6-rc.d/claude-code/finish \

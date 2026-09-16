@@ -15,7 +15,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const runner = require('../server/prompt/runner');
+const runner = require('../adapter/runner');
 const { createPromptApp } = require('../server/prompt/server');
 const cases = require('./fixtures/runner-args-cases');
 

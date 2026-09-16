@@ -58,7 +58,7 @@ const {
 } = require('../server/prompt/server');
 const { createHistoryStore } = require('../server/prompt/history');
 const promptServer = require('../server/prompt');
-const runner = require('../server/prompt/runner');
+const runner = require('../adapter/runner');
 
 // ---------------------------------------------------------------------------
 // Unit tests: security primitives
@@ -949,6 +949,47 @@ test('status: switching proactive alerts off publishes null, whatever the state 
   assert.equal(on.critical, 1);
   assert.equal(await statusWith(false), null, 'off: null although alerts-state.json still holds an active alert');
   fs.rmSync(dataDir, { recursive: true });
+});
+
+test('budget: a spent daily budget answers a read with the notice, in the request language, and runs nothing', async () => {
+  // Today's spend already at the cap, as a restart finds it on disk.
+  const stateDir = fs.mkdtempSync(path.join(TMP, 'budget-spent-'));
+  const today = new Date().toISOString().slice(0, 10);
+  fs.writeFileSync(path.join(stateDir, 'budget.json'), JSON.stringify({ day: today, spent: 2.5 }), { mode: 0o600 });
+  const token = 'budget-token-0000000000000000000000000';
+  const audited = [];
+  const app = createPromptApp({
+    token, claudeBin: '/nonexistent/claude-must-not-run', usageBin: process.env.CLAUDE_PROMPT_USAGE_BIN,
+    mcpConfigPath: '', model: '', workDir: TMP, addonVersion: 'test', redact: (x) => x,
+    audit: (line) => audited.push(line), stateDir, dailyBudgetUsd: 2,
+  });
+  const srv = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+  const ask = async (extra) => {
+    const res = await fetch(`http://127.0.0.1:${srv.address().port}/api/prompt`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'which lights are on?', ...extra }),
+    });
+    return { status: res.status, body: await res.json() };
+  };
+  try {
+    assert.deepEqual(await ask({}), {
+      status: 200,
+      body: {
+        text: 'I\'ve reached today\'s Claude usage budget ($2), so I\'m paused until tomorrow. You can raise "Chat daily budget (USD)" in the add-on options.',
+        proposal: null,
+        tools_used: [],
+        truncated: false,
+      },
+    });
+    const uk = await ask({ language: 'uk' });
+    assert.equal(uk.status, 200);
+    assert.equal(uk.body.text, 'Досягнуто денного бюджету Claude ($2) — я на паузі до завтра. Збільшити його можна в опції додатка «Chat daily budget (USD)».');
+    assert.ok(audited.some((l) => l.startsWith('prompt[deny] reason=budget ') && l.includes('spent=$2.5000/2')), audited.join('\n'));
+  } finally {
+    srv.close();
+    fs.rmSync(stateDir, { recursive: true });
+  }
 });
 
 test('usage: authed report from ha-usage --json', async () => {

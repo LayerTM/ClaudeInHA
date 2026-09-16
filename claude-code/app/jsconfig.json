@@ -3,7 +3,7 @@
   // Goal: catch REAL type errors — bad property access, wrong arg counts,
   // obvious undefined — WITHOUT requiring JSDoc annotations. strict:false keeps
   // it green on the (currently untyped) hand-written code; tighten later as
-  // types are added. Only OUR server/ code is checked.
+  // types are added. Only OUR server/ and adapter/ code is checked.
   "compilerOptions": {
     "allowJs": true,
     "checkJs": true,
@@ -20,6 +20,6 @@
     "maxNodeModuleJsDepth": 0,
     "types": ["node"]
   },
-  "include": ["server/**/*.js"],
+  "include": ["server/**/*.js", "adapter/**/*.js"],
   "exclude": ["node_modules"]
 }
