@@ -1,0 +1,31 @@
+name: hygiene caller proof (temporary)
+
+# TEMPORARY, removed before this branch is merged.
+#
+# The repository's own `ci` job calls the hygiene workflow by a local path.
+# Another repository calls it by a full path, which is a remote reference and is
+# reported to the runner differently — the difference is what broke an external
+# caller. These two jobs call it the way an external repository does, so both
+# resolutions are exercised by a run of this branch.
+
+on:
+  push:
+    branches:
+      - hygiene-caller-ref
+
+permissions:
+  contents: read
+
+jobs:
+  # The pin is readable: the scanner must come from this branch.
+  as_external_pinned:
+    name: Remote reference, pinned
+    uses: LayerTM/ClaudeInHA/.github/workflows/hygiene-scan.yml@hygiene-caller-ref
+
+  # The pin is not readable on the runner: the scanner must be fetched from the
+  # revision the caller named, instead of being assumed to be in this tree.
+  as_external_fallback:
+    name: Remote reference, fallback revision
+    uses: LayerTM/ClaudeInHA/.github/workflows/hygiene-scan.yml@hygiene-caller-ref
+    with:
+      tool_ref: hygiene-caller-ref

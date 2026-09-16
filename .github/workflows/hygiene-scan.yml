@@ -13,13 +13,30 @@ name: hygiene
 # The caller passes nothing: the scanner discovers what to check from the tree it
 # is pointed at. The rules therefore exist in one place, and a repository adopts
 # them by adding a caller rather than a copy.
+#
+# `tool_ref` exists only for the case below where the runner does not report this
+# workflow's own revision; a caller that is happy with this repository's default
+# branch leaves it out.
 
 on:
   workflow_call:
+    inputs:
+      tool_ref:
+        description: >-
+          Revision of the scanner's repository to use when the runner does not
+          report this workflow's own revision. Defaults to its default branch.
+        type: string
+        required: false
+        default: ""
   workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  # The repository this workflow file lives in, and therefore the one the
+  # scanner is taken from when the workflow's own reference cannot be read.
+  TOOL_REPO: LayerTM/ClaudeInHA
 
 jobs:
   hygiene:
@@ -38,33 +55,53 @@ jobs:
       # pin mean anything: a caller runs the scanner it referenced, never
       # whatever happens to be on the default branch today. When the caller is
       # this repository, the checkout above is already that revision.
+      #
+      # A runner does not always report that reference: on a `workflow_dispatch`
+      # there is no calling workflow, and callers have been seen where it
+      # arrives empty. An empty reference says nothing about where the scanner
+      # is, so it is never read as "the checked-out tree carries it" — outside
+      # this repository that tree is someone else's. The scanner is then taken
+      # explicitly from its own repository, and the log says the pin was lost.
       - name: Locate the scanner for this revision
         id: tool
         env:
           OWN_REF: ${{ github.job_workflow_ref }}
           THIS_REPO: ${{ github.repository }}
+          TOOL_REF: ${{ inputs.tool_ref }}
         run: |
           set -euo pipefail
           here=".github/scripts"
-          if [ -z "${OWN_REF}" ]; then
+          take_from_this_checkout() {
+            echo "Scanner: the tree being checked ($1)."
             printf 'dir=%s\nrepo=\nref=\n' "${here}" >> "$GITHUB_OUTPUT"
             exit 0
-          fi
-          repo="$(printf '%s' "${OWN_REF}" | cut -d/ -f1,2)"
-          ref="${OWN_REF##*@}"
-          if [ -z "${repo}" ] || [ "${ref}" = "${OWN_REF}" ]; then
-            echo "Could not read this workflow's own revision from '${OWN_REF}'." >&2
-            exit 1
-          fi
-          if [ "${repo}" = "${THIS_REPO}" ]; then
-            printf 'dir=%s\nrepo=\nref=\n' "${here}" >> "$GITHUB_OUTPUT"
+          }
+          if [ -z "${OWN_REF}" ]; then
+            if [ "${THIS_REPO}" = "${TOOL_REPO}" ] && [ -z "${TOOL_REF}" ]; then
+              take_from_this_checkout "this run is ${TOOL_REPO} itself, at the revision it was started from"
+            fi
+            repo="${TOOL_REPO}"
+            ref="${TOOL_REF}"
+            echo "This runner did not report the workflow's own revision, so the" \
+                 "revision a caller pinned could not be read."
           else
-            printf 'dir=.hygiene-tool/%s\nrepo=%s\nref=%s\n' \
-              "${here}" "${repo}" "${ref}" >> "$GITHUB_OUTPUT"
+            repo="$(printf '%s' "${OWN_REF}" | cut -d/ -f1,2)"
+            ref="${OWN_REF##*@}"
+            if [ -z "${repo}" ] || [ "${ref}" = "${OWN_REF}" ]; then
+              echo "Could not read this workflow's own revision from '${OWN_REF}'." >&2
+              exit 1
+            fi
+            if [ "${repo}" = "${THIS_REPO}" ]; then
+              take_from_this_checkout "it is also ${repo}, checked out at ${ref}"
+            fi
           fi
+          echo "Scanner: ${repo}@${ref:-its default branch}, fetched separately."
+          printf 'dir=.hygiene-tool/%s\nrepo=%s\nref=%s\n' \
+            "${here}" "${repo}" "${ref}" >> "$GITHUB_OUTPUT"
 
-      # Only when the caller is another repository. `.hygiene-tool` is untracked
-      # there, and the scanner reads tracked files only, so it never scans itself.
+      # Only when the scanner is not already in the checked-out tree.
+      # `.hygiene-tool` is untracked there, and the scanner reads tracked files
+      # only, so it never scans itself.
       - name: Fetch the scanner
         if: steps.tool.outputs.repo != ''
         uses: actions/checkout@v7
@@ -72,6 +109,21 @@ jobs:
           repository: ${{ steps.tool.outputs.repo }}
           ref: ${{ steps.tool.outputs.ref }}
           path: .hygiene-tool
+
+      # A caller must not be able to reach a state where this check quietly does
+      # nothing, or fails with a shell's own "No such file or directory".
+      - name: Assert the scanner is there
+        env:
+          DIR: ${{ steps.tool.outputs.dir }}
+        run: |
+          set -euo pipefail
+          for file in hygiene_scan.py test_hygiene_scan.py; do
+            if [ ! -f "${DIR}/${file}" ]; then
+              echo "The hygiene scanner was resolved to '${DIR}', which holds no" \
+                   "'${file}'. The check cannot run, and does not pass by default." >&2
+              exit 1
+            fi
+          done
 
       - name: Self-test the scanner
         working-directory: ${{ steps.tool.outputs.dir }}
