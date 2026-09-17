@@ -14,6 +14,41 @@ const runner = require('./runner');
 // pasted config line ship the credential to any host.
 const LIMITS_URL = 'https://api.anthropic.com/api/oauth/usage';
 
+// The CLI both the console and the prompt API run (the add-on keeps it updated
+// under /data).
+const CLAUDE_BIN = '/data/home/.local/bin/claude';
+
+// The OAuth access token as the CLI keeps it: the pasted `oauth_token` option
+// (or its environment variable) first, otherwise the credential file an
+// interactive `claude` login writes; '' when there is none.
+function oauthAccessToken({ oauthToken, homeDir }) {
+  if (oauthToken) return oauthToken;
+  try {
+    const stored = JSON.parse(fs.readFileSync(`${homeDir}/.claude/.credentials.json`, 'utf8'));
+    const saved = stored && stored.claudeAiOauth && stored.claudeAiOauth.accessToken;
+    return typeof saved === 'string' ? saved : '';
+  } catch {
+    return '';
+  }
+}
+
+// One upstream entry → one contract entry (unknown `kind` passes through; a
+// `kind` or `percent` that is not what it claims makes the payload unparsable).
+function limitEntry(item) {
+  if (!item || typeof item !== 'object') return null;
+  if (typeof item.kind !== 'string' || !Number.isFinite(item.percent)) return null;
+  const percent = Math.round(item.percent);
+  if (percent < 0 || percent > 100) return null;
+  const modelName = item.scope && item.scope.model && item.scope.model.display_name;
+  return {
+    kind: item.kind,
+    percent,
+    severity: typeof item.severity === 'string' ? item.severity : null,
+    resets_at: typeof item.resets_at === 'string' ? item.resets_at : null,
+    model: typeof modelName === 'string' ? modelName : null,
+  };
+}
+
 module.exports = {
   apiVersion: require('./api-version'),
   descriptor: {
@@ -22,47 +57,35 @@ module.exports = {
     parseVersion: (stdout) => stdout.split(/\s+/)[0] || null,
     // Clients from before engine_version read the CLI version under this key.
     versionAlias: 'claude_version',
+    // The CLI reports what a run cost (total_cost_usd in its result event).
+    reportsCost: true,
   },
   runner: {
-    run: runner.runClaude,
-    shutdown: runner.shutdown,
-    safeLangTag: runner.safeLangTag,
-    TIMEOUT_MS: runner.TIMEOUT_MS,
+    bin: CLAUDE_BIN,
+    launch: runner.launch,
+    createDecoder: runner.createDecoder,
+    toolName: runner.toolName,
+    toolBasename: runner.toolBasename,
   },
   prompt: {
-    // The OAuth access token as the CLI keeps it: the pasted `oauth_token` option
-    // (or its environment variable) first, otherwise the credential file an
-    // interactive `claude` login writes.
-    limitsCredential({ oauthToken, homeDir }) {
-      if (oauthToken) return oauthToken;
-      try {
-        const stored = JSON.parse(fs.readFileSync(`${homeDir}/.claude/.credentials.json`, 'utf8'));
-        const saved = stored && stored.claudeAiOauth && stored.claudeAiOauth.accessToken;
-        return typeof saved === 'string' ? saved : '';
-      } catch {
-        return '';
-      }
-    },
-    fetchLimits(accessToken, limitsFetch) {
-      return limitsFetch(LIMITS_URL, {
-        headers: { Authorization: `Bearer ${accessToken}`, 'anthropic-beta': 'oauth-2025-04-20' },
-        signal: AbortSignal.timeout(10000),
-      });
-    },
-    // One upstream entry → one contract entry (unknown `kind` passes through; a
-    // `kind` or `percent` that is not what it claims makes the payload unparsable).
-    limitEntry(item) {
-      if (!item || typeof item !== 'object') return null;
-      if (typeof item.kind !== 'string' || !Number.isFinite(item.percent)) return null;
-      const percent = Math.round(item.percent);
-      if (percent < 0 || percent > 100) return null;
-      const modelName = item.scope && item.scope.model && item.scope.model.display_name;
+    // Only a subscription has account limits. An API key is billed per request,
+    // so it reports its mode with no limits.
+    limitsSource({ apiKey, oauthToken, homeDir }) {
+      const accessToken = oauthAccessToken({ oauthToken, homeDir });
+      if (!accessToken) return apiKey ? { mode: 'api_key', key: 'api_key' } : null;
       return {
-        kind: item.kind,
-        percent,
-        severity: typeof item.severity === 'string' ? item.severity : null,
-        resets_at: typeof item.resets_at === 'string' ? item.resets_at : null,
-        model: typeof modelName === 'string' ? modelName : null,
+        mode: 'subscription',
+        key: accessToken,
+        async read(limitsFetch) {
+          const resp = await limitsFetch(LIMITS_URL, {
+            headers: { Authorization: `Bearer ${accessToken}`, 'anthropic-beta': 'oauth-2025-04-20' },
+            signal: AbortSignal.timeout(10000),
+          });
+          if (!resp.ok) return null;
+          const body = await resp.json();
+          if (!body || !Array.isArray(body.limits)) return null;
+          return body.limits.map(limitEntry);
+        },
       };
     },
     authConfigured({ env, home }) {
@@ -124,7 +147,7 @@ module.exports = {
     },
   },
   console: {
-    bin: '/data/home/.local/bin/claude',
+    bin: CLAUDE_BIN,
     updateCommand: '/usr/local/bin/update-claude',
     windowName: 'claude',
     launcher: '/usr/local/bin/start-claude',

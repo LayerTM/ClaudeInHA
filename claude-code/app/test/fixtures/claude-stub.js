@@ -2,7 +2,7 @@
 'use strict';
 
 // Deterministic stand-in for the `claude` CLI used by the prompt-server tests.
-// It speaks just enough stream-json for the parser in ../../adapter/runner.js
+// It speaks just enough stream-json for the decoder in ../../adapter/runner.js
 // and branches on markers in the prompt it reads from stdin.
 
 const fs = require('node:fs');

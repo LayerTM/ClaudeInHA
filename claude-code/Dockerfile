@@ -219,14 +219,15 @@ RUN npm install -g "ccstatusline@${CCSTATUSLINE_VERSION}" \
 # Force HTTPS for GitHub clones (plugin marketplaces) — the container has no SSH key.
 RUN git config --system url."https://github.com/".insteadOf "git@github.com:"
 
-# Native modules (node-pty) compile against the headers of the Node installed
-# above instead of downloading them (build/npm-ci-local-headers.sh).
-COPY build/npm-ci-local-headers.sh /usr/local/lib/claude-build/
+# Dependencies are installed with the core's checked install: only the reviewed
+# install scripts run (node-pty compiles against the headers of the Node
+# installed above, nothing is downloaded), and dev dependencies stay out.
+COPY --from=assembly /addon/install-tools /usr/local/lib/install-tools
 
 # Web console app
 COPY --from=assembly /addon/app /opt/claude-console
 RUN cd /opt/claude-console \
-    && /usr/local/lib/claude-build/npm-ci-local-headers.sh --omit=dev \
+    && /usr/local/lib/install-tools/npm-ci-checked.sh --omit=dev \
     && npm cache clean --force
 
 # Bundled terminal font (JetBrains Mono, OFL) — crisp, consistent glyphs across
@@ -244,9 +245,9 @@ RUN mkdir -p /opt/claude-console/public/fonts \
 # ha-shot helper dependencies (playwright-core drives the system Chromium)
 COPY --from=assembly /addon/ha-tools /opt/ha-tools
 RUN cd /opt/ha-tools \
-    && /usr/local/lib/claude-build/npm-ci-local-headers.sh --omit=dev \
+    && /usr/local/lib/install-tools/npm-ci-checked.sh --omit=dev \
     && npm cache clean --force \
-    && rm -rf /usr/local/lib/claude-build
+    && rm -rf /usr/local/lib/install-tools
 
 # Bundled Home Assistant skill pack (seeded into ~/.claude/skills on first run)
 COPY skills /opt/ha-skills

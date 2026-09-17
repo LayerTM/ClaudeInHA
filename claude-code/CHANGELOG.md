@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.57.0] — 2026-09-17
+
+### Added
+- **The Prompt API reports its size limits and explains every refusal with a
+  code.** `/api/status` now also publishes `prompt_max_bytes` and
+  `body_max_bytes`, and every error answer carries a stable `code` (plus `field`
+  or `limit_bytes` where they apply) next to the message. Existing fields keep
+  their meaning.
+
+### Changed
+- **Chat requests now run inside [ha-agent-core](https://github.com/LayerTM/ha-agent-core)
+  0.3.0.** The part that is specific to Claude Code (its command line and how its
+  output is read) stays in this add-on. The chat answers the same way, with the
+  same permissions.
+- **Dependencies are installed with checked install scripts.** Only the install
+  scripts that have been reviewed are run, and the add-on image no longer
+  contains packages that are only needed for development.
+
+### Fixed
+- **The periodic health check no longer reports a harmless Home Assistant
+  warning, and no longer misses real problems next to a long one.** Each
+  connection the add-on makes to Home Assistant's MCP server leaves a long
+  warning in the Home Assistant log ([home-assistant/core#182323](https://github.com/home-assistant/core/issues/182323)).
+  One such warning filled everything the check looked at, so the check reported
+  it and saw nothing else. The check now reads the newest log entries, each
+  shortened if it is long, and leaves out the known harmless ones.
+
 ## [1.56.13] — 2026-09-17
 
 ### Added

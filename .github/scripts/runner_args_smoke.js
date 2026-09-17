@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Hands the prompt runner's real argument lists to a Claude Code binary and
-// asserts that the binary accepts every one of them.
+// Hands the prompt runs' real argument lists to a Claude Code binary and asserts
+// that the binary accepts every one of them.
 //
-// Runs inside the built add-on image, so both sides are what ships: the argument
-// builder from the image's console app and the image's pinned CLI. The lists are
-// never copied here — they come from buildClaudeArgs — so a runner change and a
-// CLI bump are checked against each other on the pull request that makes either.
+// Runs inside the built add-on image, so both sides are what ships: the run spec
+// from the image's core, the command line from the image's Claude adapter, and
+// the image's pinned CLI. The lists are never copied here, so a core, adapter or
+// CLI change is checked against the others on the pull request that makes it.
 //
 // How acceptance is observed without an account or a network call: stdin is
 // empty. The CLI parses and validates every option first (an unknown flag or a
@@ -13,7 +13,7 @@
 // refuses to run with no prompt. So the one outcome that proves the whole list
 // was accepted is that refusal, and anything else — including success — fails.
 //
-// Usage: node runner_args_smoke.js <claude binary> <runner.js> [addon-hooks.sh]
+// Usage: node runner_args_smoke.js <claude binary> <console app dir> [addon-hooks.sh]
 // (the hooks library defaults to the image's own copy)
 
 'use strict';
@@ -25,12 +25,14 @@ const path = require('node:path');
 
 const NO_INPUT = 'Input must be provided either through stdin or as a prompt argument';
 
-const [bin, runnerPath, hooksLib = '/usr/local/lib/addon-hooks.sh'] = process.argv.slice(2);
-if (!bin || !runnerPath) {
-  console.error('usage: runner_args_smoke.js <claude binary> <runner.js>');
+const [bin, appDir, hooksLib = '/usr/local/lib/addon-hooks.sh'] = process.argv.slice(2);
+if (!bin || !appDir) {
+  console.error('usage: runner_args_smoke.js <claude binary> <console app dir>');
   process.exit(2);
 }
-const { buildClaudeArgs } = require(path.resolve(runnerPath));
+const { launchSpec } = require(path.resolve(appDir, 'server/prompt/run.js'));
+const { launch } = require(path.resolve(appDir, 'adapter/runner.js'));
+const buildClaudeArgs = (options) => launch(launchSpec({ ...options, intents: options.intents || [] }), { env: {} }).args;
 // The settings chat runs are given, built by the service script's own function.
 const settings = spawnSync('bash', ['-c', 'source "$1" && hooks_audit_settings_json', 'bash', hooksLib], { encoding: 'utf8' });
 if (settings.status !== 0 || !settings.stdout.trim()) {

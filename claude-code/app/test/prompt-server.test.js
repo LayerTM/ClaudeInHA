@@ -65,7 +65,7 @@ const {
 } = require('../server/prompt/server');
 const { createHistoryStore } = require('../server/prompt/history');
 const promptServer = require('../server/prompt');
-const runner = require('../adapter/runner');
+const runner = require('./fixtures/claude-run');
 
 // ---------------------------------------------------------------------------
 // Unit tests: security primitives

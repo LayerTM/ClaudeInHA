@@ -49,6 +49,13 @@ for part in app ha-tools rootfs; do
   cp -R "${work}/core/${part}/." "${out}/${part}/"
 done
 
+# The core's checked dependency install, used by the image build and CI in
+# app/ and ha-tools/ (see install-tools/npm-ci-checked.sh).
+mkdir -p "${out}/install-tools"
+for tool in npm-ci-checked.sh check-install-scripts.js build-allowed-packages.js smoke-allowed-packages.js; do
+  cp "${work}/core/tools/${tool}" "${out}/install-tools/${tool}"
+done
+
 node "${work}/core/tools/check-adapter-graph.js" "${out}/app"
-node -e 'require(process.argv[1]).adapter()' "${out}/app/server/adapter-contract.js"
+node -e 'require(require("node:path").resolve(process.argv[1])).adapter()' "${out}/app/server/adapter-contract.js"
 echo "assembled ha-agent-core $(node -p 'require(process.argv[1]).version' "${here}/core.lock.json") into ${out}"
