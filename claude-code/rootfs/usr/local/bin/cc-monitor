@@ -23,6 +23,7 @@
 #   CC_MONITOR_CURL=cmd           override curl, so the status handling below is
 #                                 exercised for real rather than stepped over
 #   CC_MONITOR_CLAUDE_CMD=cmd     override the analysing command (default claude)
+#   CC_MONITOR_KNOWN_NOISE=file   override the known-noise list
 set -o pipefail
 export HOME=/data/home
 # Production dirs first; the inherited PATH is appended so the tests can find
@@ -43,6 +44,10 @@ CURL_CMD="${CC_MONITOR_CURL:-curl}"
 # `timeout` ships with the image; if it is somehow absent the calls still run,
 # just unbounded, which is no worse than before.
 TIMEOUT_CMD="${CC_MONITOR_TIMEOUT_CMD:-$(command -v timeout || true)}"
+KNOWN_NOISE_FILE="${CC_MONITOR_KNOWN_NOISE:-/usr/share/claude-ha/monitor-known-noise.tsv}"
+# At most WINDOW_RECORDS x RECORD_BYTES of log reach the model.
+WINDOW_RECORDS=15
+RECORD_BYTES=500
 
 hours="${CLAUDE_MONITOR_HOURS:-0}"
 if [ "${ONCE}" -eq 0 ]; then
@@ -95,7 +100,7 @@ resolve() {
     log "$2"
 }
 
-# The last 200 lines of Core's log, or a non-zero exit if it cannot be read.
+# The last 200 entries of Core's log, whole, or a non-zero exit if it cannot be read.
 #
 # The HTTP STATUS is what decides, not the body: this call answers with a log on
 # success and a short error body on failure, both with a curl exit of 0. A body
@@ -113,7 +118,48 @@ fetch_log() {
     status="${response##*$'\n'}"
     body="${response%$'\n'*}"
     [ "${status}" = "200" ] || return 1
-    printf '%s' "${body}" | sed 's/\x1b\[[0-9;]*m//g' | tail -c 6000
+    printf '%s' "${body}" | sed 's/\x1b\[[0-9;]*m//g'
+}
+
+# What the analysis sees of the log: the last WINDOW_RECORDS records, each cut to
+# RECORD_BYTES with a visible marker, after the records the known-noise list names
+# are left out whole. A record is a line starting with a timestamp plus the lines
+# up to the next one; a fragment before the first timestamp (a record the fetch
+# cut) is judged the same way.
+#
+# Why records rather than bytes: one Home Assistant record can be larger than a
+# whole byte window (measured: a rejected MCP `server/discover` request is logged
+# as one WARNING of 6,832 bytes). Cut by bytes, one such record was all the
+# analysis saw — it reported that record and was blind to everything else.
+#
+# The list (KNOWN_NOISE_FILE) is data: one extended regular expression per line,
+# a tab, and the upstream report. A missing list is logged and leaves nothing out.
+analysis_window() {
+    [ -r "${KNOWN_NOISE_FILE}" ] || log "known-noise list ${KNOWN_NOISE_FILE} is missing; nothing is left out"
+    awk -v noise="${KNOWN_NOISE_FILE}" -v max_records="${WINDOW_RECORDS}" -v record_bytes="${RECORD_BYTES}" '
+        BEGIN {
+            while ((getline line < noise) > 0) {
+                if (line ~ /^#/ || line !~ /[^[:space:]]/) continue
+                split(line, field, "\t")
+                if (field[1] != "") pattern[++patterns] = field[1]
+            }
+        }
+        function keep(   i) {
+            if (rec == "") return
+            for (i = 1; i <= patterns; i++) if (rec ~ pattern[i]) { rec = ""; return }
+            if (length(rec) > record_bytes) rec = substr(rec, 1, record_bytes) " [...truncated]\n"
+            kept[++records] = rec
+            rec = ""
+        }
+        /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]/ { keep() }
+        { rec = rec $0 "\n" }
+        END {
+            keep()
+            first = records - max_records + 1
+            if (first < 1) first = 1
+            for (i = first; i <= records; i++) printf "%s", kept[i]
+        }
+    '
 }
 
 run_once() {
@@ -127,6 +173,9 @@ run_once() {
         return 1
     fi
     resolve logsource "the Home Assistant log is readable again"
+    # Only now, so a log holding nothing but known noise is still a readable log.
+    errlog="$(printf '%s\n' "${errlog}" | analysis_window)"
+    [ -n "${errlog//[[:space:]]/}" ] || errlog="(no entries apart from known, harmless ones)"
 
     # A NON-ZERO exit here is a finding, not a fault — that is what an invalid
     # configuration looks like, and it is exactly what should reach the model.
