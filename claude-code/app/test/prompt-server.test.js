@@ -14,7 +14,14 @@ const path = require('node:path');
 
 // --- Environment must be set BEFORE requiring the server (it reads env at load).
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-prompt-'));
-const PORT = 18191;
+// A port the system picks, so this suite never meets another one running at the
+// same time. The server reads its port from the environment when it is loaded,
+// so the port is chosen synchronously, before that.
+const PORT = Number(require('node:child_process').execFileSync(process.execPath, ['-e', `
+  const s = require('node:net').createServer().listen(0, '127.0.0.1', () => {
+    process.stdout.write(String(s.address().port));
+    s.close();
+  });`], { encoding: 'utf8' }));
 const BASE = `http://127.0.0.1:${PORT}`;
 const HA_LLAT = 'test-ha-llat-abcdefghijklmnop';
 

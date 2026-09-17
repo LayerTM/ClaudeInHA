@@ -25,8 +25,8 @@ delete process.env.SUPERVISOR_TOKEN;
 const express = require('express');
 const { createRouter } = require('../server/api');
 
-const PORT = 18192;
-const BASE = `http://127.0.0.1:${PORT}/api`;
+// A port the system picks, so this suite never meets another one running at the same time.
+let BASE = '';
 let server;
 
 const writeOptions = (o) => fs.writeFileSync(OPTIONS, JSON.stringify(o));
@@ -40,7 +40,8 @@ const getJson = async (p) => {
 before(async () => {
   const app = express();
   app.use('/api', createRouter({ uploadDir: TMP }));
-  await new Promise((resolve) => { server = app.listen(PORT, resolve); });
+  await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
+  BASE = `http://127.0.0.1:${server.address().port}/api`;
 });
 
 after(() => {

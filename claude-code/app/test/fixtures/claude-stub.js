@@ -6,7 +6,6 @@
 // and branches on markers in the prompt it reads from stdin.
 
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
 const args = process.argv.slice(2);
@@ -123,10 +122,13 @@ function run(prompt) {
   }
   // FLAKY:<token> — a transient model error on the FIRST spawn for a given token,
   // then a normal success on the next, so the server's retry-then-recover path is
-  // exercised end to end. The marker file makes the "next spawn" stateful.
+  // exercised end to end. The marker file makes the "next spawn" stateful. It
+  // lives in the run's working directory, which belongs to one suite run; in a
+  // shared temp directory a suite running at the same time could take the
+  // first spawn.
   const flaky = prompt.match(/FLAKY:(\w+)/);
   if (flaky) {
-    const marker = path.join(os.tmpdir(), `cc-flaky-${flaky[1]}`);
+    const marker = path.join(process.cwd(), `cc-flaky-${flaky[1]}`);
     if (!fs.existsSync(marker)) {
       fs.writeFileSync(marker, '1');
       emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'mcp__ha__GetLiveContext', input: {} }] } });
