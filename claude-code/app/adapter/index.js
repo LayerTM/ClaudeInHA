@@ -15,7 +15,14 @@ const runner = require('./runner');
 const LIMITS_URL = 'https://api.anthropic.com/api/oauth/usage';
 
 module.exports = {
-  apiVersion: 1,
+  apiVersion: require('./api-version'),
+  descriptor: {
+    engine: 'claude',
+    // `2.1.143 (Claude Code)` -> `2.1.143`
+    parseVersion: (stdout) => stdout.split(/\s+/)[0] || null,
+    // Clients from before engine_version read the CLI version under this key.
+    versionAlias: 'claude_version',
+  },
   runner: {
     run: runner.runClaude,
     shutdown: runner.shutdown,

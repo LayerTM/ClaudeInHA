@@ -233,6 +233,18 @@ deliberately much more restricted than the interactive console:
   Assistant language, and voice replies are kept to one short, spoken-friendly
   sentence.
 
+### What the add-on reports about itself (`/api/status`)
+
+Besides readiness and the add-on's own `version`, `/api/status` names the agent
+behind the Prompt API, so the integration can adapt to it:
+
+| field | meaning |
+|---|---|
+| `engine` | the agent's stable name; `claude` for this add-on |
+| `engine_version` | the agent's version, as `claude --version` reports it; empty until it has been read |
+| `claude_version` | the same value, kept for integrations that predate `engine_version` |
+| `request_fields` | the request fields `POST /api/prompt` accepts; a field not listed is refused |
+
 ### Chat reliability (`chat_health`)
 
 `/api/status` publishes a rolling window over the last 50 companion-chat runs,

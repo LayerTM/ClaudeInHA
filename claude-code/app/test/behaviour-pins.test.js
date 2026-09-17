@@ -162,14 +162,20 @@ test('/api/status answers with exactly the recorded set of fields', async () => 
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.deepEqual(Object.keys(body).sort(), [
-      'alerts', 'budget', 'chat_health', 'claude_version', 'ha_mcp', 'ha_mcp_connected', 'model',
-      'prompt_timeout_ms', 'ready', 'version',
+      'alerts', 'budget', 'chat_health', 'claude_version', 'engine', 'engine_version', 'ha_mcp',
+      'ha_mcp_connected', 'model', 'prompt_timeout_ms', 'ready', 'request_fields', 'version',
     ]);
     assert.deepEqual(Object.keys(body.budget).sort(), ['limit', 'spent']);
     assert.deepEqual(body, {
       ...body,
       version: 'pins',
       claude_version: '9.9.9',
+      engine: 'claude',
+      engine_version: '9.9.9',
+      request_fields: [
+        'prompt', 'mode', 'conversation_id', 'intents', 'confirmation', 'image_entity', 'stream', 'language',
+        'surface', 'edit_automation',
+      ],
       model: 'm',
       ha_mcp: false,
       ha_mcp_connected: false,
@@ -182,4 +188,13 @@ test('/api/status answers with exactly the recorded set of fields', async () => 
   } finally {
     server.close();
   }
+});
+
+test('the adapter names the engine and reads the version from `claude --version`', () => {
+  const { descriptor } = require('../adapter');
+  assert.equal(descriptor.engine, 'claude');
+  assert.equal(descriptor.versionAlias, 'claude_version');
+  assert.equal(descriptor.parseVersion('2.1.274 (Claude Code)'), '2.1.274');
+  assert.equal(descriptor.parseVersion('9.9.9'), '9.9.9');
+  assert.equal(descriptor.parseVersion(''), null);
 });
