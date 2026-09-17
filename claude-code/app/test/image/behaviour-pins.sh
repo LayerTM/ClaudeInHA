@@ -55,6 +55,26 @@ case "\$*" in
     "mcp list") cat /pins/mcp-list 2>/dev/null ;;
     "mcp add "*) echo "\$3: registered" >> /pins/mcp-list ;;
     *)
+        # Like the real CLI: in print mode the prompt is a positional argument or
+        # stdin, and a list flag (--allowed-tools …) consumes every argument after
+        # it. With neither, the CLI refuses with this message and exit 1.
+        if [[ " \$* " == *" -p "* ]]; then
+            positional=0; in_list=0
+            for a in "\$@"; do
+                case "\$a" in
+                    --allowed-tools|--allowedTools|--disallowed-tools|--disallowedTools|--tools|--add-dir|--mcp-config|--betas|--file) in_list=1 ;;
+                    -*) in_list=0 ;;
+                    *) [ "\$in_list" = 1 ] || positional=1 ;;
+                esac
+            done
+            if [ "\$positional" = 0 ]; then
+                cat > /pins/claude-stdin.txt
+                if [ ! -s /pins/claude-stdin.txt ]; then
+                    echo "Error: Input must be provided either through stdin or as a prompt argument when using --print" >&2
+                    exit 1
+                fi
+            fi
+        fi
         if [ "\$HOME" = /tmp/cc-skipcheck ]; then
             [ -f /pins/skipcheck-refuses ] && echo "--dangerously-skip-permissions cannot be used with root/sudo privileges"
         elif [ ! -f /pins/claude-silent ]; then
@@ -520,7 +540,8 @@ EOF
 }
 run_digest() {
     env -i PATH=/usr/bin:/bin HOME=/root SUPERVISOR_TOKEN=EXAMPLE-sup SUPERVISOR_API_TOKEN=EXAMPLE-sup \
-        HA_TOKEN=EXAMPLE-ha HASS_TOKEN=EXAMPLE-ha CLAUDE_DIGEST_TIME="$1" timeout 20 /usr/local/bin/cc-digest > /dev/null 2>&1
+        HA_TOKEN=EXAMPLE-ha HASS_TOKEN=EXAMPLE-ha CLAUDE_DIGEST_TIME="$1" timeout 20 "${2:-/usr/local/bin/cc-digest}" \
+        > /dev/null 2> "${P}/digest.err" < /dev/null
 }
 
 reset
@@ -532,10 +553,10 @@ eq "digest: settles for 120 s first" "$(sed -n 1p "${P}/sleep.log")" 120
 yes_ "digest: then sleeps until the target time" bash -c '[[ "$(sed -n 2p /pins/sleep.log)" =~ ^[0-9]+$ ]] && [ "$(sed -n 2p /pins/sleep.log)" -le 86400 ]'
 eq "digest: states are fetched from the Supervisor" "$(head -1 "${P}/curl.log")" \
     "-sS -H Authorization:\\ Bearer\\ EXAMPLE-sup http://supervisor/core/api/states "
-eq "digest: Claude is called with exactly -p, an empty tool list and the prompt" \
-    "$(head -1 "${P}/claude-args.jsonl" | jq -c '[length, .[0], .[1], .[2]]')" '[4,"-p","--allowed-tools",""]'
-yes_ "digest: the prompt carries the snapshot as data" \
-    bash -c 'head -1 /pins/claude-args.jsonl | jq -e ".[3] | contains(\"====HOME SNAPSHOT====\") and contains(\"Pins Weather\")" > /dev/null'
+eq "digest: Claude is called with exactly -p and an empty tool list" \
+    "$(head -1 "${P}/claude-args.jsonl" | jq -c .)" '["-p","--allowed-tools",""]'
+yes_ "digest: the prompt goes in on stdin and carries the snapshot as data" \
+    bash -c 'grep -q "====HOME SNAPSHOT====" /pins/claude-stdin.txt && grep -q "Pins Weather" /pins/claude-stdin.txt'
 no_ "digest: no Supervisor or HA credential in Claude's environment" grep -qE '(^|,)(SUPERVISOR_TOKEN|SUPERVISOR_API_TOKEN|HA_TOKEN|HASS_TOKEN)(,|$)' "${P}/claude-env.log"
 eq "digest: the answer is pushed with its title" "$(head -1 "${P}/notify.log")" "Good morning from the pins|Claude · Morning briefing"
 
@@ -544,6 +565,25 @@ digest_fakes
 touch "${P}/claude-silent"
 run_digest 07:30
 no_ "digest: an empty answer is not pushed" test -s "${P}/notify.log"
+yes_ "digest: an empty answer is logged" grep -q "^\[cc-digest\] the briefing produced nothing (exit 0)" "${P}/digest.err"
+
+# The regression this section exists for: the prompt passed as an argument after
+# --allowed-tools. The fake refuses it as the real CLI does, and the digest must
+# say so in its log rather than stay silent.
+reset
+digest_fakes
+# shellcheck disable=SC2016 # the literal ${prompt} text, on purpose
+sed -e "s/printf '%s' \"\${prompt}\" | //" \
+    -e 's/claude -p --allowed-tools "" 2>/claude -p --allowed-tools "" "${prompt}" 2>/' \
+    /usr/local/bin/cc-digest > "${P}/cc-digest-argv"
+chmod +x "${P}/cc-digest-argv"
+# shellcheck disable=SC2016 # the literal ${prompt} text, on purpose
+yes_ "digest mutant: the copy passes the prompt as an argument" grep -qF 'allowed-tools "" "${prompt}"' "${P}/cc-digest-argv"
+no_ "digest mutant: and no longer on stdin" grep -qF "printf '%s' \"\${prompt}\" |" "${P}/cc-digest-argv"
+run_digest 07:30 "${P}/cc-digest-argv"
+no_ "digest mutant: nothing is pushed" test -s "${P}/notify.log"
+yes_ "digest mutant: the CLI's refusal is logged" \
+    grep -q "^\[cc-digest\] the briefing produced nothing (exit 1): Error: Input must be provided" "${P}/digest.err"
 
 reset
 digest_fakes

@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.57.2] — 2026-09-17
+
+### Fixed
+- **The morning digest is sent again.** The digest passed its prompt in a way
+  Claude Code's command line does not accept, so the call failed and no
+  briefing was sent, without any message. The prompt now goes in the same way
+  as for the health check, the call has a time limit, and a briefing that
+  cannot be written or delivered is logged in `/data/digest.log`.
+
 ## [1.57.1] — 2026-09-17
 
 ### Changed
