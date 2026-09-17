@@ -47,6 +47,12 @@ TIMEOUT_CMD="${CC_MONITOR_TIMEOUT_CMD:-$(command -v timeout || true)}"
 KNOWN_NOISE_FILE="${CC_MONITOR_KNOWN_NOISE:-/usr/share/claude-ha/monitor-known-noise.tsv}"
 # At most WINDOW_RECORDS x RECORD_BYTES of log reach the model.
 WINDOW_RECORDS=15
+# How much of the journal is read to fill that window. Every log LINE is one
+# journal entry, and one known-noise record is about a hundred lines: measured on
+# a sandbox, the last 200 entries held 2 record starts, both noise, so nothing
+# real was left to analyse after a few chats. 5000 entries held 192 records
+# (380 KB, read in 0.2 s).
+FETCH_ENTRIES=5000
 RECORD_BYTES=500
 
 hours="${CLAUDE_MONITOR_HOURS:-0}"
@@ -100,7 +106,7 @@ resolve() {
     log "$2"
 }
 
-# The last 200 entries of Core's log, whole, or a non-zero exit if it cannot be read.
+# The last FETCH_ENTRIES entries of Core's log, or a non-zero exit if it cannot be read.
 #
 # The HTTP STATUS is what decides, not the body: this call answers with a log on
 # success and a short error body on failure, both with a curl exit of 0. A body
@@ -113,7 +119,7 @@ fetch_log() {
     local response status body
     response="$(${TIMEOUT_CMD:+${TIMEOUT_CMD} 30} "${CURL_CMD}" -sS --max-time 25 -w $'\n%{http_code}' \
         -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
-        -H 'Range: entries=:-200:' \
+        -H "Range: entries=:-${FETCH_ENTRIES}:" \
         http://supervisor/core/logs 2>/dev/null)" || return 1
     status="${response##*$'\n'}"
     body="${response%$'\n'*}"
@@ -134,6 +140,9 @@ fetch_log() {
 #
 # The list (KNOWN_NOISE_FILE) is data: one extended regular expression per line,
 # a tab, and the upstream report. A missing list is logged and leaves nothing out.
+#
+# Fewer records than the window holds is stated, with the number: a short window
+# must not read like a quiet log.
 analysis_window() {
     [ -r "${KNOWN_NOISE_FILE}" ] || log "known-noise list ${KNOWN_NOISE_FILE} is missing; nothing is left out"
     awk -v noise="${KNOWN_NOISE_FILE}" -v max_records="${WINDOW_RECORDS}" -v record_bytes="${RECORD_BYTES}" '
@@ -158,6 +167,9 @@ analysis_window() {
             first = records - max_records + 1
             if (first < 1) first = 1
             for (i = first; i <= records; i++) printf "%s", kept[i]
+            if (records < max_records) {
+                printf "(the log that was read holds only %d entries apart from known, harmless ones; older entries were not read)\n", records
+            }
         }
     '
 }
@@ -175,7 +187,6 @@ run_once() {
     resolve logsource "the Home Assistant log is readable again"
     # Only now, so a log holding nothing but known noise is still a readable log.
     errlog="$(printf '%s\n' "${errlog}" | analysis_window)"
-    [ -n "${errlog//[[:space:]]/}" ] || errlog="(no entries apart from known, harmless ones)"
 
     # A NON-ZERO exit here is a finding, not a fault — that is what an invalid
     # configuration looks like, and it is exactly what should reach the model.
