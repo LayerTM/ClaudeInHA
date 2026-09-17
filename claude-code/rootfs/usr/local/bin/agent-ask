@@ -1,0 +1,6 @@
+#!/bin/sh
+# The engine's one-shot question for the core's health check and morning
+# briefing: the prompt on stdin, the answer on stdout. Claude runs with an empty
+# tool list and without the permission bypass; the caller removes the Home
+# Assistant credentials from the environment.
+exec /data/home/.local/bin/claude -p --allowed-tools ""

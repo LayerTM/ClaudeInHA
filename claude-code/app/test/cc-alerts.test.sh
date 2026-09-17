@@ -33,6 +33,7 @@ stub="${work}/ha-notify-stub"
 cat > "${stub}" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n---\n' "$1" >> "${NOTIFY_OUT}"
+printf '%s\n' "$2" >> "${NOTIFY_OUT}.title"
 STUB
 chmod +x "${stub}"
 
@@ -43,7 +44,7 @@ fail() { printf '  NOT ok - %s\n' "$1"; fails=$((fails + 1)); }
 # Run one cycle. $1 = fixture file, $2 = "now" HH:MM. Result message → $notify_out
 # (cleared first, so absence of the file means "no notification was sent").
 run() {
-    rm -f "${notify_out}"
+    rm -f "${notify_out}" "${notify_out}.title"
     CC_ALERTS_DATA_DIR="${work}" \
     CC_ALERTS_STATES_FILE="${fixtures}/$1" \
     CC_ALERTS_NOW="$2" \
@@ -64,6 +65,8 @@ case "${m}" in *"Low battery"*) pass "reports low battery";;      *) fail "missi
 case "${m}" in *"WATER LEAK"*)  pass "reports water leak";;        *) fail "missing water-leak line";; esac
 case "${m}" in *"Open at night"*) pass "reports door open at night";; *) fail "missing open-at-night line";; esac
 case "${m}" in *"Phone battery"*) pass "uses friendly_name";;     *) fail "missing friendly_name";; esac
+# No add-on console here, so no branding: the title falls back to the neutral name.
+if [ "$(cat "${notify_out}.title")" = "Agent · Home alert" ]; then pass "titled with the fallback name"; else fail "title: $(cat "${notify_out}.title")"; fi
 # Robustness: unavailable/unknown and the healthy 80% battery must NOT alert.
 case "${m}" in *"Kitchen sensor"*) fail "healthy 80% battery should not alert";; *) pass "ignores healthy battery";; esac
 case "${m}" in *"Garden leak"*) fail "unavailable leak sensor should be ignored";; *) pass "ignores unavailable entity";; esac

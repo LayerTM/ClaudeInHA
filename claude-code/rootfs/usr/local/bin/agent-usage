@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""Claude Code's console usage, for the core's ha-usage and /api/usage.
+
+One JSON line per assistant message in the Claude Code session transcripts
+under ``$HOME/.claude/projects`` (the message's ``usage`` block):
+
+    {"day": "YYYY-MM-DD", "model": "...", "input": n, "output": n,
+     "cache_read": n, "cache_write": n}
+
+Anthropic's ``input_tokens`` already leaves out the tokens read from cache. A
+missing or non-integer count is 0; a message without a timestamp is on day
+"unknown", one without a model on model "unknown".
+
+Prompt API runs are started with ``--no-session-persistence`` and write no
+transcript here; the core counts them from its audit log.
+
+Usage:
+    agent-usage            # the lines
+    agent-usage --source   # the directory they are read from
+"""
+
+from __future__ import annotations
+
+import glob
+import json
+import os
+import sys
+
+HOME = os.environ.get("HOME", "/data/home")
+PROJECTS = os.path.join(HOME, ".claude", "projects")
+
+# The report's key for each key of Claude's usage block.
+KEYS = (
+    ("input", "input_tokens"),
+    ("output", "output_tokens"),
+    ("cache_read", "cache_read_input_tokens"),
+    ("cache_write", "cache_creation_input_tokens"),
+)
+
+
+def _count(value) -> int:
+    return int(value) if isinstance(value, int) else 0
+
+
+def messages():
+    for path in sorted(glob.glob(os.path.join(PROJECTS, "*", "*.jsonl"))):
+        try:
+            fh = open(path, encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        with fh:
+            for line in fh:
+                line = line.strip()
+                if not line or '"usage"' not in line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(ev, dict):
+                    continue
+                msg = ev.get("message")
+                if not isinstance(msg, dict):
+                    continue
+                usage = msg.get("usage")
+                if not isinstance(usage, dict) or "output_tokens" not in usage:
+                    continue
+                ts = ev.get("timestamp")
+                ts = ts if isinstance(ts, str) else ""
+                model = msg.get("model")
+                record = {
+                    "day": ts[:10] if len(ts) >= 10 else "unknown",
+                    "model": model if isinstance(model, str) and model else "unknown",
+                }
+                for short, long in KEYS:
+                    record[short] = _count(usage.get(long))
+                yield record
+
+
+def main(argv: list[str]) -> int:
+    if argv == ["--source"]:
+        print(PROJECTS)
+        return 0
+    if argv:
+        print("usage: agent-usage [--source]", file=sys.stderr)
+        return 2
+    out = sys.stdout
+    for record in messages():
+        out.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

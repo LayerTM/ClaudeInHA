@@ -58,6 +58,10 @@ jobs:
         working-directory: ${{ runner.temp }}/addon/app
         run: npm run test:monitor
 
+      - name: Run morning briefing tests (bash + jq)
+        working-directory: ${{ runner.temp }}/addon/app
+        run: npm run test:digest
+
       - name: Run audit-log hook tests (bash + jq)
         working-directory: ${{ runner.temp }}/addon/app
         run: npm run test:audit
@@ -337,7 +341,7 @@ jobs:
             --entrypoint /root/.local/bin/claude 'addon-image:${{ matrix.arch }}' --version
           docker run --rm --platform '${{ steps.target.outputs.platform }}' \
             --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
-            -e "require('/opt/claude-console/node_modules/node-pty').spawn('/bin/true', [], {}).onExit(({ exitCode }) => { console.log('node-pty spawns, exit ' + exitCode); process.exit(exitCode); })"
+            -e "require('/opt/agent-console/node_modules/node-pty').spawn('/bin/true', [], {}).onExit(({ exitCode }) => { console.log('node-pty spawns, exit ' + exitCode); process.exit(exitCode); })"
       - name: The bundled CLI accepts every argument list the prompt runner builds
         run: |
           # The lists come from the core and the adapter inside the image, not
@@ -346,7 +350,7 @@ jobs:
           docker run --rm --platform '${{ steps.target.outputs.platform }}' \
             --volume "${PWD}/.github/scripts:/ci:ro" \
             --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
-            /ci/runner_args_smoke.js /root/.local/bin/claude /opt/claude-console
+            /ci/runner_args_smoke.js /root/.local/bin/claude /opt/agent-console
       - name: Start-up, launch, update and digest behave as recorded
         run: |
           # The service script, the Claude tab launcher, both update paths,

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.58.0] — 2026-09-17
+
+### Changed
+- **Built on ha-agent-core 0.4.0.** The start-up, provisioning, health check,
+  morning briefing and usage report now come from the shared core; Claude Code's
+  own steps are supplied to it. Start-up, provisioning and notifications log and
+  behave as before.
+- **Prompt API runs reach only Home Assistant's tools.** The local relay to
+  Home Assistant's MCP server passes only `initialize`, `ping`, notifications,
+  `tools/list` and `tools/call`; resources, prompts and other methods are
+  answered by the relay and never reach Home Assistant.
+
+### Added
+- **The usage report says whether console usage could be read.** `/api/usage`
+  and `ha-usage --json` add `available` and, when reading failed, `error`; the
+  prompt API usage is reported either way.
+
 ## [1.57.2] — 2026-09-17
 
 ### Fixed

@@ -35,7 +35,9 @@ set -o pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 addon="$(cd "${here}/../.." && pwd)"                 # claude-code/
 hook="${addon}/rootfs/usr/local/bin/cc-hook-audit"
-run="${addon}/rootfs/etc/s6-overlay/s6-rc.d/claude-code/run"
+# The engine hooks the core's start script runs (the add-on's service hands
+# over to that script).
+run="${addon}/rootfs/usr/local/lib/engine-hooks.sh"
 lib="${addon}/rootfs/usr/local/lib/addon-hooks.sh"
 
 command -v jq >/dev/null 2>&1 || { echo "FAIL: jq is required by this test and by the hook itself"; exit 1; }
@@ -243,11 +245,11 @@ case "${CC_HOOK_AUDIT_MATCHER}" in
     *mcp__*) pass "PostToolUse matcher covers mcp__ tools (${CC_HOOK_AUDIT_MATCHER})" ;;
     *) fail "PostToolUse matcher covers mcp__ tools" "${CC_HOOK_AUDIT_MATCHER}" "…mcp__…" ;;
 esac
-# ...and the service script must actually call the seeder, or the library above
+# ...and the engine hooks must actually call the seeder, or the library above
 # is correct and orphaned.
 case "$(cat "${run}")" in
-    *"hooks_seed_or_migrate"*) pass "the service script calls hooks_seed_or_migrate" ;;
-    *) fail "the service script calls hooks_seed_or_migrate" "absent" "present" ;;
+    *"hooks_seed_or_migrate"*) pass "the engine hooks call hooks_seed_or_migrate" ;;
+    *) fail "the engine hooks call hooks_seed_or_migrate" "absent" "present" ;;
 esac
 case "$(cat "${run}")" in
     *"source /usr/local/lib/addon-hooks.sh"*) pass "and sources the library that defines it" ;;
@@ -273,18 +275,21 @@ check "chat runs get the seeded audit entry" \
     "$(hooks_audit_settings_json | jq -c '.hooks.PostToolUse[0]')" \
     "$(jq -c '.hooks.PostToolUse[0]' "${settings}")"
 check "and no other hook" "$(hooks_audit_settings_json | jq -c '.hooks | keys')" '["PostToolUse"]'
-runtext="$(cat "${run}")"
-case "${runtext}" in
-    *'export CLAUDE_PROMPT_SETTINGS="$(hooks_audit_settings_json)"'*) pass "the service script hands it to the prompt server" ;;
-    *) fail "the service script hands it to the prompt server" "absent" "present" ;;
+# The core's start script sets the prompt server's settings from the engine's
+# hook, after the user's environment_vars, so the config cannot replace them.
+start="${addon}/rootfs/usr/local/bin/addon-run"
+[ -f "${start}" ] || { echo "FAIL: ${start} is missing (run this suite in the assembled tree)"; exit 1; }
+case "$(cat "${run}")" in
+    *$'engine_prompt_settings() {\n    hooks_audit_settings_json\n}'*) pass "the engine hooks hand it to the prompt server" ;;
+    *) fail "the engine hooks hand it to the prompt server" "absent" "present" ;;
 esac
-# After the user's environment_vars, so the config cannot replace the hook.
+runtext="$(cat "${start}")"
 envline="$(printf '%s\n' "${runtext}" | awk '/done < <\(config_list environment_vars\)/{print NR; exit}')"
-setline="$(printf '%s\n' "${runtext}" | awk '/export CLAUDE_PROMPT_SETTINGS=/{print NR; exit}')"
+setline="$(printf '%s\n' "${runtext}" | awk '/CLAUDE_PROMPT_SETTINGS="\$\(engine_prompt_settings\)"/{print NR; exit}')"
 if [ -n "${envline}" ] && [ -n "${setline}" ] && [ "${setline}" -gt "${envline}" ]; then
-    pass "and sets it after the user's environment_vars (${envline} < ${setline})"
+    pass "and the start script sets it after the user's environment_vars (${envline} < ${setline})"
 else
-    fail "and sets it after the user's environment_vars" "env=${envline} set=${setline}" "env < set"
+    fail "and the start script sets it after the user's environment_vars" "env=${envline} set=${setline}" "env < set"
 fi
 
 # An existing installation, seeded by v1.4.0 and carried across every update

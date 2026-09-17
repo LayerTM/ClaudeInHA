@@ -14,18 +14,12 @@ const path = require('node:path');
 
 // --- Environment must be set BEFORE requiring the server (it reads env at load).
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-prompt-'));
-// A port the system picks, so this suite never meets another one running at the
-// same time. The server reads its port from the environment when it is loaded,
-// so the port is chosen synchronously, before that.
-const PORT = Number(require('node:child_process').execFileSync(process.execPath, ['-e', `
-  const s = require('node:net').createServer().listen(0, '127.0.0.1', () => {
-    process.stdout.write(String(s.address().port));
-    s.close();
-  });`], { encoding: 'utf8' }));
-const BASE = `http://127.0.0.1:${PORT}`;
+// The server binds a port the system picks and says which one in its listening
+// line; `before` reads it from there, so no other suite can take it in between.
+let BASE = '';
 const HA_LLAT = 'test-ha-llat-abcdefghijklmnop';
 
-process.env.CLAUDE_PROMPT_PORT = String(PORT);
+process.env.CLAUDE_PROMPT_PORT = '0';
 process.env.CLAUDE_PROMPT_DEV = '1'; // skip Supervisor discovery
 // The suite fires many requests back-to-back through one long-lived server; give
 // the global rate limiter ample burst so throttling never masks other assertions.
@@ -790,7 +784,17 @@ let TOKEN;
 let shutdown;
 
 before(async () => {
-  shutdown = await promptServer.start();
+  const logged = [];
+  const realLog = console.log;
+  console.log = (...args) => { logged.push(args.join(' ')); };
+  try {
+    shutdown = await promptServer.start();
+  } finally {
+    console.log = realLog;
+  }
+  const bound = logged.join('\n').match(/prompt server listening on :(\d+)\b/);
+  assert.ok(bound, `the server says which port it bound: ${logged.join(' | ')}`);
+  BASE = `http://127.0.0.1:${bound[1]}`;
   TOKEN = fs.readFileSync(path.join(TMP, 'claude-prompt-token'), 'utf8').trim();
 });
 
@@ -1499,9 +1503,11 @@ test('audit + ha-usage: a chat request\'s tokens and cost reach the usage report
     timestamp: new Date().toISOString(),
     message: { model: 'claude-opus-5', usage: { input_tokens: 1, output_tokens: 1 } },
   })}\n`);
+  // The core's report, reading the console through this add-on's agent-usage.
   const bin = path.join(__dirname, '..', '..', 'rootfs', 'usr', 'local', 'bin', 'ha-usage');
+  const agentUsage = path.join(__dirname, '..', '..', 'rootfs', 'usr', 'local', 'bin', 'agent-usage');
   const out = require('node:child_process').execFileSync('python3', [bin, '--json'], {
-    encoding: 'utf8', env: { ...process.env, HOME: dir, CC_AUDIT_DATA_DIR: dir },
+    encoding: 'utf8', env: { ...process.env, HOME: dir, CC_AUDIT_DATA_DIR: dir, CC_USAGE_AGENT_CMD: agentUsage },
   });
   const report = JSON.parse(out);
   assert.deepEqual(report.tokens.today, { input: 908, output: 174, cache_read: 10439, cache_write: 0 });
