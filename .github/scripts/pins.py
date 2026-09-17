@@ -11,6 +11,11 @@ same marker works for a Dockerfile ARG and for an image tag in build.yaml.
 The files are discovered, not listed: every tracked file carrying a marker
 takes part.
 
+A tracked package.json with a package-lock.json beside it needs no markers:
+each of its `dependencies` is an `npm <package>` pin and must be an exact
+version. Bumping one also refreshes that lockfile (npm, scripts off), so the
+lockfile — and the install-script check that reads it — follow the version.
+
 Kinds:
   pypi <package>                    latest release on PyPI
   npm <package>                     the `latest` dist-tag on npm
@@ -38,6 +43,7 @@ could not be asked is never reported as up to date.
 from __future__ import annotations
 
 import json
+import shutil
 import os
 import pathlib
 import re
@@ -186,7 +192,7 @@ class Pin:
         tokens = self.head.split()
         if tokens[:1] == ["ARG"]:
             tokens = tokens[1:]
-        return tokens[0].split("=")[0].rstrip(":") if tokens else self.where
+        return tokens[0].split("=")[0].rstrip(":").strip('"') if tokens else self.where
 
     def is_checksum(self) -> bool:
         return self.kind == "claude-code-sha256"
@@ -234,11 +240,42 @@ UNDECLARED = {
 }
 
 
+DEPENDENCY = re.compile(r'^(?P<head>\s*"(?P<name>[^"]+)":\s*")(?P<value>[^"]*)(?P<tail>",?\s*)$')
+
+
+def npm_manifest_pins(file: pathlib.Path, root: pathlib.Path, text: str) -> list[Pin]:
+    """The `dependencies` of a package.json that has a lockfile, one pin each."""
+    rel = file.relative_to(root)
+    try:
+        wanted = json.loads(text).get("dependencies", {})
+    except (ValueError, AttributeError) as err:
+        raise PinError(f"{rel}: not a JSON object with dependencies: {err}") from err
+    found: list[Pin] = []
+    inside = False
+    for i, line in enumerate(text.splitlines()):
+        if re.match(r'^\s*"dependencies":\s*\{\s*$', line):
+            inside = True
+            continue
+        if inside and re.match(r"^\s*\},?\s*$", line):
+            break
+        dep = DEPENDENCY.match(line) if inside else None
+        if dep:
+            if not VERSION.match(dep["value"]):
+                raise PinError(f"{rel}:{i + 1}: {dep['name']} is {dep['value']!r}, not an exact version")
+            found.append(Pin(file, i + 1, "npm", [dep["name"]], dep["head"], dep["value"], dep["tail"]))
+    if sorted(p.args[0] for p in found) != sorted(wanted):
+        raise PinError(f"{rel}: dependencies must be an object with one \"name\": \"version\" per line")
+    return found
+
+
 def discover(root: pathlib.Path) -> list[Pin]:
     pins: list[Pin] = []
     for file, text in tracked_texts(root):
         lines = text.splitlines()
         rel = file.relative_to(root)
+        if file.name == "package.json" and (file.parent / "package-lock.json").is_file():
+            pins.extend(npm_manifest_pins(file, root, text))
+            continue
         shape = UNDECLARED.get(file.name)
         for i, line in enumerate(lines):
             if shape and shape.match(line) and not (i and MARKER.match(lines[i - 1])):
@@ -293,7 +330,21 @@ def cmd_check(root: pathlib.Path, upstream: Upstream) -> int:
     return 0
 
 
-def cmd_bump(root: pathlib.Path, upstream: Upstream, summary: pathlib.Path | None) -> int:
+def refresh_lockfile(directory: pathlib.Path, root: pathlib.Path) -> None:
+    npm = shutil.which("npm")
+    if not npm:
+        raise PinError(f"{directory.relative_to(root)}: npm is needed to refresh package-lock.json")
+    run = subprocess.run(
+        [npm, "install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"],
+        cwd=directory, capture_output=True, text=True, check=False,
+    )
+    if run.returncode != 0:
+        raise PinError(f"{directory.relative_to(root)}: npm could not refresh package-lock.json: {run.stderr.strip()}")
+    print(f"locked   {(directory / 'package-lock.json').relative_to(root)}")
+
+
+def cmd_bump(root: pathlib.Path, upstream: Upstream, summary: pathlib.Path | None,
+             relock=refresh_lockfile) -> int:
     pins = discover(root)
     resolve(pins, upstream)
     changes = []
@@ -309,6 +360,8 @@ def cmd_bump(root: pathlib.Path, upstream: Upstream, summary: pathlib.Path | Non
             "source": " ".join(pin.args), "from": pin.value, "to": pin.target, "major": major,
         })
         print(f"bumped   {label(pin, root)}: {pin.value} -> {pin.target}")
+    for directory in sorted({p.file.parent for p in stale(pins) if p.file.name == "package.json"}):
+        relock(directory, root)
     if not changes:
         print(f"all {len(pins)} pins match their upstream")
     if summary:
@@ -316,7 +369,8 @@ def cmd_bump(root: pathlib.Path, upstream: Upstream, summary: pathlib.Path | Non
     return 0
 
 
-def main(argv: list[str], upstream: Upstream | None = None, root: pathlib.Path | None = None) -> int:
+def main(argv: list[str], upstream: Upstream | None = None, root: pathlib.Path | None = None,
+         relock=refresh_lockfile) -> int:
     root = root or pathlib.Path(__file__).resolve().parents[2]
     upstream = upstream or Upstream()
     try:
@@ -328,7 +382,7 @@ def main(argv: list[str], upstream: Upstream | None = None, root: pathlib.Path |
                 summary = pathlib.Path(argv[2])
             elif len(argv) != 1:
                 raise PinError("usage: pins.py bump [--summary FILE]")
-            return cmd_bump(root, upstream, summary)
+            return cmd_bump(root, upstream, summary, relock)
         raise PinError("usage: pins.py check | bump [--summary FILE]")
     except PinError as err:
         print(f"error: {err}", file=sys.stderr)

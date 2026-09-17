@@ -69,17 +69,38 @@ def answers(**over) -> dict[str, bytes]:
     return base
 
 
-def repo(dockerfile: str = DOCKERFILE, build: str = BUILD) -> pathlib.Path:
+TOOLS = """{
+  "name": "tools",
+  "private": true,
+  "dependencies": {
+    "@playwright/mcp": "0.0.81",
+    "ccstatusline": "2.2.29"
+  }
+}
+"""
+
+
+def repo(dockerfile: str = DOCKERFILE, build: str = BUILD, files: dict[str, str] | None = None) -> pathlib.Path:
     root = pathlib.Path(tempfile.mkdtemp())
     (root / "addon").mkdir()
     (root / "addon" / "Dockerfile").write_text(dockerfile)
     (root / "addon" / "build.yaml").write_text(build)
+    for name, body in (files or {}).items():
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text(body)
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     return root
 
 
-def run(root: pathlib.Path, table: dict[str, bytes], *argv: str) -> tuple[int, str]:
+relocked: list[pathlib.Path] = []
+
+
+def record_relock(directory: pathlib.Path, root: pathlib.Path) -> None:
+    relocked.append(directory.relative_to(root))
+
+
+def run(root: pathlib.Path, table: dict[str, bytes], *argv: str, relock=record_relock) -> tuple[int, str]:
     def fetch(url: str) -> bytes:
         if url not in table:
             raise pins.PinError(f"could not read {url}: offline")
@@ -87,7 +108,7 @@ def run(root: pathlib.Path, table: dict[str, bytes], *argv: str) -> tuple[int, s
 
     out = io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
-        code = pins.main(list(argv), upstream=pins.Upstream(fetch), root=root)
+        code = pins.main(list(argv), upstream=pins.Upstream(fetch), root=root, relock=relock)
     return code, out.getvalue()
 
 
@@ -204,9 +225,49 @@ code, out = run(root, answers(**{
 }), "check")
 check("after a bump, check agrees everything is current", code, 0)
 
+print("package.json with a lockfile")
+LOCKED = {"addon/tools/package.json": TOOLS, "addon/tools/package-lock.json": "{}\n"}
+MCP = "https://registry.npmjs.org/@playwright/mcp/latest"
+tools = answers(**{MCP: b'{"version": "0.0.81"}'})
+code, out = run(repo(files=LOCKED), tools, "check")
+check("its dependencies are pins, current -> exit 0", (code, "@playwright/mcp (addon/tools/package.json:5" in out), (0, True))
+code, out = run(repo(files=LOCKED), answers(**{MCP: b'{"version": "0.0.82"}'}), "check")
+check("a stale dependency is reported", (code, "0.0.81 -> 0.0.82" in out), (1, True))
+code, _ = run(repo(files=LOCKED), answers(), "check")
+check("an unreadable npm upstream fails closed", code, 2)
+code, out = run(repo(files={**LOCKED, "addon/tools/package.json": TOOLS.replace('"2.2.29"', '"^2.2.29"')}), tools, "check")
+check("a range is refused", (code, "not an exact version" in out), (2, True))
+one_line = '{"name": "t", "dependencies": {"ccstatusline": "2.2.29"}}\n'
+code, out = run(repo(files={**LOCKED, "addon/tools/package.json": one_line}), tools, "check")
+check("dependencies not one per line are refused", (code, "one \"name\": \"version\" per line" in out), (2, True))
+code, out = run(repo(files={"addon/tools/package.json": TOOLS.replace('"2.2.29"', '"^2.2.29"')}), tools, "check")
+check("a package.json without a lockfile is not a pin file", code, 0)
+
+relocked.clear()
+root = repo(files=LOCKED)
+code, out = run(root, answers(**{MCP: b'{"version": "0.0.82"}'}), "bump")
+text = (root / "addon" / "tools" / "package.json").read_text()
+check("bump exits 0", code, 0)
+check("the version moves and the file stays JSON with its layout",
+      (text == TOOLS.replace('"0.0.81"', '"0.0.82"'), json.loads(text)["dependencies"]["@playwright/mcp"]), (True, "0.0.82"))
+check("its lockfile is refreshed once", relocked, [pathlib.Path("addon/tools")])
+relocked.clear()
+code, _ = run(repo(files=LOCKED), tools, "bump")
+check("nothing stale -> the lockfile is left alone", (code, relocked), (0, []))
+
+
+def failing_relock(directory: pathlib.Path, root: pathlib.Path) -> None:
+    raise pins.PinError("npm could not refresh package-lock.json: offline")
+
+
+code, out = run(repo(files=LOCKED), answers(**{MCP: b'{"version": "0.0.82"}'}), "bump", relock=failing_relock)
+check("a lockfile that cannot be refreshed fails the bump", (code, "could not refresh" in out), (2, True))
+
 print("this repository")
 found = pins.discover(REPO)
 check("every pin in the add-on declares an upstream (no unmarked pin)", len(found) > 0, True)
+check("the bundled command-line tools are pinned by their package.json",
+      sorted(p.args[0] for p in found if p.file.name == "package.json"), ["@playwright/mcp", "ccstatusline"])
 check("the Claude checksums have their version pin beside them",
       sum(1 for p in found if p.kind == "claude-code-sha256"), 2)
 

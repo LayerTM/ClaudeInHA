@@ -202,20 +202,6 @@ RUN pip install --no-cache-dir --break-system-packages \
         "hass-mcp==${HASS_MCP_VERSION}" \
         "Pillow==${PILLOW_VERSION}"
 
-# --- Playwright MCP (baked, pinned) ---
-# Uses the system Chromium via --executable-path at runtime; no browser download.
-# upstream: npm @playwright/mcp
-ARG PLAYWRIGHT_MCP_VERSION=0.0.81
-RUN npm install -g "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
-    && npm cache clean --force
-
-# --- ccstatusline (the rich status line the desktop Claude Code uses) ---
-# Bundled so no runtime npx download is needed; wired as Claude's statusLine.
-# upstream: npm ccstatusline
-ARG CCSTATUSLINE_VERSION=2.2.29
-RUN npm install -g "ccstatusline@${CCSTATUSLINE_VERSION}" \
-    && npm cache clean --force
-
 # Force HTTPS for GitHub clones (plugin marketplaces) — the container has no SSH key.
 RUN git config --system url."https://github.com/".insteadOf "git@github.com:"
 
@@ -223,6 +209,29 @@ RUN git config --system url."https://github.com/".insteadOf "git@github.com:"
 # install scripts run (node-pty compiles against the headers of the Node
 # installed above, nothing is downloaded), and dev dependencies stay out.
 COPY --from=assembly /addon/install-tools /usr/local/lib/install-tools
+
+# Bundled command-line tools, installed from cli-tools/package-lock.json with the
+# same checked install, and each command they declare linked into /usr/local/bin:
+# - @playwright/mcp (playwright-mcp): browser MCP server; it uses the system
+#   Chromium via --executable-path at runtime, no browser is downloaded.
+# - ccstatusline: the rich status line the desktop Claude Code uses, wired as
+#   Claude's statusLine, so nothing is fetched with npx at runtime.
+# Their versions live in cli-tools/package.json and move with pins.py.
+COPY cli-tools /opt/cli-tools
+RUN cd /opt/cli-tools \
+    && /usr/local/lib/install-tools/npm-ci-checked.sh --omit=dev \
+    && npm cache clean --force \
+    && for dep in $(jq -r '.dependencies | keys[]' package.json); do \
+         jq -r 'if (.bin | type) == "string" then .name | split("/") | last else .bin | keys[] end' \
+           "node_modules/${dep}/package.json"; \
+       done \
+     | while read -r cmd; do \
+         { test -x "node_modules/.bin/${cmd}" && test ! -e "/usr/local/bin/${cmd}"; } \
+           || { echo "Cannot link ${cmd}: missing in node_modules/.bin or already in /usr/local/bin"; exit 1; }; \
+         ln -s "/opt/cli-tools/node_modules/.bin/${cmd}" "/usr/local/bin/${cmd}"; \
+       done \
+    && test -x /usr/local/bin/playwright-mcp \
+    && test -x /usr/local/bin/ccstatusline
 
 # Web console app
 COPY --from=assembly /addon/app /opt/claude-console

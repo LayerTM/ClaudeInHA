@@ -267,6 +267,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      # Before the canary: a bump refreshes package-lock.json files with npm.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
       - name: "Canary: move every pin to its latest upstream release (not committed)"
         if: inputs.canary
         env:
@@ -302,9 +306,6 @@ jobs:
             echo "Give this architecture a runner that matches it."
             exit 1
           fi
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "26"
       - name: Fetch the pinned core
         id: core
         env:
