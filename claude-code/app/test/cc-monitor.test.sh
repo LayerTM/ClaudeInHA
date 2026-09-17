@@ -18,7 +18,9 @@
 #      log of nothing else is still a readable log, and a new list line is all
 #      it takes to leave out another kind;
 #  11. the analysis sees the last records, each cut to a size: one huge record
-#      cannot hide the others.
+#      cannot hide the others;
+#  12. enough of the journal is read for that window, and a window that stays
+#      short says so rather than reading like a quiet log.
 #
 # Case 6 is the one with history: passed as a positional argument the prompt is
 # consumed by --allowed-tools, which takes a list, and the command exits with no
@@ -144,7 +146,7 @@ discover_record() {
 
 # log_stub <name> <body file>: a curl stand-in that answers with the file and a 200.
 log_stub() {
-    printf '#!/usr/bin/env bash\ncat %q\nprintf 200\n' "$2" > "${work}/$1"
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > %q\ncat %q\nprintf 200\n' "${work}/curl-args.txt" "$2" > "${work}/$1"
 }
 # A real error, one record far larger than the window, then another real error.
 {
@@ -239,7 +241,7 @@ rc="$(run onlynoise OK)"
 check "a log of nothing but known noise is a readable log" "${rc}" "0"
 check "and it notifies nothing"               "$(notifications)" "0"
 seen="$(cat "${claude_in}")"
-if [[ "${seen}" == *"no entries apart from known, harmless ones"* ]]; then
+if [[ "${seen}" == *"holds only 0 entries apart from known, harmless ones"* ]]; then
     ok "the analysis is told the log held only known entries"
 else
     bad "an empty remainder was not stated (stdin began: ${seen:0:120})"
@@ -270,6 +272,15 @@ seen="$(cat "${claude_in}")"
 check "the newest record is there"            "$([[ "${seen}" == *RECORD-20* ]] && echo yes)" "yes"
 check "the 15th newest is there"              "$([[ "${seen}" == *RECORD-06* ]] && echo yes)" "yes"
 check "the 16th newest is not"                "$([[ "${seen}" == *RECORD-05* ]] && echo yes || echo no)" "no"
+check "a full window carries no shortness note" "$([[ "${seen}" == *"holds only"* ]] && echo yes || echo no)" "no"
+
+# --- 12. enough is read, and a short window says so ---------------------------
+curl_args="$(cat "${work}/curl-args.txt")"
+check "the journal is read 5000 entries deep"  "$([[ "${curl_args}" == *'Range: entries=:-5000:'* ]] && echo yes)" "yes"
+run newnoiselog OK >/dev/null
+seen="$(cat "${claude_in}")"
+check "a short window states how many entries it has" \
+    "$([[ "${seen}" == *"holds only 2 entries apart from known, harmless ones"* ]] && echo yes)" "yes"
 rm -rf "${work}/data"
 
 # --- 2. a finding is notified -------------------------------------------------
