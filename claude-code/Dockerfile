@@ -238,7 +238,8 @@ RUN cd /opt/cli-tools \
     && npm cache clean --force \
     && for dep in $(jq -r '.dependencies | keys[]' package.json); do \
          jq -r 'if (.bin | type) == "string" then .name | split("/") | last else .bin | keys[] end' \
-           "node_modules/${dep}/package.json"; \
+           "node_modules/${dep}/package.json" \
+           || { echo "Cannot read the commands of ${dep}" >&2; exit 1; }; \
        done \
      | while read -r cmd; do \
          { test -x "node_modules/.bin/${cmd}" && test ! -e "/usr/local/bin/${cmd}"; } \
