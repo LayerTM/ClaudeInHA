@@ -95,7 +95,7 @@ resolve() {
     log "$2"
 }
 
-# The last 200 lines of Core's log, or a non-zero exit if it cannot be read.
+# The last 200 entries of Core's log, or a non-zero exit if it cannot be read.
 #
 # The HTTP STATUS is what decides, not the body: this call answers with a log on
 # success and a short error body on failure, both with a curl exit of 0. A body
@@ -113,7 +113,28 @@ fetch_log() {
     status="${response##*$'\n'}"
     body="${response%$'\n'*}"
     [ "${status}" = "200" ] || return 1
-    printf '%s' "${body}" | sed 's/\x1b\[[0-9;]*m//g' | tail -c 6000
+    printf '%s' "${body}" | sed 's/\x1b\[[0-9;]*m//g'
+}
+
+# Log records this add-on's own traffic causes, which the owner cannot act on:
+# Home Assistant's MCP server rejecting the `server/discover` request the CLI
+# sends when it connects (the CLI speaks a newer protocol revision than the
+# server). HA logs each rejection as one WARNING of about a hundred lines
+# (measured: 6,832 bytes) — larger than the whole window the analysis gets, so
+# one chat was enough to make the check report the warning and see nothing else.
+# A record is a line starting with a timestamp plus the lines up to the next one;
+# a fragment before the first timestamp (a record cut by the window) is judged
+# the same way. The mark is the rejected value as the validator prints it.
+drop_known_noise() {
+    awk '
+        function flush() {
+            if (rec != "" && rec !~ /input_value=.server\/discover./) printf "%s", rec
+            rec = ""
+        }
+        /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]/ { flush() }
+        { rec = rec $0 "\n" }
+        END { flush() }
+    '
 }
 
 run_once() {
@@ -127,6 +148,9 @@ run_once() {
         return 1
     fi
     resolve logsource "the Home Assistant log is readable again"
+    # Only now, so a log holding nothing but known noise is still a readable log.
+    errlog="$(printf '%s\n' "${errlog}" | drop_known_noise | tail -c 6000)"
+    [ -n "${errlog//[[:space:]]/}" ] || errlog="(no entries apart from known, harmless ones)"
 
     # A NON-ZERO exit here is a finding, not a fault — that is what an invalid
     # configuration looks like, and it is exactly what should reach the model.

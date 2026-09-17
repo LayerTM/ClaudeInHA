@@ -12,7 +12,10 @@
 #   6. the prompt actually reaches the analysing command;
 #   7. the model runs with no tools and no Home Assistant credentials;
 #   8. every external call is time-limited;
-#   9. a notifier that cannot deliver does not silence the warning for good.
+#   9. a notifier that cannot deliver does not silence the warning for good;
+#  10. Home Assistant's rejections of the CLI's `server/discover` request are
+#      left out of the analysis, whole, and a log of nothing else is still a
+#      readable log.
 #
 # Case 6 is the one with history: passed as a positional argument the prompt is
 # consumed by --allowed-tools, which takes a list, and the command exits with no
@@ -107,8 +110,38 @@ cat > "${work}/badlog" <<'STUB'
 printf '404: Not Found\n404'
 STUB
 
+# The shape Home Assistant logs a rejected `server/discover` in (shortened from
+# 31 validation errors), coloured as journald sends it: a fragment of one whose
+# header fell before the window, a whole one, a real error, and another whole one
+# that pads past the analysis window on its own.
+discover_record() {
+    printf '\033[33m%s WARNING (MainThread) [root] Failed to validate request: 31 validation errors for ClientRequest\033[0m\n' "$1"
+    local i
+    for i in $(seq 1 100); do
+        printf "PingRequest%s.method\n  Input should be 'ping' [type=literal_error, input_value='server/discover', input_type=str]\n" "${i}"
+    done
+}
+{
+    printf '#!/usr/bin/env bash\n'
+    printf 'cat <<'"'"'LOG'"'"'\n'
+    printf "  Input should be 'resources/read' [type=literal_error, input_value='server/discover', input_type=str]\n"
+    discover_record '2026-09-16 18:18:39.352'
+    printf '\033[31m2026-09-16 18:19:00.001 ERROR (MainThread) [homeassistant.components.foo] Setup of foo failed: REAL-FAILURE-MARK\033[0m\n'
+    discover_record '2026-09-16 18:19:28.432'
+    printf 'LOG\n'
+    printf 'printf 200\n'
+} > "${work}/noisylog"
+{
+    printf '#!/usr/bin/env bash\n'
+    printf 'cat <<'"'"'LOG'"'"'\n'
+    discover_record '2026-09-16 18:18:39.352'
+    printf 'LOG\n'
+    printf 'printf 200\n'
+} > "${work}/onlynoise"
+
 chmod +x "${work}"/notify "${work}"/notify-broken "${work}"/claude "${work}"/check \
-         "${work}"/check-broken "${work}"/goodlog "${work}"/badlog "${work}"/timeout
+         "${work}"/check-broken "${work}"/goodlog "${work}"/badlog "${work}"/timeout \
+         "${work}"/noisylog "${work}"/onlynoise
 
 fails=0
 ok()   { printf 'PASS  %s\n' "$1"; }
@@ -157,6 +190,32 @@ if [[ "${seen}" == *$'\033'* ]]; then
 else
     ok "colour codes are stripped out of the log"
 fi
+
+# --- 10. known noise is left out, whole ---------------------------------------
+: > "${notify_out}"
+rm -rf "${work}/data"
+run noisylog OK >/dev/null
+seen="$(cat "${claude_in}")"
+if [[ "${seen}" == *"REAL-FAILURE-MARK"* ]]; then
+    ok "a real error next to the noise reaches the analysis"
+else
+    bad "the real error was pushed out of the analysis (stdin began: ${seen:0:120})"
+fi
+if [[ "${seen}" == *"server/discover"* || "${seen}" == *"Failed to validate request"* ]]; then
+    bad "server/discover rejections reached the analysis"
+else
+    ok "server/discover rejections are left out, header and body"
+fi
+rc="$(run onlynoise OK)"
+check "a log of nothing but known noise is a readable log" "${rc}" "0"
+check "and it notifies nothing"               "$(notifications)" "0"
+seen="$(cat "${claude_in}")"
+if [[ "${seen}" == *"no entries apart from known, harmless ones"* ]]; then
+    ok "the analysis is told the log held only known entries"
+else
+    bad "an empty remainder was not stated (stdin began: ${seen:0:120})"
+fi
+rm -rf "${work}/data"
 
 # --- 2. a finding is notified -------------------------------------------------
 rc="$(run goodlog 'Two integrations failed to set up.')"
