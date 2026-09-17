@@ -29,6 +29,13 @@ Kinds:
   claude-code-sha256 <platform>     .platforms[<platform>].checksum from
                                     <base>/<version>/manifest.json of the
                                     claude-code pin in the same file
+  nodejs-sha256 <platform>          the SHASUMS256.txt entry for
+                                    node-v<version>-<platform>.tar.xz of the
+                                    nodejs pin in the same file
+
+A checksum pin follows the version pin it belongs to (the one pin of its owner
+kind in the same file): a bump moves both together, and `check` reports a
+checksum that no longer matches the pinned version.
 
 Commands:
   check          print every pin against its upstream; exit 1 if any is behind
@@ -55,6 +62,8 @@ MARKER = re.compile(r"^\s*#\s*upstream:\s*(\S+)((?:\s+\S+)*)\s*$")
 PINNED = re.compile(r"^(?P<head>.*[=:])(?P<value>[^=:\s]+)(?P<tail>\s*)$")
 VERSION = re.compile(r"^\d+(?:\.\d+)*$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+# checksum kind -> the version kind it belongs to
+CHECKSUM_OWNER = {"claude-code-sha256": "claude-code", "nodejs-sha256": "nodejs"}
 
 
 class PinError(Exception):
@@ -141,16 +150,30 @@ class Upstream:
             base = arg_value(pin.file, args[0], pins)
             url = f"{base.rstrip('/')}/{args[1]}"
             return clean_version(self.get(url).decode("utf-8", "replace"), url)
-        if kind == "claude-code-sha256" and len(args) == 1:
-            owner = claude_pin(pin.file, pins)
+        if pin.is_checksum() and len(args) == 1:
+            owner = owner_pin(pin, pins)
             version = owner.target if owner.target else owner.value
-            base = arg_value(pin.file, owner.args[0], pins)
-            url = f"{base.rstrip('/')}/{version}/manifest.json"
-            checksum = self.text(url, "platforms", args[0], "checksum")
+            if kind == "claude-code-sha256":
+                base = arg_value(pin.file, owner.args[0], pins)
+                url = f"{base.rstrip('/')}/{version}/manifest.json"
+                checksum = self.text(url, "platforms", args[0], "checksum")
+            else:
+                url = f"https://nodejs.org/dist/v{version}/SHASUMS256.txt"
+                checksum = self.shasums_entry(url, f"node-v{version}-{args[0]}.tar.xz")
             if not SHA256.match(checksum):
                 raise PinError(f"{url} gave {checksum!r} for {args[0]}, not a SHA-256")
             return checksum
         raise PinError(f"{pin.where}: unknown upstream '{kind} {' '.join(args)}'")
+
+    def shasums_entry(self, url: str, filename: str) -> str:
+        """The checksum on the one `<sha256>  <filename>` line of a SHASUMS file."""
+        found = [
+            parts[0] for parts in (line.split() for line in self.get(url).decode("utf-8", "replace").splitlines())
+            if len(parts) == 2 and parts[1] == filename
+        ]
+        if len(found) != 1:
+            raise PinError(f"{url} lists {filename} {len(found)} times, expected exactly once")
+        return found[0]
 
     def nodejs(self, pin: "Pin") -> str:
         url = "https://nodejs.org/dist/index.json"
@@ -195,7 +218,7 @@ class Pin:
         return tokens[0].split("=")[0].rstrip(":").strip('"') if tokens else self.where
 
     def is_checksum(self) -> bool:
-        return self.kind == "claude-code-sha256"
+        return self.kind in CHECKSUM_OWNER
 
 
 def arg_value(file: pathlib.Path, name: str, pins: list[Pin]) -> str:
@@ -206,10 +229,12 @@ def arg_value(file: pathlib.Path, name: str, pins: list[Pin]) -> str:
     return found[0]
 
 
-def claude_pin(file: pathlib.Path, pins: list[Pin]) -> Pin:
-    owners = [p for p in pins if p.file == file and p.kind == "claude-code"]
+def owner_pin(pin: Pin, pins: list[Pin]) -> Pin:
+    """The version pin a checksum pin belongs to: the one pin of its owner kind in the same file."""
+    kind = CHECKSUM_OWNER[pin.kind]
+    owners = [p for p in pins if p.file == pin.file and p.kind == kind]
     if len(owners) != 1:
-        raise PinError(f"{file}: a claude-code-sha256 pin needs exactly one claude-code pin, found {len(owners)}")
+        raise PinError(f"{pin.where}: a {pin.kind} pin needs exactly one {kind} pin in its file, found {len(owners)}")
     return owners[0]
 
 
