@@ -1,0 +1,23 @@
+name: canary
+
+# Once a day (or on demand) the whole CI runs on main with every upstream pin
+# moved to its latest release in the image build, so an upstream that breaks the
+# add-on turns this run red before a release carries it. Nothing is committed.
+# It lives apart from ci.yml so that a CI run of ci.yml always measures the
+# commit as it is.
+
+on:
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    with:
+      canary: true
+    # A called workflow may not ask for more than its caller grants, and ci.yml's
+    # release job asks for contents: write. That job runs only for a push to
+    # main, so it is skipped here.
+    permissions:
+      contents: write
