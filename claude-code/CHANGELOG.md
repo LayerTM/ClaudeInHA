@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.56.13] — 2026-09-17
+
+### Added
+- **The add-on names its agent on `/api/status`.** Besides the existing fields it
+  now reports `engine` (`claude`), `engine_version` (the Claude Code version, the
+  same value `claude_version` keeps carrying) and `request_fields`, the request
+  fields the Prompt API accepts. Nothing existing changes meaning, so the
+  integration works as before; a newer integration can use these fields to adapt
+  to the agent. Built on [ha-agent-core](https://github.com/LayerTM/ha-agent-core)
+  0.2.0.
+
+### Changed
+- **Bundled Claude Code updated to its latest release.**
+  - Claude Code 2.1.273 → 2.1.274 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md)).
+    This is the version a new installation starts with, and the one used when
+    `auto_update` is off; with `auto_update` on (the default) Claude still updates
+    itself at start as before.
+- **The console's terminal library is compiled against the bundled Node.js**
+  instead of headers downloaded during the build.
+
 ## [1.56.12] — 2026-09-16
 
 ### Changed

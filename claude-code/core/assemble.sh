@@ -24,9 +24,9 @@ source_dir="$2"
 out="$3"
 here="$(cd "$(dirname "$0")" && pwd)"
 
-# The engine adapter API this add-on's app/adapter/index.js implements. The
-# lock must pin it, and the core refuses an adapter declaring anything else.
-adapter_api=1
+# The engine adapter API this add-on's adapter implements. The lock must pin
+# it, and the core refuses an adapter declaring anything else.
+adapter_api="$(node -p 'require(require("node:path").resolve(process.argv[1]))' "${source_dir}/app/adapter/api-version.js")"
 
 if [ -e "${out}" ]; then
   echo "assemble.sh: ${out} already exists" >&2
