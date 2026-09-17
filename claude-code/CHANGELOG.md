@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.58.1] — 2026-09-18
+
+### Changed
+- Routine dependency updates: the bundled Claude CLI (2.1.275) and `ccstatusline`
+  (2.2.30), pinned against their published checksums.
+
 ## [1.58.0] — 2026-09-17
 
 ### Changed
