@@ -11,6 +11,10 @@ set -o pipefail
 export HOME=/data/home
 export PATH="/data/home/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
+# Found once, like cc-monitor's: every Claude call is bounded.
+TIMEOUT_CMD="$(command -v timeout || true)"
+log() { printf '[cc-digest] %s\n' "$1" >&2; }
+
 target="${CLAUDE_DIGEST_TIME:-}"
 # HH:MM (00:00–23:59) only; anything else disables the loop.
 printf '%s' "${target}" | grep -Eq '^([01][0-9]|2[0-3]):[0-5][0-9]$' || exit 0
@@ -63,12 +67,21 @@ just a brief cheerful weather-and-good-morning line is perfect.
 ${data}
 ====END===="
 
+    # The prompt goes in on STDIN, as in cc-monitor. Passed as a positional
+    # argument it lands after --allowed-tools, which takes a LIST, so it is
+    # consumed as one more tool name and the CLI exits with no input at all.
     # No tools, no permission bypass, no HA creds in the child env.
-    out="$(env -u SUPERVISOR_TOKEN -u SUPERVISOR_API_TOKEN -u HA_TOKEN -u HASS_TOKEN \
-        claude -p --allowed-tools "" "${prompt}" 2>/dev/null | tail -c 1500)"
-
+    err="$(mktemp)"
+    out="$(printf '%s' "${prompt}" | ${TIMEOUT_CMD:+${TIMEOUT_CMD} 300} \
+        env -u SUPERVISOR_TOKEN -u SUPERVISOR_API_TOKEN -u HA_TOKEN -u HASS_TOKEN \
+        claude -p --allowed-tools "" 2>"${err}" | tail -c 1500)"
+    # The status of the claude call, not of `tail`: `set -o pipefail` above.
+    rc=$?
     trimmed="$(printf '%s' "${out}" | tr -d '[:space:]')"
-    if [ -n "${trimmed}" ]; then
-        ha-notify "${out}" "Claude · Morning briefing" >/dev/null 2>&1 || true
+    if [ "${rc}" -ne 0 ] || [ -z "${trimmed}" ]; then
+        log "the briefing produced nothing (exit ${rc}): $(tail -c 300 "${err}" 2>/dev/null | tr '\n' ' ')"
+    elif ! ha-notify "${out}" "Claude · Morning briefing" >/dev/null 2>&1; then
+        log "could not deliver the briefing"
     fi
+    rm -f "${err}"
 done
