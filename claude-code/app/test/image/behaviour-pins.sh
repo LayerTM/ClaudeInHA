@@ -653,9 +653,35 @@ const { run } = require('/opt/agent-console/server/prompt/run');
 run({ bin: process.argv[2], cwd: '/data/claude-prompt/work', prompt: 'hello', mode: 'read', intents: [] })
   .then((outcome) => console.log(JSON.stringify(outcome)));
 EOF
+# agent-usage speaks the core's incremental --files/--parse protocol (API 5),
+# not a bare dump; this drives it exactly as the core's ha-usage would, one S/L…/E
+# round per file, and prints every record found, sorted for a stable comparison.
+cat > "${P}/usage-record.py" <<'PYEOF'
+import json
+import subprocess
+
+paths = [p for p in subprocess.run(
+    ['/usr/local/bin/agent-usage', '--files'], capture_output=True, check=True,
+).stdout.decode().split('\0') if p]
+proc = subprocess.Popen(['/usr/local/bin/agent-usage', '--parse'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+records = []
+for i, path in enumerate(paths):
+    with open(path, encoding='utf-8') as fh:
+        lines = fh.read().splitlines()
+    payload = [json.dumps(['S', str(i), None])] + [json.dumps(['L', line]) for line in lines] + [json.dumps(['E', str(i)])]
+    proc.stdin.write(('\n'.join(payload) + '\n').encode())
+    proc.stdin.flush()
+    proc.stdout.readline()  # S ack (null)
+    for _ in lines:
+        records.extend(json.loads(proc.stdout.readline()))
+    proc.stdout.readline()  # E ack ({"state": ...})
+proc.stdin.close()
+proc.wait()
+print(json.dumps(records, sort_keys=True))
+PYEOF
 usage_record() {
     local out status
-    out="$(env -i PATH="${BASE_PATH}" HOME=/data/home /usr/local/bin/agent-usage)"
+    out="$(env -i PATH="${BASE_PATH}" HOME=/data/home python3 "${P}/usage-record.py")"
     status=$?
     printf '%s\nexit %s\n' "${out}" "${status}"
 }
@@ -664,7 +690,7 @@ prompt_run() {
 }
 before="$(usage_record)"
 eq "agent-usage reads the console transcript" "${before}" \
-    "$(printf '%s\nexit 0' '{"day": "2026-09-01", "model": "claude-opus-5", "input": 3, "output": 4, "cache_read": 0, "cache_write": 0}')"
+    "$(printf '%s\nexit 0' '[{"cache_read": 0, "cache_write": 0, "day": "2026-09-01", "input": 3, "model": "claude-opus-5", "output": 4}]')"
 prompt_run "${P}/prompt-cli"
 yes_ "a prompt run reached the CLI with the flag" grep -q -- '--no-session-persistence' "${P}/prompt-cli.log"
 eq "agent-usage is unchanged by a prompt run" "$(usage_record)" "${before}"

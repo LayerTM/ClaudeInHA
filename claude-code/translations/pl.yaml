@@ -106,6 +106,12 @@ configuration:
       Pliki dołączone przez konsolę webową są przechowywane w /data/uploads.
       Pliki starsze niż podana liczba dni są usuwane automatycznie.
       Ustaw 0, aby przechowywać przesłane pliki na zawsze.
+  transcript_retention_days:
+    name: Przechowywanie transkryptów (dni)
+    description: >-
+      Transkrypty rozmów, do których nie zapisywano przez podaną liczbę dni,
+      są usuwane automatycznie; ich zużycie jest liczone tak czy inaczej.
+      Ustaw 0, aby przechowywać transkrypty na zawsze.
   remote_control:
     name: Zdalne sterowanie (aplikacja mobilna Claude)
     description: >-

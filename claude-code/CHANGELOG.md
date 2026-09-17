@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.59.0] — 2026-09-18
+
+### Changed
+- **Built on ha-agent-core 0.5.0.** The web console's pages, colours and icons
+  now come from the shared core, filled in with this add-on's names
+  (`app/adapter/branding.json`) and palette (`app/adapter/theme.json`); the
+  add-on no longer ships or downloads them itself. Its terminal font is the
+  core's own bundled copy, so nothing is fetched from the internet at build
+  time. The console, startup page and prompt server now log the address they
+  bound, not just the port.
+- **The usage report reads only what changed since the last call.** Following
+  ha-agent-core's adapter API 5, `agent-usage` names and parses the CLI's
+  transcript files instead of printing all usage at once; the totals live in
+  `/data/usage-cache.json`, so a transcript that is deleted or no longer
+  listed keeps its counted usage.
+
+### Added
+- **`transcript_retention_days`** (default 30, 0 = keep): conversation
+  transcripts not written to for this many days are now deleted
+  automatically by the shared core's daily upkeep; their usage stays counted.
+
 ## [1.58.1] — 2026-09-18
 
 ### Changed

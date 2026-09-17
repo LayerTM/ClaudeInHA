@@ -12,7 +12,7 @@ const globals = require('globals');
 
 module.exports = [
   {
-    ignores: ['node_modules/**', 'public/vendor/**'],
+    ignores: ['node_modules/**'],
   },
 
   {
@@ -55,9 +55,10 @@ module.exports = [
     },
   },
 
-  // Browser frontend: classic script (IIFE), served straight to the page.
+  // Browser frontend (the core's app/templates/app.js): classic script (IIFE),
+  // served straight to the page.
   {
-    files: ['public/**/*.js'],
+    files: ['templates/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'script',

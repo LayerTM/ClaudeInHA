@@ -249,23 +249,13 @@ RUN cd /opt/cli-tools \
     && test -x /usr/local/bin/playwright-mcp \
     && test -x /usr/local/bin/ccstatusline
 
-# Web console app
+# Web console app. The terminal font (JetBrains Mono, OFL) comes from the
+# core's own @fontsource/jetbrains-mono dependency, installed below; nothing
+# fetches it separately.
 COPY --from=assembly /addon/app /opt/agent-console
 RUN cd /opt/agent-console \
     && /usr/local/lib/install-tools/npm-ci-checked.sh --omit=dev \
     && npm cache clean --force
-
-# Bundled terminal font (JetBrains Mono, OFL) — crisp, consistent glyphs across
-# every client, served locally so nothing is fetched at runtime.
-# upstream: npm @fontsource/jetbrains-mono
-ARG JETBRAINS_MONO_VERSION=5.3.0
-RUN mkdir -p /opt/agent-console/public/fonts \
-    && curl -fsSL --retry 3 --retry-delay 2 \
-        "https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@${JETBRAINS_MONO_VERSION}/files/jetbrains-mono-latin-400-normal.woff2" \
-        -o /opt/agent-console/public/fonts/jetbrains-mono-400.woff2 \
-    && curl -fsSL --retry 3 --retry-delay 2 \
-        "https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@${JETBRAINS_MONO_VERSION}/files/jetbrains-mono-latin-700-normal.woff2" \
-        -o /opt/agent-console/public/fonts/jetbrains-mono-700.woff2
 
 # ha-shot helper dependencies (playwright-core drives the system Chromium)
 COPY --from=assembly /addon/ha-tools /opt/ha-tools

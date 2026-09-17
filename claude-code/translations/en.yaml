@@ -105,6 +105,12 @@ configuration:
       Files attached through the web console are stored in /data/uploads.
       Files older than this many days are deleted automatically.
       Set 0 to keep uploads forever.
+  transcript_retention_days:
+    name: Transcript Retention (days)
+    description: >-
+      Conversation transcripts not written to for this many days are deleted
+      automatically; their usage stays counted either way.
+      Set 0 to keep transcripts forever.
   remote_control:
     name: Remote Control (Claude mobile app)
     description: >-

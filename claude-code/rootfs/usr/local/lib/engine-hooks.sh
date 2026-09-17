@@ -185,6 +185,12 @@ engine_prompt_settings() {
     hooks_audit_settings_json
 }
 
+# Claude has no built-in sweep of its own transcript files, so the core's daily
+# upkeep does it instead (see `agent-usage --files` in the adapter).
+engine_transcript_retention() {
+    printf 'core\n'
+}
+
 # --- Provisioning (provision-extras) ---
 
 # Marketplaces + plugins (base + the add-on's `marketplaces` / `plugins` options).
