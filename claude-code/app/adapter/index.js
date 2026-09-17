@@ -88,8 +88,6 @@ module.exports = {
         },
       };
     },
-    // Anthropic API keys and OAuth tokens (`sk-ant-api03-…`, `sk-ant-oat01-…`).
-    secretPatterns: [/\bsk-ant-[A-Za-z0-9_-]{8,}/g],
     authConfigured({ env, home }) {
       return env.ANTHROPIC_API_KEY
         || env.CLAUDE_CODE_OAUTH_TOKEN
