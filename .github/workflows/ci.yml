@@ -38,7 +38,7 @@ jobs:
           claude-code/core/assemble.sh "${RUNNER_TEMP}/core/core.tar" claude-code "${RUNNER_TEMP}/addon"
       - name: Install dependencies
         working-directory: ${{ runner.temp }}/addon/app
-        run: npm ci
+        run: '"${GITHUB_WORKSPACE}/claude-code/build/npm-ci-local-headers.sh"'
       - name: Run tests
         working-directory: ${{ runner.temp }}/addon/app
         run: npm test
@@ -82,7 +82,7 @@ jobs:
           claude-code/core/assemble.sh "${RUNNER_TEMP}/core/core.tar" claude-code "${RUNNER_TEMP}/addon"
       - name: Install dependencies
         working-directory: ${{ runner.temp }}/addon/app
-        run: npm ci
+        run: '"${GITHUB_WORKSPACE}/claude-code/build/npm-ci-local-headers.sh"'
       - name: Lint (eslint)
         working-directory: ${{ runner.temp }}/addon/app
         run: npm run lint
@@ -332,7 +332,7 @@ jobs:
             --entrypoint /root/.local/bin/claude 'addon-image:${{ matrix.arch }}' --version
           docker run --rm --platform '${{ steps.target.outputs.platform }}' \
             --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
-            -e "require('/opt/claude-console/node_modules/node-pty'); console.log('node-pty loads')"
+            -e "require('/opt/claude-console/node_modules/node-pty').spawn('/bin/true', [], {}).onExit(({ exitCode }) => { console.log('node-pty spawns, exit ' + exitCode); process.exit(exitCode); })"
       - name: The bundled CLI accepts every argument list the prompt runner builds
         run: |
           # The lists come from the runner inside the image, not from a copy, so
