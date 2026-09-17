@@ -1,6 +1,6 @@
 'use strict';
 
-/* Claude Console frontend. Plain JS on xterm.js UMD builds — no bundler.
+/* Web console frontend. Plain JS on xterm.js UMD builds — no bundler.
  * Designed for HA ingress: relative URLs only, HTTP-safe clipboard cascade,
  * touch-friendly controls. */
 
@@ -206,7 +206,7 @@
     // macOptionIsMeta (that's keyboard Option-as-Meta; this is mouse Option+drag).
     macOptionClickForcesSelection: true,
     allowProposedApi: true,
-    // "Terracotta Noir": near-black cool canvas so Claude's colored output and
+    // "Terracotta Noir": near-black cool canvas so the agent's colored output and
     // the terracotta cursor read as vivid jewel tones, not muddy pastels.
     theme: {
       background: '#14141a',
@@ -262,7 +262,7 @@
   const search = new SearchAddon();
   term.loadAddon(search);
 
-  // OSC 52: Claude's own copy path. Never reject — swallow so nothing leaks
+  // OSC 52: the agent's own copy path. Never reject — swallow so nothing leaks
   // as text; deliver via cascade (clipboard on HTTPS, tray on HTTP).
   term.parser.registerOscHandler(52, (data) => {
     const semi = data.indexOf(';');
@@ -427,7 +427,7 @@
   // terminal still holds keyboard focus under the "Reconnecting…" overlay, so
   // keystrokes would otherwise vanish with no feedback. Queue user input and
   // flush it in order once the socket reopens — the tmux session is
-  // server-resident, so it's the same Claude/shell on the other side. Capped so
+  // server-resident, so it's the same agent/shell on the other side. Capped so
   // a long outage can't grow it without bound; resize/select are control
   // messages re-sent fresh on reconnect, so they are never queued.
   const OUT_QUEUE_MAX = 256 * 1024;
@@ -977,8 +977,8 @@
     }
   });
 
-  // Restarting Claude is the one control here that reaches other people: there
-  // is a single shared session behind every browser, so it stops what Claude is
+  // Restarting the agent is the one control here that reaches other people: there
+  // is a single shared session behind every browser, so it stops what the agent is
   // doing for all of them at once. When anyone else is attached, say who is
   // affected and what happens before doing it — never after.
   function othersWatching() {
@@ -1019,7 +1019,7 @@
 
   els.updateRespawn.addEventListener('click', askThenRespawn);
 
-  // Updating and restarting are the two things that touch the Claude process, so
+  // Updating and restarting are the two things that touch the agent process, so
   // they live together behind one button. The restart used to be reachable ONLY
   // as the last step of an update that changed the version — which meant that on
   // an up-to-date install there was no way to reach it at all, and no way to see
@@ -1230,9 +1230,9 @@
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== 'keydown') return true;
     // (1) Multi-line input — Shift / Alt(Option) / Ctrl / Cmd + Enter inserts a
-    // newline in Claude's prompt instead of sending. Every Enter variant reaches
-    // xterm as a bare CR (0x0D), which Claude reads as "submit". We instead send
-    // LF (0x0A = Ctrl+J): Claude maps CR→submit and LF→newline, and a lone LF is
+    // newline in the agent's prompt instead of sending. Every Enter variant reaches
+    // xterm as a bare CR (0x0D), which the agent reads as "submit". We instead send
+    // LF (0x0A = Ctrl+J): the agent maps CR→submit and LF→newline, and a lone LF is
     // the one newline that survives tmux with no keyboard-protocol setup and no
     // ESC-timing race (an ESC+CR "Alt+Enter" can be split across WebSocket frames,
     // turning it into an Escape keypress + submit). Plain Enter is left untouched,
