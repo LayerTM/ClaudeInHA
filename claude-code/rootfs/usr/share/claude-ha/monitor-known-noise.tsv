@@ -1,0 +1,6 @@
+# Home Assistant log records the periodic health check (cc-monitor) leaves out:
+# noise this add-on's own traffic causes, which the owner cannot act on.
+# One record per line: <extended regular expression><TAB><upstream report>.
+# A log record matching the expression anywhere is dropped whole. Remove a line
+# once its upstream report is fixed in the Home Assistant versions in use.
+input_value='server/discover'	https://github.com/home-assistant/core/issues/182323

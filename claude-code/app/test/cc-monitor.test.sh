@@ -13,9 +13,12 @@
 #   7. the model runs with no tools and no Home Assistant credentials;
 #   8. every external call is time-limited;
 #   9. a notifier that cannot deliver does not silence the warning for good;
-#  10. Home Assistant's rejections of the CLI's `server/discover` request are
-#      left out of the analysis, whole, and a log of nothing else is still a
-#      readable log.
+#  10. records the known-noise list names (the shipped list: Home Assistant's
+#      rejections of the CLI's `server/discover` request) are left out whole, a
+#      log of nothing else is still a readable log, and a new list line is all
+#      it takes to leave out another kind;
+#  11. the analysis sees the last records, each cut to a size: one huge record
+#      cannot hide the others.
 #
 # Case 6 is the one with history: passed as a positional argument the prompt is
 # consumed by --allowed-tools, which takes a list, and the command exits with no
@@ -139,9 +142,34 @@ discover_record() {
     printf 'printf 200\n'
 } > "${work}/onlynoise"
 
+# log_stub <name> <body file>: a curl stand-in that answers with the file and a 200.
+log_stub() {
+    printf '#!/usr/bin/env bash\ncat %q\nprintf 200\n' "$2" > "${work}/$1"
+}
+# A real error, one record far larger than the window, then another real error.
+{
+    printf '2026-09-16 18:19:30.000 ERROR (MainThread) [homeassistant.components.baz] BEFORE-FLOOD-MARK\n'
+    printf '2026-09-16 18:20:00.000 ERROR (MainThread) [homeassistant.components.big] Traceback FLOOD-START\n'
+    for i in $(seq 1 2000); do printf '  File "/usr/src/x.py", line %s, in handler\n' "${i}"; done
+    printf '2026-09-16 18:21:00.000 ERROR (MainThread) [homeassistant.components.bar] AFTER-FLOOD-MARK\n'
+} > "${work}/flood.txt"
+log_stub floodlog "${work}/flood.txt"
+# Twenty short records: only the last ones reach the analysis.
+for i in $(seq -w 1 20); do
+    printf '2026-09-16 18:30:%s.000 WARNING (MainThread) [homeassistant.components.n] RECORD-%s\n' "${i}" "${i}"
+done > "${work}/many.txt"
+log_stub manylog "${work}/many.txt"
+# A kind of noise the shipped list does not name, and a list that names it.
+{
+    printf '2026-09-16 18:40:00.000 WARNING (MainThread) [homeassistant.components.q] NEW-NOISE-MARK something harmless\n'
+    printf '2026-09-16 18:41:00.000 ERROR (MainThread) [homeassistant.components.r] KEPT-MARK\n'
+} > "${work}/newnoise.txt"
+log_stub newnoiselog "${work}/newnoise.txt"
+printf '# test list\nNEW-NOISE-MARK\thttps://example.invalid/issue\n' > "${work}/noise-list.tsv"
+
 chmod +x "${work}"/notify "${work}"/notify-broken "${work}"/claude "${work}"/check \
          "${work}"/check-broken "${work}"/goodlog "${work}"/badlog "${work}"/timeout \
-         "${work}"/noisylog "${work}"/onlynoise
+         "${work}"/noisylog "${work}"/onlynoise "${work}"/floodlog "${work}"/manylog "${work}"/newnoiselog
 
 fails=0
 ok()   { printf 'PASS  %s\n' "$1"; }
@@ -156,6 +184,7 @@ run() {
     CC_MONITOR_CURL="${work}/$1" \
     CC_MONITOR_CLAUDE_CMD="${work}/claude" \
     CC_MONITOR_TIMEOUT_CMD="${work}/timeout" \
+    CC_MONITOR_KNOWN_NOISE="${KNOWN_NOISE:-${repo}/rootfs/usr/share/claude-ha/monitor-known-noise.tsv}" \
     SUPERVISOR_TOKEN="tok-supervisor" SUPERVISOR_API_TOKEN="tok-api" \
     HA_TOKEN="tok-ha" HASS_TOKEN="tok-hass" \
     CLAUDE_ANSWER="$2" CLAUDE_RC="${3:-0}" \
@@ -215,6 +244,32 @@ if [[ "${seen}" == *"no entries apart from known, harmless ones"* ]]; then
 else
     bad "an empty remainder was not stated (stdin began: ${seen:0:120})"
 fi
+run newnoiselog OK >/dev/null
+seen="$(cat "${claude_in}")"
+check "the shipped list does not name the new kind" "$([[ "${seen}" == *NEW-NOISE-MARK* ]] && echo kept)" "kept"
+KNOWN_NOISE="${work}/noise-list.tsv" run newnoiselog OK >/dev/null
+seen="$(cat "${claude_in}")"
+check "one list line leaves the new kind out" "$([[ "${seen}" == *NEW-NOISE-MARK* ]] && echo kept || echo dropped)" "dropped"
+check "and only that kind"                    "$([[ "${seen}" == *KEPT-MARK* ]] && echo kept)" "kept"
+rm -rf "${work}/data"
+
+# --- 11. one huge record cannot hide the others ---------------------------------
+run floodlog OK >/dev/null
+seen="$(cat "${claude_in}")"
+check "a record before a huge one reaches the analysis" "$([[ "${seen}" == *BEFORE-FLOOD-MARK* ]] && echo yes)" "yes"
+check "a record after a huge one reaches the analysis" "$([[ "${seen}" == *AFTER-FLOOD-MARK* ]] && echo yes)" "yes"
+check "the huge record is there, cut and marked" \
+    "$([[ "${seen}" == *FLOOD-START* && "${seen}" == *'[...truncated]'* ]] && echo yes)" "yes"
+if [ "${#seen}" -lt 10000 ]; then
+    ok "the analysis input stays small (${#seen} characters)"
+else
+    bad "the analysis input grew to ${#seen} characters"
+fi
+run manylog OK >/dev/null
+seen="$(cat "${claude_in}")"
+check "the newest record is there"            "$([[ "${seen}" == *RECORD-20* ]] && echo yes)" "yes"
+check "the 15th newest is there"              "$([[ "${seen}" == *RECORD-06* ]] && echo yes)" "yes"
+check "the 16th newest is not"                "$([[ "${seen}" == *RECORD-05* ]] && echo yes || echo no)" "no"
 rm -rf "${work}/data"
 
 # --- 2. a finding is notified -------------------------------------------------
