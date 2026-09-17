@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.57.1] — 2026-09-17
+
+### Changed
+- **The bundled command-line tools are installed from a lockfile with checked
+  install scripts.** The Playwright MCP server (`playwright-mcp`) and the status
+  line (`ccstatusline`) are installed from recorded package versions and
+  integrity hashes, in the same checked way as the add-on's other dependencies,
+  instead of with a global `npm install`. The commands stay where they were.
+- **The Node.js download is checked against a recorded SHA-256** before it is
+  unpacked; a download that differs stops the image build.
+
 ## [1.57.0] — 2026-09-17
 
 ### Added
