@@ -50,5 +50,5 @@ for part in app ha-tools rootfs; do
 done
 
 node "${work}/core/tools/check-adapter-graph.js" "${out}/app"
-node -e 'require(process.argv[1]).adapter()' "${out}/app/server/adapter-contract.js"
+node -e 'require(require("node:path").resolve(process.argv[1])).adapter()' "${out}/app/server/adapter-contract.js"
 echo "assembled ha-agent-core $(node -p 'require(process.argv[1]).version' "${here}/core.lock.json") into ${out}"

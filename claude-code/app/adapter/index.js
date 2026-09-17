@@ -14,6 +14,10 @@ const runner = require('./runner');
 // pasted config line ship the credential to any host.
 const LIMITS_URL = 'https://api.anthropic.com/api/oauth/usage';
 
+// The CLI both the console and the prompt API run (the add-on keeps it updated
+// under /data).
+const CLAUDE_BIN = '/data/home/.local/bin/claude';
+
 module.exports = {
   apiVersion: require('./api-version'),
   descriptor: {
@@ -24,10 +28,11 @@ module.exports = {
     versionAlias: 'claude_version',
   },
   runner: {
-    run: runner.runClaude,
-    shutdown: runner.shutdown,
-    safeLangTag: runner.safeLangTag,
-    TIMEOUT_MS: runner.TIMEOUT_MS,
+    bin: CLAUDE_BIN,
+    launch: runner.launch,
+    createDecoder: runner.createDecoder,
+    toolName: runner.toolName,
+    toolBasename: runner.toolBasename,
   },
   prompt: {
     // The OAuth access token as the CLI keeps it: the pasted `oauth_token` option
@@ -124,7 +129,7 @@ module.exports = {
     },
   },
   console: {
-    bin: '/data/home/.local/bin/claude',
+    bin: CLAUDE_BIN,
     updateCommand: '/usr/local/bin/update-claude',
     windowName: 'claude',
     launcher: '/usr/local/bin/start-claude',
