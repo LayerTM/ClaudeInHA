@@ -25,10 +25,17 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 OLD_X64, OLD_ARM = "a" * 64, "b" * 64
 NEW_X64, NEW_ARM = "c" * 64, "d" * 64
 BASE = "https://dl.example/releases"
+NODE_OLD_X64, NODE_OLD_ARM = "1" * 64, "2" * 64
+NODE_NEW_X64, NODE_NEW_ARM = "3" * 64, "4" * 64
+NODE_SUMS = "https://nodejs.org/dist/v{}/SHASUMS256.txt"
 
 DOCKERFILE = f"""FROM scratch
 # upstream: nodejs lts-ready
 ARG NODE_VERSION=26.8.1
+# upstream: nodejs-sha256 linux-x64
+ARG NODE_SHA256_AMD64={NODE_OLD_X64}
+# upstream: nodejs-sha256 linux-arm64
+ARG NODE_SHA256_ARM64={NODE_OLD_ARM}
 # upstream: claude-code CLAUDE_DOWNLOAD_BASE latest
 ARG CLAUDE_CODE_VERSION=2.1.263
 # upstream: claude-code-sha256 linux-x64
@@ -51,6 +58,13 @@ def manifest(x64: str, arm: str) -> bytes:
     return json.dumps({"platforms": {"linux-x64": {"checksum": x64}, "linux-arm64": {"checksum": arm}}}).encode()
 
 
+def shasums(version: str, x64: str, arm: str) -> bytes:
+    return (f"{x64}  node-v{version}-linux-x64.tar.xz\n"
+            f"{x64}  node-v{version}-linux-x64.tar.gz\n"
+            f"{arm}  node-v{version}-linux-arm64.tar.xz\n"
+            f"{'9' * 64}  node-v{version}-linux-arm64-musl.tar.xz\n").encode()
+
+
 def answers(**over) -> dict[str, bytes]:
     base = {
         "https://nodejs.org/dist/index.json": json.dumps([
@@ -58,6 +72,8 @@ def answers(**over) -> dict[str, bytes]:
             {"version": "v26.8.1", "lts": False},
             {"version": "v24.9.0", "lts": "Krypton"},
         ]).encode(),
+        NODE_SUMS.format("26.8.1"): shasums("26.8.1", NODE_OLD_X64, NODE_OLD_ARM),
+        NODE_SUMS.format("26.9.0"): shasums("26.9.0", NODE_NEW_X64, NODE_NEW_ARM),
         f"{BASE}/latest": b"2.1.263\n",
         f"{BASE}/2.1.263/manifest.json": manifest(OLD_X64, OLD_ARM),
         f"{BASE}/2.1.272/manifest.json": manifest(NEW_X64, NEW_ARM),
@@ -171,11 +187,31 @@ check("an unknown upstream kind is refused", code, 2)
 code, _ = run(repo("FROM scratch\n", "build_from: {}\n"), answers(), "check")
 check("no markers at all is an error, not 'nothing stale'", code, 2)
 
+code, out = run(repo(), answers(**{NODE_SUMS.format("26.8.1"): shasums("26.8.1", NODE_NEW_X64, NODE_OLD_ARM)}), "check")
+check("a Node checksum that no longer matches the pinned version is reported",
+      (code, "NODE_SHA256_AMD64" in out), (1, True))
+
+sums = NODE_SUMS.format("26.8.1")
+for label, body in [
+    ("SHASUMS without the platform's tarball", f"{NODE_OLD_ARM}  node-v26.8.1-linux-arm64.tar.xz\n".encode()),
+    ("SHASUMS listing the tarball twice", shasums("26.8.1", NODE_OLD_X64, NODE_OLD_ARM) * 2),
+    ("SHASUMS entry that is not a SHA-256", shasums("26.8.1", "zz", NODE_OLD_ARM)),
+    ("SHASUMS that is an HTML page", b"<html>not found</html>"),
+]:
+    code, out = run_safely(answers(**{sums: body}))
+    check(f"{label} -> exit 2", code, 2)
+    check(f"{label} -> the upstream is named", sums in out, True)
+
+orphan = "FROM scratch\n# upstream: nodejs-sha256 linux-x64\nARG NODE_SHA256_AMD64=" + NODE_OLD_X64 + "\n"
+code, out = run(repo(orphan), answers(), "check")
+check("a Node checksum with no nodejs pin in its file is refused", (code, "needs exactly one nodejs pin" in out), (2, True))
+
 print("node policy")
 lts28 = json.dumps([
     {"version": "v28.1.0", "lts": "Next"}, {"version": "v27.3.0", "lts": False}, {"version": "v26.9.0", "lts": False},
 ]).encode()
-code, out = run(repo(), answers(**{"https://nodejs.org/dist/index.json": lts28}), "check")
+code, out = run(repo(), answers(**{"https://nodejs.org/dist/index.json": lts28,
+                                   NODE_SUMS.format("28.1.0"): shasums("28.1.0", NODE_NEW_X64, NODE_NEW_ARM)}), "check")
 check("a newer major that has had an LTS release is taken", "26.8.1 -> 28.1.0" in out, True)
 same = json.dumps([{"version": "v27.0.0", "lts": False}, {"version": "v26.9.0", "lts": False}]).encode()
 code, out = run(repo(), answers(**{"https://nodejs.org/dist/index.json": same}), "check")
@@ -187,20 +223,26 @@ summary = root / "summary.json"
 code, out = run(root, answers(**{
     f"{BASE}/latest": b"2.1.272",
     "https://registry.npmjs.org/ccstatusline/latest": b'{"version": "3.0.0"}',
+    "https://nodejs.org/dist/index.json": same,
 }), "bump", "--summary", str(summary))
 text = (root / "addon" / "Dockerfile").read_text()
 check("bump exits 0", code, 0)
 check("the Claude version moves", "ARG CLAUDE_CODE_VERSION=2.1.272\n" in text, True)
 check("its checksums move to the NEW version's manifest", (f"AMD64={NEW_X64}\n" in text, f"ARM64={NEW_ARM}\n" in text), (True, True))
+check("the Node version moves", "ARG NODE_VERSION=26.9.0\n" in text, True)
+check("its checksums move to the NEW version's SHASUMS",
+      (f"NODE_SHA256_AMD64={NODE_NEW_X64}\n" in text, f"NODE_SHA256_ARM64={NODE_NEW_ARM}\n" in text), (True, True))
 check("an npm pin moves", "ARG CCSTATUSLINE_VERSION=3.0.0\n" in text, True)
-check("an untouched pin and the markers stay byte-identical", ("ARG HASS_MCP_VERSION=0.6.0\n" in text, text.count("# upstream:")), (True, 6))
+check("an untouched pin and the markers stay byte-identical", ("ARG HASS_MCP_VERSION=0.6.0\n" in text, text.count("# upstream:")), (True, 8))
 changes = json.loads(summary.read_text())
-check("the summary lists four moves", sorted(c["name"] for c in changes),
-      ["CCSTATUSLINE_VERSION", "CLAUDE_CODE_SHA256_AMD64", "CLAUDE_CODE_SHA256_ARM64", "CLAUDE_CODE_VERSION"])
+check("the summary lists seven moves", sorted(c["name"] for c in changes),
+      ["CCSTATUSLINE_VERSION", "CLAUDE_CODE_SHA256_AMD64", "CLAUDE_CODE_SHA256_ARM64", "CLAUDE_CODE_VERSION",
+       "NODE_SHA256_AMD64", "NODE_SHA256_ARM64", "NODE_VERSION"])
 check("a major move is flagged", {c["name"]: c["major"] for c in changes}["CCSTATUSLINE_VERSION"], True)
 code, out = run(root, answers(**{
     f"{BASE}/latest": b"2.1.272",
     "https://registry.npmjs.org/ccstatusline/latest": b'{"version": "3.0.0"}',
+    "https://nodejs.org/dist/index.json": same,
 }), "check")
 check("after a bump, check agrees everything is current", code, 0)
 
@@ -209,6 +251,8 @@ found = pins.discover(REPO)
 check("every pin in the add-on declares an upstream (no unmarked pin)", len(found) > 0, True)
 check("the Claude checksums have their version pin beside them",
       sum(1 for p in found if p.kind == "claude-code-sha256"), 2)
+check("the Node checksums have their version pin beside them",
+      sum(1 for p in found if p.kind == "nodejs-sha256"), 2)
 
 if fails:
     print(f"{fails} failure(s)")

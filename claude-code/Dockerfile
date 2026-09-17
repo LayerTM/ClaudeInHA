@@ -39,17 +39,32 @@ RUN apt-get update \
         xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Node.js from official dist tarballs (latest, deterministic, arch-aware)
+# Node.js from official dist tarballs (latest, deterministic, arch-aware).
+# The SHA-256 of each platform's tarball is recorded beside the version, taken
+# from that release's SHASUMS256.txt when the version is bumped (pins.py moves
+# them together). The tarball is checked against the recorded value before it is
+# unpacked, so a download that differs from what was seen at the bump — however
+# it came to differ — stops the build instead of being installed.
 # upstream: nodejs lts-ready
 ARG NODE_VERSION=26.9.0
+# upstream: nodejs-sha256 linux-x64
+ARG NODE_SHA256_AMD64=c6ecd8efc1c1d395265891675319da7a7b3785c6be174bd78933cf4f057624d1
+# upstream: nodejs-sha256 linux-arm64
+ARG NODE_SHA256_ARM64=686d07ed3bc5d68d9f7bd4939b7e8849a87d0664ac19c8c5474474f44cc956db
 RUN arch="$(dpkg --print-architecture)" \
     && case "${arch}" in \
-         amd64) node_arch="x64" ;; \
-         arm64) node_arch="arm64" ;; \
-         *) echo "Unsupported architecture: ${arch}" && exit 1 ;; \
+         amd64) node_arch="x64";   expected="${NODE_SHA256_AMD64}" ;; \
+         arm64) node_arch="arm64"; expected="${NODE_SHA256_ARM64}" ;; \
+         *) echo "Unsupported architecture: ${arch}"; exit 1 ;; \
        esac \
-    && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" \
-       | tar -xJ -C /usr/local --strip-components=1 --no-same-owner \
+    && tarball="node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" \
+    && { curl -fsSL --proto '=https' --retry 3 --retry-delay 2 -o "/tmp/${tarball}" \
+           "https://nodejs.org/dist/v${NODE_VERSION}/${tarball}" \
+         || { echo "Could not download ${tarball}"; exit 1; }; } \
+    && { echo "${expected}  /tmp/${tarball}" | sha256sum -c --strict - \
+         || { echo "${tarball} does not match the recorded SHA-256 ${expected}"; exit 1; }; } \
+    && tar -xJf "/tmp/${tarball}" -C /usr/local --strip-components=1 --no-same-owner \
+    && rm -f "/tmp/${tarball}" \
     && node --version && npm --version
 
 # --- ha-agent-core (pinned, checksum-verified) ---
