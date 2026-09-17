@@ -1,0 +1,108 @@
+{
+  "--json": {
+    "projects": "$HOME/.claude/projects",
+    "window_days": 7,
+    "tokens": {
+      "today": {
+        "input": 923,
+        "output": 542,
+        "cache_read": 15439,
+        "cache_write": 800
+      },
+      "recent": {
+        "input": 974,
+        "output": 604,
+        "cache_read": 15520,
+        "cache_write": 883
+      },
+      "all_time": {
+        "input": 1079,
+        "output": 810,
+        "cache_read": 15520,
+        "cache_write": 883
+      }
+    },
+    "by_model_recent": {
+      "claude-opus-5": {
+        "input": 20,
+        "output": 521,
+        "cache_read": 15439,
+        "cache_write": 800
+      },
+      "unknown": {
+        "input": 1,
+        "output": 2,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "claude-haiku-4-5": {
+        "input": 953,
+        "output": 81,
+        "cache_read": 72,
+        "cache_write": 83
+      }
+    },
+    "messages": {
+      "today": 4,
+      "recent": 7,
+      "all_time": 9
+    },
+    "prompt_api_cost_usd": {
+      "today": 0.0123,
+      "total": 0.5223
+    }
+  },
+  "--json 3": {
+    "projects": "$HOME/.claude/projects",
+    "window_days": 3,
+    "tokens": {
+      "today": {
+        "input": 923,
+        "output": 542,
+        "cache_read": 15439,
+        "cache_write": 800
+      },
+      "recent": {
+        "input": 933,
+        "output": 553,
+        "cache_read": 15460,
+        "cache_write": 813
+      },
+      "all_time": {
+        "input": 1079,
+        "output": 810,
+        "cache_read": 15520,
+        "cache_write": 883
+      }
+    },
+    "by_model_recent": {
+      "claude-opus-5": {
+        "input": 19,
+        "output": 520,
+        "cache_read": 15439,
+        "cache_write": 800
+      },
+      "unknown": {
+        "input": 1,
+        "output": 2,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "claude-haiku-4-5": {
+        "input": 913,
+        "output": 31,
+        "cache_read": 12,
+        "cache_write": 13
+      }
+    },
+    "messages": {
+      "today": 4,
+      "recent": 5,
+      "all_time": 9
+    },
+    "prompt_api_cost_usd": {
+      "today": 0.0123,
+      "total": 0.5223
+    }
+  }
+}

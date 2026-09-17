@@ -58,6 +58,10 @@ jobs:
         working-directory: ${{ runner.temp }}/addon/app
         run: npm run test:monitor
 
+      - name: Run morning briefing tests (bash + jq)
+        working-directory: ${{ runner.temp }}/addon/app
+        run: npm run test:digest
+
       - name: Run audit-log hook tests (bash + jq)
         working-directory: ${{ runner.temp }}/addon/app
         run: npm run test:audit

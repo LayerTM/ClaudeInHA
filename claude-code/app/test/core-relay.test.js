@@ -37,12 +37,17 @@ before(async () => {
       }
       if (req.url === '/api/mcp' && req.headers.accept === 'text/event-stream') {
         res.writeHead(200, { 'content-type': 'text/event-stream', 'mcp-session-id': 'sess-1' });
-        res.write('event: one\ndata: {"a":1}\n\n');
-        setTimeout(() => { res.write('event: two\ndata: {"b":2}\n\n'); res.end(); }, 20);
+        res.write('event: one\ndata: {"jsonrpc":"2.0","method":"notifications/progress","params":{"n":1}}\n\n');
+        setTimeout(() => {
+          res.write('event: two\ndata: {"jsonrpc":"2.0","id":7,"result":{"n":2}}\n\n');
+          res.end();
+        }, 20);
         return;
       }
+      let id = null;
+      try { id = JSON.parse(Buffer.concat(chunks).toString('utf8')).id ?? null; } catch { /* not JSON */ }
       res.writeHead(200, { 'content-type': 'application/json', 'mcp-session-id': 'sess-1' });
-      res.end(JSON.stringify({ ok: true, path: req.url }));
+      res.end(JSON.stringify({ jsonrpc: '2.0', id, result: { path: req.url } }));
     });
   });
   await new Promise((r) => core.listen(0, '127.0.0.1', r));
@@ -57,6 +62,7 @@ after(() => {
 });
 
 const auth = { authorization: `Bearer ${RELAY_TOKEN}` };
+const INIT = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}';
 
 test('binds loopback only', () => {
   assert.match(relay.url, /^http:\/\/127\.0\.0\.1:\d+$/);
@@ -67,14 +73,14 @@ test('swaps the relay token for the HA token, and never forwards the relay one',
   const res = await fetch(`${relay.url}/api/mcp`, {
     method: 'POST',
     headers: { ...auth, 'content-type': 'application/json' },
-    body: '{"method":"initialize"}',
+    body: INIT,
   });
   assert.equal(res.status, 200);
   assert.equal(seen.length, 1);
   assert.equal(seen[0].headers.authorization, `Bearer ${HA_TOKEN}`);
   assert.ok(!JSON.stringify(seen[0].headers).includes(RELAY_TOKEN),
     'the relay token must not reach Core');
-  assert.equal(seen[0].body, '{"method":"initialize"}', 'request body is forwarded intact');
+  assert.equal(seen[0].body, INIT, 'request body is forwarded intact');
 });
 
 test('a wrong bearer is refused and nothing reaches Core', async () => {
@@ -127,7 +133,7 @@ test('mcp-session-id survives in both directions', async () => {
   const res = await fetch(`${relay.url}/api/mcp`, {
     method: 'POST',
     headers: { ...auth, 'mcp-session-id': 'sess-1', 'mcp-protocol-version': '2026-03-26' },
-    body: '{}',
+    body: INIT,
   });
   assert.equal(seen[0].headers['mcp-session-id'], 'sess-1');
   assert.equal(seen[0].headers['mcp-protocol-version'], '2026-03-26');
@@ -137,7 +143,7 @@ test('mcp-session-id survives in both directions', async () => {
 test('server-sent events stream through rather than being buffered', async () => {
   seen = [];
   const res = await fetch(`${relay.url}/api/mcp`, {
-    method: 'POST', headers: { ...auth, accept: 'text/event-stream' }, body: '{}',
+    method: 'POST', headers: { ...auth, accept: 'text/event-stream' }, body: INIT,
   });
   assert.equal(res.headers.get('content-type'), 'text/event-stream');
   const reader = res.body.getReader();
@@ -160,12 +166,15 @@ test('a 3xx from Core becomes a 502 and the Authorization header is not re-sent'
     haToken: HA_TOKEN,
     relayToken: RELAY_TOKEN,
   });
-  const res = await fetch(`${r2.url}/api/mcp`, { method: 'POST', headers: auth, body: '{}' });
-  assert.equal(res.status, 502);
-  const body = await res.json();
-  assert.match(body.error, /redirect/);
-  r2.close();
-  redirecting.close();
+  try {
+    const res = await fetch(`${r2.url}/api/mcp`, { method: 'POST', headers: auth, body: INIT });
+    assert.equal(res.status, 502);
+    const body = await res.json();
+    assert.match(body.error, /redirect/);
+  } finally {
+    r2.close();
+    redirecting.close();
+  }
 });
 
 test('an unreachable Core is a 502, not an auth error', async () => {
@@ -174,7 +183,10 @@ test('an unreachable Core is a 502, not an auth error', async () => {
     haToken: HA_TOKEN,
     relayToken: RELAY_TOKEN,
   });
-  const res = await fetch(`${dead.url}/api/mcp`, { method: 'POST', headers: auth, body: '{}' });
-  assert.equal(res.status, 502, 'unreachable must never present as 401');
-  dead.close();
+  try {
+    const res = await fetch(`${dead.url}/api/mcp`, { method: 'POST', headers: auth, body: INIT });
+    assert.equal(res.status, 502, 'unreachable must never present as 401');
+  } finally {
+    dead.close();
+  }
 });

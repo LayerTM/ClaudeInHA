@@ -17,9 +17,11 @@ const { once } = require('node:events');
 const { sourceAllowed } = require('../server/sources');
 
 const SCRIPT = path.join(__dirname, '..', 'server', 'starting.js');
-const RUN_SCRIPT = path.join(
+const SERVICE_SCRIPT = path.join(
   __dirname, '..', '..', 'rootfs', 'etc', 's6-overlay', 's6-rc.d', 'claude-code', 'run',
 );
+// The core's start script, which the service hands over to.
+const RUN_SCRIPT = path.join(__dirname, '..', '..', 'rootfs', 'usr', 'local', 'bin', 'addon-run');
 
 async function freePort() {
   const probe = net.createServer();
@@ -125,12 +127,17 @@ test('the source guard is the same one the console uses', () => {
   assert.equal(sourceAllowed({ remoteAddress: '192.0.2.9' }, true), true, 'dev mode');
 });
 
+test('the service hands over to the start script with the container environment', () => {
+  const code = fs.readFileSync(SERVICE_SCRIPT, 'utf8').split('\n').filter((l) => l && !l.startsWith('# '));
+  assert.deepEqual(code, ['#!/command/with-contenv bash', 'exec /usr/local/bin/addon-run']);
+});
+
 test('the run script holds the port for the whole of initialization', () => {
   const run = fs.readFileSync(RUN_SCRIPT, 'utf8');
   const started = run.indexOf('server/starting.js');
   const firstInitStep = run.indexOf('mkdir -p /data/home');
   const stopped = run.lastIndexOf('kill "${starting_pid}"');
-  const consoleExec = run.indexOf('exec node /opt/claude-console/server/index.js');
+  const consoleExec = run.indexOf('exec node "${AGENT_CONSOLE_DIR}/server/index.js"');
 
   assert.ok(started > -1, 'the placeholder is started');
   assert.ok(consoleExec > -1, 'the console is exec\'d');

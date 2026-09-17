@@ -17,7 +17,9 @@ set -o pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 addon="$(cd "${here}/../.." && pwd)"                 # claude-code/
-run="${addon}/rootfs/etc/s6-overlay/s6-rc.d/claude-code/run"
+# The engine hooks the core's start script runs (the add-on's service hands
+# over to that script).
+run="${addon}/rootfs/usr/local/lib/engine-hooks.sh"
 lib="${addon}/rootfs/usr/local/lib/addon-statusline.sh"
 
 command -v jq >/dev/null 2>&1 || { echo "FAIL: jq is required by this test and by the library"; exit 1; }
@@ -39,10 +41,10 @@ check() { [ "$2" = "$3" ] && pass "$1" || fail "$1" "$2" "$3"; }
 sl() { jq -c '.statusLine' "${settings}"; }
 want_full="{\"type\":\"command\",\"command\":\"${CC_STATUSLINE_CMD}\",\"padding\":0,\"refreshInterval\":${CC_STATUSLINE_REFRESH}}"
 
-echo "the service script uses the library"
+echo "the engine hooks use the library"
 case "$(cat "${run}")" in
-    *"statusline_seed_or_migrate"*) pass "the service script calls statusline_seed_or_migrate" ;;
-    *) fail "the service script calls statusline_seed_or_migrate" "absent" "present" ;;
+    *"statusline_seed_or_migrate"*) pass "the engine hooks call statusline_seed_or_migrate" ;;
+    *) fail "the engine hooks call statusline_seed_or_migrate" "absent" "present" ;;
 esac
 case "$(cat "${run}")" in
     *"source /usr/local/lib/addon-statusline.sh"*) pass "and sources the library that defines it" ;;

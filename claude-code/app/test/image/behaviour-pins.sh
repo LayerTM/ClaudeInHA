@@ -2,7 +2,8 @@
 # Behaviour pins that only the built image can answer: what the service script
 # sets up and exports, how the Claude tab is launched, how the CLI is updated
 # (from a shell and from the console's Update button), what provisioning
-# installs, and how the morning digest calls Claude.
+# installs, how the health check and the morning digest call Claude through
+# agent-ask, and that a prompt API run leaves nothing agent-usage counts.
 #
 # Runs as root inside a throwaway container of the add-on image:
 #   docker run --rm -v "$PWD/claude-code/app/test/image:/pins-src:ro" \
@@ -129,9 +130,16 @@ envv() { jq -r --arg k "$1" 'if has($k) then .[$k] else "<unset>" end' "${P}/con
 persistent_version() { /data/home/.local/bin/claude --version 2>/dev/null | awk '{print $1}'; }
 claude_calls() { cut -d'|' -f4- "${P}/claude.log" 2>/dev/null | sed 's/ $//'; }
 
+# The container environment s6 keeps for its services. with-contenv starts the
+# service with exactly these (and PATH), so PINS_NOT_CONTENV below must not
+# reach the console and PINS_CONTENV must.
+mkdir -p /run/s6/container_environment
+printf '/root' > /run/s6/container_environment/HOME
+printf 'from-contenv' > /run/s6/container_environment/PINS_CONTENV
+
 # run_service: the s6 service script, as the Supervisor starts it (minus s6).
 run_service() {
-    env -i PATH="${BASE_PATH}" HOME=/root timeout 90 bashio "${SERVICE}" > "${P}/run.out" 2>&1
+    env -i PATH="${BASE_PATH}" PINS_NOT_CONTENV=1 timeout 90 "${SERVICE}" > "${P}/run.out" 2>&1
     local status=$?
     # provisioning is started in the background; let it finish before asserting
     for _ in $(seq 1 60); do
@@ -158,7 +166,7 @@ AUDIT_SETTINGS='{"hooks":{"PostToolUse":[{"matcher":"Bash|Edit|Write|MultiEdit|^
 EXPECTED_CONSOLE_ENV="ADDON_VERSION ANTHROPIC_API_KEY ANTHROPIC_MODEL CLAUDE_CONSOLE_DEV CLAUDE_CONSOLE_PORT
 CLAUDE_PROMPT_BIN CLAUDE_PROMPT_DATA CLAUDE_PROMPT_DEV CLAUDE_PROMPT_OPTIONS CLAUDE_PROMPT_PORT
 CLAUDE_PROMPT_SETTINGS CLAUDE_PROMPT_USAGE_BIN DISABLE_AUTOUPDATER HA_URL HOME IS_SANDBOX LANG PATH
-PINS_FOO REMOTE_CONTROL TERM UPLOAD_DIR UPLOAD_RETENTION_DAYS USE_BUILTIN_RIPGREP"
+PINS_CONTENV PINS_FOO REMOTE_CONTROL TERM UPLOAD_DIR UPLOAD_RETENTION_DAYS USE_BUILTIN_RIPGREP"
 check_console_env_names() {
     local got want added removed
     got="$(jq -r 'keys[]' "${P}/console-env.json" | grep -vE '^(LOG_FD|__BASHIO_.*|PWD|SHLVL|_)$' | sort)"
@@ -182,7 +190,11 @@ options '{"api_key":"sk-ant-api03-EXAMPLEimagepins000","model":"pins-model","cus
 "environment_vars":["PINS_FOO=bar","CLAUDE_PROMPT_BIN=/evil","CLAUDE_PROMPT_HA_MCP_URL=http://evil.example","CLAUDE_CONSOLE_DEV=1","CLAUDE_PROMPT_DEV=1","not-a-pair"]}'
 run_service
 eq "service script exits 0 after handing over to the console" "$?" 0
-eq "console is started as the last step" "$(cat "${P}/console-args" 2>/dev/null)" "/opt/claude-console/server/index.js"
+eq "console is started as the last step" "$(cat "${P}/console-args" 2>/dev/null)" "/opt/agent-console/server/index.js"
+eq "the service hands the container environment to the start script" "$(envv PINS_CONTENV)" from-contenv
+eq "and nothing else of its caller's" "$(envv PINS_NOT_CONTENV)" "<unset>"
+yes_ "the start script names the product first" grep -q 'Initializing Claude Code add-on\.\.\.' "${P}/run.out"
+yes_ "and the console last" grep -q 'Starting Claude Console on port 8099\.\.\.' "${P}/run.out"
 eq "persistent CLI is seeded from the image" "$(persistent_version)" "${IMG}"
 check_console_env_names
 eq "PATH" "$(envv PATH)" "/data/home/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -484,8 +496,8 @@ reset
 mkfake /data/home/.local/bin/claude 1.0.0
 mkdir -p /data/uploads
 cat > "${P}/cli-update.js" <<'EOF'
-const express = require('/opt/claude-console/node_modules/express');
-const { createRouter } = require('/opt/claude-console/server/api.js');
+const express = require('/opt/agent-console/node_modules/express');
+const { createRouter } = require('/opt/agent-console/server/api.js');
 const app = express();
 app.use('/api', createRouter({ uploadDir: '/data/uploads' }));
 const server = app.listen(0, '127.0.0.1', async () => {
@@ -505,7 +517,7 @@ const server = app.listen(0, '127.0.0.1', async () => {
   server.close();
 });
 EOF
-res="$(cd /opt/claude-console && env -i PATH="${BASE_PATH}" HOME=/root timeout 60 /usr/local/bin/node "${P}/cli-update.js" 2>/dev/null)"
+res="$(cd /opt/agent-console && env -i PATH="${BASE_PATH}" HOME=/root timeout 60 /usr/local/bin/node "${P}/cli-update.js" 2>/dev/null)"
 eq "plain update: status and versions" "$(jq -c '.plain | [.status, .body.before, .body.after, .body.changed]' <<< "${res}")" '[200,"1.0.0","1.0.0",false]'
 yes_ "plain update: output is the script's" grep -q 'no change' <<< "$(jq -r '.plain.body.output' <<< "${res}")"
 eq "plain update: response fields" "$(jq -c '.plain.body | keys' <<< "${res}")" '["after","before","changed","output"]'
@@ -515,81 +527,149 @@ eq "failing update → 500 with the same fields" "$(jq -c '.failing | [.status, 
 eq "the button runs update-claude as the shell does" "$(claude_calls | grep -v -- '^--version' | tr '\n' ';')" "update;install 2.5.0 --force;update;"
 rm -f "${P}/update-fails"
 
-# --- 8. morning digest (cc-digest) -------------------------------------------------
-echo "# cc-digest"
-digest_fakes() {
-    local bin=/data/home/.local/bin
-    mkfake "${bin}/claude" "${IMG}"
-    cat > "${bin}/sleep" <<'EOF'
-#!/bin/bash
-echo "$1" >> /pins/sleep.log
-[ "$(wc -l < /pins/sleep.log)" -ge 3 ] && kill -TERM "$PPID"
-exit 0
-EOF
+# --- 8. agent-ask, the health check and the morning digest ---------------------
+# Both loops are the core's; they ask the engine's agent-ask. What reaches Claude
+# must stay what the add-on's own loops sent: exactly `-p --allowed-tools ""`,
+# the prompt on stdin, no Supervisor or Home Assistant credential.
+echo "# agent-ask"
+ask_fakes() {
+    local bin=/pins/bin
+    rm -rf "${bin}"
+    mkdir -p "${bin}"
+    mkfake /data/home/.local/bin/claude "${IMG}"
     cat > "${bin}/curl" <<'EOF'
 #!/bin/bash
 printf '%q ' "$@" >> /pins/curl.log; echo >> /pins/curl.log
-echo '[{"entity_id":"weather.home","state":"sunny","attributes":{"friendly_name":"Pins Weather","temperature":21}},
-{"entity_id":"light.hall","state":"on","attributes":{"friendly_name":"Pins Hall"}}]'
+case "$*" in
+    *core/api/states*)
+        echo '[{"entity_id":"weather.home","state":"sunny","attributes":{"friendly_name":"Pins Weather","temperature":21}},
+{"entity_id":"light.hall","state":"on","attributes":{"friendly_name":"Pins Hall"}}]' ;;
+    *)
+        printf '2026-09-16 18:19:00.001 ERROR (MainThread) [homeassistant.components.pins] Setup failed: PINS-LOG-MARK\n200' ;;
+esac
 EOF
-    cat > "${bin}/ha-notify" <<'EOF'
-#!/bin/bash
-printf '%s\n' "$1|$2" >> /pins/notify.log
-EOF
-    chmod +x "${bin}/sleep" "${bin}/curl" "${bin}/ha-notify"
+    printf '#!/bin/bash\necho "Configuration valid"\n' > "${bin}/check"
+    printf '#!/bin/bash\nprintf "%%s\\n" "$1|$2" >> /pins/notify.log\n' > "${bin}/notify"
+    chmod +x "${bin}/curl" "${bin}/check" "${bin}/notify"
 }
+# The loops' own environment when addon-run starts them, credentials included.
+loop_env=(env -i PATH="${BASE_PATH}" HOME=/root SUPERVISOR_TOKEN=EXAMPLE-sup SUPERVISOR_API_TOKEN=EXAMPLE-sup
+    HA_TOKEN=EXAMPLE-ha HASS_TOKEN=EXAMPLE-ha)
 run_digest() {
-    env -i PATH=/usr/bin:/bin HOME=/root SUPERVISOR_TOKEN=EXAMPLE-sup SUPERVISOR_API_TOKEN=EXAMPLE-sup \
-        HA_TOKEN=EXAMPLE-ha HASS_TOKEN=EXAMPLE-ha CLAUDE_DIGEST_TIME="$1" timeout 20 "${2:-/usr/local/bin/cc-digest}" \
-        > /dev/null 2> "${P}/digest.err" < /dev/null
+    "${loop_env[@]}" CC_DIGEST_CURL=/pins/bin/curl CC_DIGEST_NOTIFY_CMD=/pins/bin/notify \
+        timeout 60 /usr/local/bin/cc-digest --once > /dev/null 2> "${P}/digest.err" < /dev/null
+}
+run_monitor() {
+    mkdir -p /pins/monitor-data
+    "${loop_env[@]}" CC_MONITOR_CURL=/pins/bin/curl CC_MONITOR_CHECK_CMD=/pins/bin/check \
+        CC_MONITOR_NOTIFY_CMD=/pins/bin/notify CC_MONITOR_DATA_DIR=/pins/monitor-data CLAUDE_MONITOR_HOURS=1 \
+        timeout 60 /usr/local/bin/cc-monitor --once > /dev/null 2> "${P}/monitor.err" < /dev/null
 }
 
 reset
-digest_fakes
+ask_fakes
+out="$(printf 'PINS-QUESTION' | env -i PATH=/usr/bin:/bin HOME=/root /usr/local/bin/agent-ask)"
+eq "agent-ask: exit 0 with an answer" "$?" 0
+eq "agent-ask: the answer is Claude's" "${out}" "Good morning from the pins"
+eq "agent-ask: Claude is called with exactly -p and an empty tool list" \
+    "$(jq -c . "${P}/claude-args.jsonl")" '["-p","--allowed-tools",""]'
+eq "agent-ask: the question goes in on stdin" "$(cat "${P}/claude-stdin.txt")" PINS-QUESTION
+eq "agent-ask: it runs the persistent CLI" "$(cut -d'|' -f1 "${P}/claude.log")" /data/home/.local/bin/claude
+reset
+ask_fakes
+printf '' | env -i PATH=/usr/bin:/bin HOME=/root /usr/local/bin/agent-ask > /dev/null 2>&1
+eq "agent-ask: no question → the CLI's refusal is its exit status" "$?" 1
+
+echo "# cc-digest"
+reset
+ask_fakes
 touch "${P}/log-env"
-run_digest 07:30
-eq "digest: settles for 120 s first" "$(sed -n 1p "${P}/sleep.log")" 120
-# shellcheck disable=SC2016 # expanded by the inner bash, on purpose
-yes_ "digest: then sleeps until the target time" bash -c '[[ "$(sed -n 2p /pins/sleep.log)" =~ ^[0-9]+$ ]] && [ "$(sed -n 2p /pins/sleep.log)" -le 86400 ]'
+run_digest
 eq "digest: states are fetched from the Supervisor" "$(head -1 "${P}/curl.log")" \
     "-sS -H Authorization:\\ Bearer\\ EXAMPLE-sup http://supervisor/core/api/states "
 eq "digest: Claude is called with exactly -p and an empty tool list" \
-    "$(head -1 "${P}/claude-args.jsonl" | jq -c .)" '["-p","--allowed-tools",""]'
+    "$(jq -c . "${P}/claude-args.jsonl")" '["-p","--allowed-tools",""]'
 yes_ "digest: the prompt goes in on stdin and carries the snapshot as data" \
     bash -c 'grep -q "====HOME SNAPSHOT====" /pins/claude-stdin.txt && grep -q "Pins Weather" /pins/claude-stdin.txt'
+yes_ "digest: Claude's environment was recorded" test -s "${P}/claude-env.log"
 no_ "digest: no Supervisor or HA credential in Claude's environment" grep -qE '(^|,)(SUPERVISOR_TOKEN|SUPERVISOR_API_TOKEN|HA_TOKEN|HASS_TOKEN)(,|$)' "${P}/claude-env.log"
-eq "digest: the answer is pushed with its title" "$(head -1 "${P}/notify.log")" "Good morning from the pins|Claude · Morning briefing"
+eq "digest: the answer is pushed with its title" "$(cat "${P}/notify.log")" "Good morning from the pins|Claude · Morning briefing"
 
 reset
-digest_fakes
+ask_fakes
 touch "${P}/claude-silent"
-run_digest 07:30
+run_digest
 no_ "digest: an empty answer is not pushed" test -s "${P}/notify.log"
 yes_ "digest: an empty answer is logged" grep -q "^\[cc-digest\] the briefing produced nothing (exit 0)" "${P}/digest.err"
 
-# The regression this section exists for: the prompt passed as an argument after
-# --allowed-tools. The fake refuses it as the real CLI does, and the digest must
-# say so in its log rather than stay silent.
+echo "# cc-monitor"
 reset
-digest_fakes
-# shellcheck disable=SC2016 # the literal ${prompt} text, on purpose
-sed -e "s/printf '%s' \"\${prompt}\" | //" \
-    -e 's/claude -p --allowed-tools "" 2>/claude -p --allowed-tools "" "${prompt}" 2>/' \
-    /usr/local/bin/cc-digest > "${P}/cc-digest-argv"
-chmod +x "${P}/cc-digest-argv"
-# shellcheck disable=SC2016 # the literal ${prompt} text, on purpose
-yes_ "digest mutant: the copy passes the prompt as an argument" grep -qF 'allowed-tools "" "${prompt}"' "${P}/cc-digest-argv"
-no_ "digest mutant: and no longer on stdin" grep -qF "printf '%s' \"\${prompt}\" |" "${P}/cc-digest-argv"
-run_digest 07:30 "${P}/cc-digest-argv"
-no_ "digest mutant: nothing is pushed" test -s "${P}/notify.log"
-yes_ "digest mutant: the CLI's refusal is logged" \
-    grep -q "^\[cc-digest\] the briefing produced nothing (exit 1): Error: Input must be provided" "${P}/digest.err"
+ask_fakes
+touch "${P}/log-env"
+run_monitor
+eq "monitor: Claude is called with exactly -p and an empty tool list" \
+    "$(jq -c . "${P}/claude-args.jsonl")" '["-p","--allowed-tools",""]'
+yes_ "monitor: the prompt goes in on stdin and carries the log as data" grep -q PINS-LOG-MARK "${P}/claude-stdin.txt"
+yes_ "monitor: Claude's environment was recorded" test -s "${P}/claude-env.log"
+no_ "monitor: no Supervisor or HA credential in Claude's environment" grep -qE '(^|,)(SUPERVISOR_TOKEN|SUPERVISOR_API_TOKEN|HA_TOKEN|HASS_TOKEN)(,|$)' "${P}/claude-env.log"
+eq "monitor: a finding is pushed with its title" "$(cat "${P}/notify.log")" "Good morning from the pins|Claude · HA health check"
 
+# --- 9. a prompt API run is not counted twice ----------------------------------
+# The core counts prompt runs from its audit log; agent-usage counts the console
+# transcripts. A run must therefore leave no transcript: what agent-usage prints
+# is the same before and after one, and the check can see a run that does.
+echo "# agent-usage and prompt runs"
 reset
-digest_fakes
-run_digest 7:30
-eq "digest: an invalid time disables the loop" "$(cat "${P}/sleep.log" 2>/dev/null)" ""
-no_ "digest: an invalid time calls nothing" test -s "${P}/claude.log"
+mkfake /data/home/.local/bin/claude "${IMG}"
+mkdir -p /data/home/.claude/projects/-data-workdir /data/claude-prompt/work
+printf '%s\n' '{"timestamp":"2026-09-01T10:00:00Z","message":{"model":"claude-opus-5","usage":{"input_tokens":3,"output_tokens":4}}}' \
+    > /data/home/.claude/projects/-data-workdir/console.jsonl
+# The prompt CLI: like the real one, it saves the session unless told not to.
+cat > "${P}/prompt-cli" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >> /pins/prompt-cli.log
+cat > /dev/null
+case " $* " in
+    *" --no-session-persistence "*) ;;
+    *)
+        dir="${HOME}/.claude/projects/$(pwd | tr -c 'A-Za-z0-9\n' -)"
+        mkdir -p "${dir}"
+        printf '%s\n' '{"timestamp":"2026-09-02T10:00:00Z","message":{"model":"claude-haiku-4-5","usage":{"input_tokens":5,"output_tokens":6}}}' >> "${dir}/run.jsonl" ;;
+esac
+printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"ok","structured_output":{"answer":"ok"}}'
+EOF
+# The same CLI, reached through a wrapper that drops the flag.
+cat > "${P}/prompt-cli-leaky" <<'EOF'
+#!/bin/bash
+args=()
+for a in "$@"; do [ "${a}" = --no-session-persistence ] || args+=("${a}"); done
+exec /pins/prompt-cli "${args[@]}"
+EOF
+chmod +x "${P}/prompt-cli" "${P}/prompt-cli-leaky"
+cat > "${P}/prompt-run.js" <<'EOF'
+const { run } = require('/opt/agent-console/server/prompt/run');
+run({ bin: process.argv[2], cwd: '/data/claude-prompt/work', prompt: 'hello', mode: 'read', intents: [] })
+  .then((outcome) => console.log(JSON.stringify(outcome)));
+EOF
+usage_record() {
+    local out status
+    out="$(env -i PATH="${BASE_PATH}" HOME=/data/home /usr/local/bin/agent-usage)"
+    status=$?
+    printf '%s\nexit %s\n' "${out}" "${status}"
+}
+prompt_run() {
+    (cd /opt/agent-console && env -i PATH="${BASE_PATH}" HOME=/data/home timeout 60 /usr/local/bin/node "${P}/prompt-run.js" "$1" > "${P}/prompt-run.out" 2>&1)
+}
+before="$(usage_record)"
+eq "agent-usage reads the console transcript" "${before}" \
+    "$(printf '%s\nexit 0' '{"day": "2026-09-01", "model": "claude-opus-5", "input": 3, "output": 4, "cache_read": 0, "cache_write": 0}')"
+prompt_run "${P}/prompt-cli"
+yes_ "a prompt run reached the CLI with the flag" grep -q -- '--no-session-persistence' "${P}/prompt-cli.log"
+eq "agent-usage is unchanged by a prompt run" "$(usage_record)" "${before}"
+rm -f "${P}/prompt-cli.log"
+prompt_run "${P}/prompt-cli-leaky"
+yes_ "the leaky run reached the CLI without the flag" bash -c '[ -s /pins/prompt-cli.log ] && ! grep -q -- --no-session-persistence /pins/prompt-cli.log'
+no_ "without the flag, agent-usage sees the run" [ "$(usage_record)" = "${before}" ]
 
 echo
 echo "behaviour pins: ${pass} passed, ${fail} failed"

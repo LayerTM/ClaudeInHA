@@ -9,8 +9,9 @@
 #   3. an unreadable log source is REPORTED, not treated as an empty log;
 #   4. an analysis that produces nothing is REPORTED, not treated as healthy;
 #   5. neither of those repeats on the next cycle, and the recovery clears it;
-#   6. the prompt actually reaches the analysing command;
-#   7. the model runs with no tools and no Home Assistant credentials;
+#   6. the prompt actually reaches the analysing command (agent-ask, on stdin);
+#   7. agent-ask gets no arguments and no Home Assistant credentials (no tools
+#      and no permission bypass are agent-ask's own contract);
 #   8. every external call is time-limited;
 #   9. a notifier that cannot deliver does not silence the warning for good;
 #  10. records the known-noise list names (the shipped list: Home Assistant's
@@ -22,21 +23,21 @@
 #  12. enough of the journal is read for that window, and a window that stays
 #      short says so rather than reading like a quiet log.
 #
-# Case 6 is the one with history: passed as a positional argument the prompt is
-# consumed by --allowed-tools, which takes a list, and the command exits with no
-# input. Nothing downstream could tell that from a healthy, quiet instance.
+# Case 6 is the one with history: passed as a positional argument after a CLI
+# option that takes a list, the prompt was consumed as a list item and the
+# command exited with no input. Nothing downstream could tell that from a
+# healthy, quiet instance.
 #
 # Requires: bash, and nothing else. The assertions use bash's own pattern
 # matching rather than an external matcher on purpose: a missing tool makes
 # `if <tool> ...` false, and a check written as if/else then reports PASS from
 # its else branch — passing because the instrument is dead.
 #
-# Run:  bash claude-code/app/test/cc-monitor.test.sh
-#   or, from claude-code/app:  npm run test:monitor   (see package.json)
+# Run, from app/:  npm run test:monitor
 set -o pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
-repo="$(cd "${here}/../.." && pwd)"           # claude-code/
+repo="$(cd "${here}/../.." && pwd)"
 script="${repo}/rootfs/usr/local/bin/cc-monitor"
 
 [ -x "${script}" ] || { echo "FAIL: ${script} is not executable"; exit 1; }
@@ -45,9 +46,9 @@ work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
 
 notify_out="${work}/notified.txt"
-claude_in="${work}/claude-stdin.txt"
-claude_argv="${work}/claude-argv.txt"
-claude_env="${work}/claude-env.txt"
+agent_in="${work}/agent-stdin.txt"
+agent_argv="${work}/agent-argv.txt"
+agent_env="${work}/agent-env.txt"
 timeout_used="${work}/timeout-used.txt"
 : > "${notify_out}"
 : > "${timeout_used}"
@@ -56,18 +57,20 @@ timeout_used="${work}/timeout-used.txt"
 cat > "${work}/notify" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$1" >> "${notify_out}"
+printf '%s\n' "\$2" >> "${notify_out}.titles"
+printf '%s\n' "\$1" >> "${notify_out}.all"
 STUB
 
 # Records what the analysing command actually received on stdin, then answers
-# with whatever the case asked for via CLAUDE_ANSWER (empty answer + a non-zero
+# with whatever the case asked for via AGENT_ANSWER (empty answer + a non-zero
 # exit reproduces the failure this script used to swallow).
-cat > "${work}/claude" <<STUB
+cat > "${work}/agent" <<STUB
 #!/usr/bin/env bash
-cat > "${claude_in}"
-printf '%s\n' "\$*" > "${claude_argv}"
-leaked=''; for v in SUPERVISOR_TOKEN SUPERVISOR_API_TOKEN HA_TOKEN HASS_TOKEN; do [ -n "\${!v:-}" ] && leaked="\${leaked}\${v} "; done; printf '%s' "\${leaked}" > "${claude_env}"
-[ -n "\${CLAUDE_ANSWER:-}" ] && printf '%s\n' "\${CLAUDE_ANSWER}"
-exit "\${CLAUDE_RC:-0}"
+cat > "${agent_in}"
+printf '%s\n' "\$*" > "${agent_argv}"
+leaked=''; for v in SUPERVISOR_TOKEN SUPERVISOR_API_TOKEN HA_TOKEN HASS_TOKEN; do [ -n "\${!v:-}" ] && leaked="\${leaked}\${v} "; done; printf '%s' "\${leaked}" > "${agent_env}"
+[ -n "\${AGENT_ANSWER:-}" ] && printf '%s\n' "\${AGENT_ANSWER}"
+exit "\${AGENT_RC:-0}"
 STUB
 
 # A notifier that cannot deliver — missing, or failing, or the service is down.
@@ -169,7 +172,7 @@ log_stub manylog "${work}/many.txt"
 log_stub newnoiselog "${work}/newnoise.txt"
 printf '# test list\nNEW-NOISE-MARK\thttps://example.invalid/issue\n' > "${work}/noise-list.tsv"
 
-chmod +x "${work}"/notify "${work}"/notify-broken "${work}"/claude "${work}"/check \
+chmod +x "${work}"/notify "${work}"/notify-broken "${work}"/agent "${work}"/check \
          "${work}"/check-broken "${work}"/goodlog "${work}"/badlog "${work}"/timeout \
          "${work}"/noisylog "${work}"/onlynoise "${work}"/floodlog "${work}"/manylog "${work}"/newnoiselog
 
@@ -178,18 +181,18 @@ ok()   { printf 'PASS  %s\n' "$1"; }
 bad()  { printf 'FAIL  %s\n' "$1"; fails=$((fails + 1)); }
 check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (want '$3', got '$2')"; fi; }
 
-# $1 = log stub, $2 = CLAUDE_ANSWER, $3 = CLAUDE_RC ; prints the exit status
+# $1 = log stub, $2 = AGENT_ANSWER, $3 = AGENT_RC ; prints the exit status
 run() {
     CC_MONITOR_DATA_DIR="${work}/data" \
     CC_MONITOR_NOTIFY_CMD="${work}/${NOTIFIER:-notify}" \
     CC_MONITOR_CHECK_CMD="${work}/${CHECKER:-check}" \
     CC_MONITOR_CURL="${work}/$1" \
-    CC_MONITOR_CLAUDE_CMD="${work}/claude" \
+    CC_MONITOR_AGENT_CMD="${work}/agent" \
     CC_MONITOR_TIMEOUT_CMD="${work}/timeout" \
-    CC_MONITOR_KNOWN_NOISE="${KNOWN_NOISE:-${repo}/rootfs/usr/share/claude-ha/monitor-known-noise.tsv}" \
+    CC_MONITOR_KNOWN_NOISE="${KNOWN_NOISE:-${repo}/rootfs/usr/share/agent-core/monitor-known-noise.tsv}" \
     SUPERVISOR_TOKEN="tok-supervisor" SUPERVISOR_API_TOKEN="tok-api" \
     HA_TOKEN="tok-ha" HASS_TOKEN="tok-hass" \
-    CLAUDE_ANSWER="$2" CLAUDE_RC="${3:-0}" \
+    AGENT_ANSWER="$2" AGENT_RC="${3:-0}" \
         bash "${script}" --once >/dev/null 2>&1
     printf '%s' "$?"
 }
@@ -208,7 +211,7 @@ check "a healthy run exits 0"                 "${rc}" "0"
 check "a healthy run notifies nothing"        "$(notifications)" "0"
 
 # --- 6. the prompt reaches the command, on stdin ------------------------------
-seen="$(cat "${claude_in}")"
+seen="$(cat "${agent_in}")"
 if [[ "${seen}" == *"ERROR LOG"* && "${seen}" == *"something"* ]]; then
     ok "the prompt and the log reach the analysing command"
 else
@@ -226,7 +229,7 @@ fi
 : > "${notify_out}"
 rm -rf "${work}/data"
 run noisylog OK >/dev/null
-seen="$(cat "${claude_in}")"
+seen="$(cat "${agent_in}")"
 if [[ "${seen}" == *"REAL-FAILURE-MARK"* ]]; then
     ok "a real error next to the noise reaches the analysis"
 else
@@ -240,24 +243,24 @@ fi
 rc="$(run onlynoise OK)"
 check "a log of nothing but known noise is a readable log" "${rc}" "0"
 check "and it notifies nothing"               "$(notifications)" "0"
-seen="$(cat "${claude_in}")"
+seen="$(cat "${agent_in}")"
 if [[ "${seen}" == *"holds only 0 entries apart from known, harmless ones"* ]]; then
     ok "the analysis is told the log held only known entries"
 else
     bad "an empty remainder was not stated (stdin began: ${seen:0:120})"
 fi
 run newnoiselog OK >/dev/null
-seen="$(cat "${claude_in}")"
+seen="$(cat "${agent_in}")"
 check "the shipped list does not name the new kind" "$([[ "${seen}" == *NEW-NOISE-MARK* ]] && echo kept)" "kept"
 KNOWN_NOISE="${work}/noise-list.tsv" run newnoiselog OK >/dev/null
-seen="$(cat "${claude_in}")"
+seen="$(cat "${agent_in}")"
 check "one list line leaves the new kind out" "$([[ "${seen}" == *NEW-NOISE-MARK* ]] && echo kept || echo dropped)" "dropped"
 check "and only that kind"                    "$([[ "${seen}" == *KEPT-MARK* ]] && echo kept)" "kept"
 rm -rf "${work}/data"
 
 # --- 11. one huge record cannot hide the others ---------------------------------
 run floodlog OK >/dev/null
-seen="$(cat "${claude_in}")"
+seen="$(cat "${agent_in}")"
 check "a record before a huge one reaches the analysis" "$([[ "${seen}" == *BEFORE-FLOOD-MARK* ]] && echo yes)" "yes"
 check "a record after a huge one reaches the analysis" "$([[ "${seen}" == *AFTER-FLOOD-MARK* ]] && echo yes)" "yes"
 check "the huge record is there, cut and marked" \
@@ -268,7 +271,7 @@ else
     bad "the analysis input grew to ${#seen} characters"
 fi
 run manylog OK >/dev/null
-seen="$(cat "${claude_in}")"
+seen="$(cat "${agent_in}")"
 check "the newest record is there"            "$([[ "${seen}" == *RECORD-20* ]] && echo yes)" "yes"
 check "the 15th newest is there"              "$([[ "${seen}" == *RECORD-06* ]] && echo yes)" "yes"
 check "the 16th newest is not"                "$([[ "${seen}" == *RECORD-05* ]] && echo yes || echo no)" "no"
@@ -278,7 +281,7 @@ check "a full window carries no shortness note" "$([[ "${seen}" == *"holds only"
 curl_args="$(cat "${work}/curl-args.txt")"
 check "the journal is read 5000 entries deep"  "$([[ "${curl_args}" == *'Range: entries=:-5000:'* ]] && echo yes)" "yes"
 run newnoiselog OK >/dev/null
-seen="$(cat "${claude_in}")"
+seen="$(cat "${agent_in}")"
 check "a short window states how many entries it has" \
     "$([[ "${seen}" == *"holds only 2 entries apart from known, harmless ones"* ]] && echo yes)" "yes"
 rm -rf "${work}/data"
@@ -346,7 +349,7 @@ rm -rf "${work}/data"
 # Cleared first so the assertions below cannot read a file some EARLIER run
 # wrote. Without this, a build where the command is never invoked at all leaves
 # the previous contents in place and every check here passes on stale evidence.
-rm -f "${claude_argv}" "${claude_env}" "${claude_in}"
+rm -f "${agent_argv}" "${agent_env}" "${agent_in}"
 run goodlog OK >/dev/null
 
 # One stuck call would stop the loop, and a loop that is not looping notifies
@@ -355,38 +358,37 @@ run goodlog OK >/dev/null
 check "the log fetch and the analysis are both time-limited" \
       "$(wc -l < "${timeout_used}" | tr -d ' ')" "2"
 
-if [ -e "${claude_argv}" ]; then
+if [ -e "${agent_argv}" ]; then
     ok "the analysing command was invoked at all"
 else
     bad "the analysing command was never invoked — every check below would measure nothing"
 fi
 
-# Exact equality, not a substring: the argument list is short and fixed, and
-# `*"--allowed-tools"*` is equally true of `--allowed-tools "Bash,Write,WebFetch"`,
-# which is the opposite of what this asserts.
-check "the model is run with no tools and no permission bypass" \
-      "$(cat "${claude_argv}" 2>/dev/null)" "-p --allowed-tools "
+# Exact equality: agent-ask takes the prompt on stdin and nothing else, so any
+# argument here is one the engine was never asked to accept.
+check "agent-ask is run with no arguments" \
+      "$(cat "${agent_argv}" 2>/dev/null)" ""
 
 # Bash builtins, not an external matcher: a matcher with a GNU-only alternation
 # matches nothing on BSD, so the check would report "nothing leaked" on a build
 # where everything did — and keep doing so.
 check "no Home Assistant credentials reach the model's environment" \
-      "$(cat "${claude_env}" 2>/dev/null)" ""
+      "$(cat "${agent_env}" 2>/dev/null)" ""
 
 # The recorder must be able to SEE a leak, or its silence means nothing.
 SUPERVISOR_TOKEN="tok" SUPERVISOR_API_TOKEN="tok" HA_TOKEN="tok" HASS_TOKEN="tok" \
-    "${work}/claude" </dev/null >/dev/null 2>&1
-if [ -n "$(cat "${claude_env}" 2>/dev/null)" ]; then
+    "${work}/agent" </dev/null >/dev/null 2>&1
+if [ -n "$(cat "${agent_env}" 2>/dev/null)" ]; then
     ok "and the recorder that says so can see a leak when there is one"
 else
     bad "the credential check cannot see anything — it would pass no matter what"
 fi
-rm -f "${claude_argv}" "${claude_env}"
+rm -f "${agent_argv}" "${agent_env}"
 
 # The environment is one route in; the prompt is the other, and it is the one a
 # reader would assume "reaches the model" covers.
 run goodlog OK >/dev/null
-if [[ "$(cat "${claude_in}")" != *"tok-supervisor"* ]]; then
+if [[ "$(cat "${agent_in}")" != *"tok-supervisor"* ]]; then
     ok "and no credential is pasted into the prompt itself"
 else
     bad "a Home Assistant token was interpolated into the prompt"
@@ -450,12 +452,12 @@ fi
 # for minutes, so a trap added here to tidy a temp file would make the add-on
 # refuse to shut down for that long. Measured both ways before it was removed;
 # this keeps it removed.
-cat > "${work}/slowclaude" <<'STUB'
+cat > "${work}/slowagent" <<'STUB'
 #!/usr/bin/env bash
 cat > /dev/null
 sleep 30
 STUB
-chmod +x "${work}/slowclaude"
+chmod +x "${work}/slowagent"
 
 # Wrapped so the shell's own "Terminated" job notice, which goes to stderr when
 # the job is reaped, does not look like an error in the CI log.
@@ -463,7 +465,7 @@ shutdown_case() {
     rm -rf "${work}/data"
     CC_MONITOR_DATA_DIR="${work}/data" CC_MONITOR_NOTIFY_CMD="${work}/notify" \
     CC_MONITOR_CHECK_CMD="${work}/check" CC_MONITOR_CURL="${work}/goodlog" \
-    CC_MONITOR_CLAUDE_CMD="${work}/slowclaude" CC_MONITOR_TIMEOUT_CMD="" \
+    CC_MONITOR_AGENT_CMD="${work}/slowagent" CC_MONITOR_TIMEOUT_CMD="" \
         bash "${script}" --once >/dev/null 2>&1 &
     local mon_pid=$!
     sleep 2
@@ -478,6 +480,16 @@ shutdown_case() {
     wait "${mon_pid}" 2>/dev/null || true
 }
 shutdown_case 2>/dev/null
+
+# --- 14. titles and texts name the agent -----------------------------------------
+# No add-on console here, so no branding.json: the fallback name is used.
+titles="$(sort -u "${notify_out}.titles")"
+check "every notification is titled with the agent's name" "${titles}" "Agent · HA health check"
+if [[ "$(cat "${notify_out}.all")" == *"Agent cannot read the Home Assistant log"* ]]; then
+    ok "and the texts name it too"
+else
+    bad "a text does not name the agent"
+fi
 
 printf '\n%s\n' "$([ "${fails}" -eq 0 ] && echo 'all checks passed' || echo "${fails} check(s) failed")"
 exit $(( fails > 0 ))
