@@ -1,0 +1,41 @@
+name: main measured
+
+# Every commit that lands on main gets a CI run of its own. A merge made with the
+# workflow token (Dependabot auto-merge) raises no push event, so the push trigger
+# in ci.yml alone leaves such a commit unmeasured. This workflow looks at the head
+# of main on a schedule and, when no push or dispatch CI run exists for it,
+# dispatches one; a dispatch is the one event the workflow token may start.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: main-measured
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: CI ran on the head of main
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Dispatch CI when the head of main has no run
+        run: |
+          set -euo pipefail
+          sha="$(gh api "repos/$REPO/commits/main" --jq .sha)"
+          runs="$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$sha&per_page=100" \
+            --jq '[.workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch")] | length')"
+          if [ "$runs" -gt 0 ]; then
+            echo "main $sha already has $runs CI run(s)"
+            exit 0
+          fi
+          gh workflow run ci.yml --repo "$REPO" --ref main
+          echo "::notice::dispatched CI for main $sha"

@@ -11,12 +11,16 @@ on:
   push:
     branches: [main]
   pull_request:
-  # Canary: once a day (or on demand) the image is built from main with every
-  # upstream pin moved to its latest release, so an upstream that breaks the
-  # add-on turns this run red before a release carries it. Nothing is committed.
-  schedule:
-    - cron: "41 3 * * *"
+  # A dispatched run measures the branch as it is (main-measured.yml starts one
+  # for a commit that landed without a push event).
   workflow_dispatch:
+  # canary.yml calls this workflow with canary: true.
+  workflow_call:
+    inputs:
+      canary:
+        description: Build the image with every upstream pin moved to its latest release
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -264,7 +268,7 @@ jobs:
       - uses: actions/checkout@v7
       - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
       - name: "Canary: move every pin to its latest upstream release (not committed)"
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        if: inputs.canary
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
