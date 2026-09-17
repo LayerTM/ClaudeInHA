@@ -160,8 +160,10 @@ AUDIT_SETTINGS='{"hooks":{"PostToolUse":[{"matcher":"Bash|Edit|Write|MultiEdit|^
 
 # The names the service script hands to the console, started from an empty
 # environment (fresh install, api_key, model, auto_update off, one user
-# variable). bashio's own bookkeeping (LOG_FD, __BASHIO_*) and the shell's
-# (PWD, SHLVL, _) are left out: they belong to the tools, not to this add-on.
+# variable). bashio's own bookkeeping (LOG_FD, __BASHIO_*), libuv's own
+# (UV_USE_IO_URING — set by libuv itself under Rosetta-emulated amd64, even
+# from an empty environment) and the shell's (PWD, SHLVL, _) are left out:
+# they belong to the tools, not to this add-on.
 # A change here that is intended is made by editing this list.
 EXPECTED_CONSOLE_ENV="ADDON_VERSION ANTHROPIC_API_KEY ANTHROPIC_MODEL CLAUDE_CONSOLE_DEV CLAUDE_CONSOLE_PORT
 CLAUDE_PROMPT_BIN CLAUDE_PROMPT_DATA CLAUDE_PROMPT_DEV CLAUDE_PROMPT_OPTIONS CLAUDE_PROMPT_PORT
@@ -169,7 +171,7 @@ CLAUDE_PROMPT_SETTINGS CLAUDE_PROMPT_USAGE_BIN DISABLE_AUTOUPDATER HA_URL HOME I
 PINS_CONTENV PINS_FOO REMOTE_CONTROL TERM UPLOAD_DIR UPLOAD_RETENTION_DAYS USE_BUILTIN_RIPGREP"
 check_console_env_names() {
     local got want added removed
-    got="$(jq -r 'keys[]' "${P}/console-env.json" | grep -vE '^(LOG_FD|__BASHIO_.*|PWD|SHLVL|_)$' | sort)"
+    got="$(jq -r 'keys[]' "${P}/console-env.json" | grep -vE '^(LOG_FD|__BASHIO_.*|UV_USE_IO_URING|PWD|SHLVL|_)$' | sort)"
     want="$(tr ' ' '\n' <<< "${EXPECTED_CONSOLE_ENV}" | sed '/^$/d' | sort)"
     added="$(comm -23 <(echo "${got}") <(echo "${want}") | tr '\n' ' ')"
     removed="$(comm -13 <(echo "${got}") <(echo "${want}") | tr '\n' ' ')"
