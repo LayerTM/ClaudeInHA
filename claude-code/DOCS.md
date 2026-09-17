@@ -244,6 +244,11 @@ behind the Prompt API, so the integration can adapt to it:
 | `engine_version` | the agent's version, as `claude --version` reports it; empty until it has been read |
 | `claude_version` | the same value, kept for integrations that predate `engine_version` |
 | `request_fields` | the request fields `POST /api/prompt` accepts; a field not listed is refused |
+| `prompt_max_bytes`, `body_max_bytes` | the largest prompt and request body `POST /api/prompt` accepts |
+
+Every error answer carries a stable `code` next to its message (and `field` or
+`limit_bytes` where they apply); the codes are listed in
+[ha-agent-core](https://github.com/LayerTM/ha-agent-core#error-answers).
 
 ### Chat reliability (`chat_health`)
 
