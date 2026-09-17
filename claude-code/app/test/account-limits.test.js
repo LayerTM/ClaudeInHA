@@ -165,7 +165,7 @@ test('no credentials at all: 503, never an empty success', async () => {
   try {
     const { status, body } = await srv.get();
     assert.equal(status, 503);
-    assert.deepEqual(body, { error: 'account limits unavailable' });
+    assert.deepEqual(body, { error: 'account limits unavailable', code: 'limits_unavailable' });
     assert.equal(calls.length, 0);
   } finally {
     srv.close();
@@ -183,7 +183,7 @@ test('upstream refuses (401 expired, 500 broken): 503, no numbers invented', asy
     try {
       const { status, body } = await srv.get();
       assert.equal(status, 503, `upstream ${code} → 503`);
-      assert.deepEqual(body, { error: 'account limits unavailable' });
+      assert.deepEqual(body, { error: 'account limits unavailable', code: 'limits_unavailable' });
     } finally { srv.close(); }
   }
 });
@@ -213,7 +213,7 @@ test('an answer that is not the shape it claims: 503, and never a 0 %', async ()
     try {
       const { status, body } = await srv.get();
       assert.equal(status, 503, `unparsable ${JSON.stringify(payload)} → 503`);
-      assert.deepEqual(body, { error: 'account limits unavailable' });
+      assert.deepEqual(body, { error: 'account limits unavailable', code: 'limits_unavailable' });
     } finally { srv.close(); }
   }
 });
@@ -285,7 +285,7 @@ test('a percent outside 0-100 is not a percentage: 503', async () => {
     try {
       const { status, body } = await srv.get();
       assert.equal(status, 503, `percent ${percent} → 503`);
-      assert.deepEqual(body, { error: 'account limits unavailable' });
+      assert.deepEqual(body, { error: 'account limits unavailable', code: 'limits_unavailable' });
     } finally { srv.close(); }
   }
 });

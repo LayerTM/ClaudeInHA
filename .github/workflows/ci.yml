@@ -42,7 +42,7 @@ jobs:
           claude-code/core/assemble.sh "${RUNNER_TEMP}/core/core.tar" claude-code "${RUNNER_TEMP}/addon"
       - name: Install dependencies
         working-directory: ${{ runner.temp }}/addon/app
-        run: '"${GITHUB_WORKSPACE}/claude-code/build/npm-ci-local-headers.sh"'
+        run: '"${RUNNER_TEMP}/addon/install-tools/npm-ci-checked.sh"'
       - name: Run tests
         working-directory: ${{ runner.temp }}/addon/app
         run: npm test
@@ -86,7 +86,7 @@ jobs:
           claude-code/core/assemble.sh "${RUNNER_TEMP}/core/core.tar" claude-code "${RUNNER_TEMP}/addon"
       - name: Install dependencies
         working-directory: ${{ runner.temp }}/addon/app
-        run: '"${GITHUB_WORKSPACE}/claude-code/build/npm-ci-local-headers.sh"'
+        run: '"${RUNNER_TEMP}/addon/install-tools/npm-ci-checked.sh"'
       - name: Lint (eslint)
         working-directory: ${{ runner.temp }}/addon/app
         run: npm run lint
