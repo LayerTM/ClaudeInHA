@@ -322,6 +322,32 @@ printf '%s' '{"hooks":{"Notification":[{"hooks":[{"type":"command","command":"/u
 check "a hooks config without ours is untouched" "$(hooks_seed_or_migrate "${settings}")" unchanged
 check "and no empty PostToolUse is invented" "$(jq -r 'has("hooks") and (.hooks | has("PostToolUse"))' "${settings}")" false
 
+echo "hooks_seed_or_migrate — a write that cannot land is 'failed', never a false 'seeded'/'migrated'"
+
+# A jq that succeeds followed by an mv that cannot land the result: the write
+# never reaches disk, so the function must not report success. Forcing this
+# needs a directory `mv` cannot write into, not the file itself — the tmp file
+# jq writes to lives outside it, in the system temp dir.
+mvfail_seed_dir="${work}/mv-fail-seed"
+mkdir -p "${mvfail_seed_dir}"
+mvfail_seed_settings="${mvfail_seed_dir}/settings.json"
+printf '%s' '{}' > "${mvfail_seed_settings}"
+chmod 555 "${mvfail_seed_dir}"
+check "a fresh install whose mv cannot land reports failed, not seeded" \
+    "$(hooks_seed_or_migrate "${mvfail_seed_settings}")" failed
+chmod 755 "${mvfail_seed_dir}"
+check "and the settings file is untouched" "$(cat "${mvfail_seed_settings}")" '{}'
+
+mvfail_migrate_dir="${work}/mv-fail-migrate"
+mkdir -p "${mvfail_migrate_dir}"
+mvfail_migrate_settings="${mvfail_migrate_dir}/settings.json"
+printf '%s' "${existing}" > "${mvfail_migrate_settings}"
+chmod 555 "${mvfail_migrate_dir}"
+check "a migration whose mv cannot land reports failed, not migrated" \
+    "$(hooks_seed_or_migrate "${mvfail_migrate_settings}")" failed
+chmod 755 "${mvfail_migrate_dir}"
+check "and the settings file is untouched" "$(cat "${mvfail_migrate_settings}")" "${existing}"
+
 echo
 # A floor on the assertion count, so a future edit that guts the file cannot
 # report success by running almost nothing.

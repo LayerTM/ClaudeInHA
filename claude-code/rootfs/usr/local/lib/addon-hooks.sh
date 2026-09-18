@@ -85,8 +85,7 @@ hooks_seed_or_migrate() {
                     PreToolUse:   [{matcher: $backup, hooks: [{type: "command", command: $backup_cmd}]}],
                     PostToolUse:  [$audit_entry],
                     Notification: [{hooks: [{type: "command", command: $notify_cmd}]}]
-                }' "${sf}" > "${tmp}" 2>/dev/null; then
-            mv "${tmp}" "${sf}"
+                }' "${sf}" > "${tmp}" 2>/dev/null && mv "${tmp}" "${sf}"; then
             printf 'seeded\n'
             return 0
         fi
@@ -132,8 +131,7 @@ hooks_seed_or_migrate() {
                 | if ((.hooks // []) | any(.command == $cmd))
                      and (($superseded | index($m)) != null)
                   then .matcher = $cur
-                  else . end)' "${sf}" > "${tmp}" 2>/dev/null; then
-        mv "${tmp}" "${sf}"
+                  else . end)' "${sf}" > "${tmp}" 2>/dev/null && mv "${tmp}" "${sf}"; then
         printf 'migrated\n'
         return 0
     fi

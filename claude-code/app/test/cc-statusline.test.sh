@@ -118,6 +118,32 @@ printf '{not json\n' > "${settings}"
 check "unparseable settings report failed" "$(statusline_seed_or_migrate "${settings}")" failed
 check "and are not overwritten" "$(cat "${settings}")" '{not json'
 
+echo "a write that cannot land is 'failed', never a false 'seeded'/'migrated'"
+
+# Same shape as the hooks-audit case: jq succeeds, but the mv that lands the
+# result cannot, because the directory (not the file) refuses the write. The
+# tmp file jq writes to lives outside it, in the system temp dir.
+mvfail_seed_dir="${work}/mv-fail-seed"
+mkdir -p "${mvfail_seed_dir}"
+mvfail_seed_settings="${mvfail_seed_dir}/settings.json"
+printf '{}' > "${mvfail_seed_settings}"
+chmod 555 "${mvfail_seed_dir}"
+check "a fresh install whose mv cannot land reports failed, not seeded" \
+    "$(statusline_seed_or_migrate "${mvfail_seed_settings}")" failed
+chmod 755 "${mvfail_seed_dir}"
+check "and the settings file is untouched" "$(cat "${mvfail_seed_settings}")" '{}'
+
+mvfail_interval_dir="${work}/mv-fail-interval"
+mkdir -p "${mvfail_interval_dir}"
+mvfail_interval_settings="${mvfail_interval_dir}/settings.json"
+no_interval="{\"statusLine\":{\"type\":\"command\",\"command\":\"${CC_STATUSLINE_CMD}\",\"padding\":0}}"
+printf '%s' "${no_interval}" > "${mvfail_interval_settings}"
+chmod 555 "${mvfail_interval_dir}"
+check "a no-interval migration whose mv cannot land reports failed, not migrated" \
+    "$(statusline_seed_or_migrate "${mvfail_interval_settings}")" failed
+chmod 755 "${mvfail_interval_dir}"
+check "and the settings file is untouched" "$(cat "${mvfail_interval_settings}")" "${no_interval}"
+
 echo
 # A floor on the assertion count, so an edit that guts the file cannot report
 # success by running almost nothing.
