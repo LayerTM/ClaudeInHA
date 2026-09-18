@@ -14,7 +14,7 @@ configuration:
       (laptop, desktop itp.) — polecenie wypisze token ważny około roku.
       Wklej go tutaj. Dzięki temu nie musisz wklejać kodu autoryzacji do
       terminala ingress, co jest niewygodne wewnątrz ramki iframe HA. Uwaga: gdy
-      ten token jest ustawiony, nagłówek konsoli pokazuje „Claude API" — to tylko
+      ten token jest ustawiony, nagłówek konsoli pokazuje „Claude API” — to tylko
       oznacza logowanie tokenem; rozliczenie i tak idzie z Twojej subskrypcji, a
       nie z płatnego API. Zostaw puste, jeśli używasz klucza API Anthropic.
   ha_token:
@@ -146,7 +146,7 @@ configuration:
       okno zostawione otwarte w nocy, niski poziom baterii, temperatura poza
       zakresem, albo obserwowane urządzenie (np. Twoja brama internetowa)
       przechodzi offline (to ostatnie wymaga co najmniej jednej encji na
-      liście „Obserwacja sieci" poniżej — sama w sobie niczego nie obserwuje).
+      liście „Obserwacja sieci” poniżej — sama w sobie niczego nie obserwuje).
       Jest w pełni deterministyczna (stałe reguły, bez Claude i bez zużycia
       limitu planu) i alarmuje tylko o NOWYM problemie, nie w każdym cyklu.
       Domyślnie wyłączone. Aby dotrzeć na telefon, ustaw też HA_NOTIFY_SERVICE
@@ -168,19 +168,19 @@ configuration:
       Alarmuj, gdy czujnik wycieku/wilgoci się załączy. Traktowane jako
       KRYTYCZNE i wysyłane zawsze — nawet w godzinach ciszy. Domyślnie włączone.
   alert_open_at_night:
-    name: Alerty „otwarte w nocy"
+    name: Alerty „otwarte w nocy”
     description: >-
       Alarmuj, gdy drzwi, okno lub garaż są otwarte w oknie nocnym poniżej.
       Domyślnie włączone.
   alert_night_start:
     name: Początek okna nocnego (HH:MM)
     description: >-
-      Początek okna nocnego używanego przez alerty „otwarte w nocy"
+      Początek okna nocnego używanego przez alerty „otwarte w nocy”
       (domyślnie 23:00).
   alert_night_end:
     name: Koniec okna nocnego (HH:MM)
     description: >-
-      Koniec okna nocnego używanego przez alerty „otwarte w nocy"
+      Koniec okna nocnego używanego przez alerty „otwarte w nocy”
       (domyślnie 06:00).
   alert_temp_enabled:
     name: Alerty temperatury
@@ -201,7 +201,7 @@ configuration:
   alert_offline:
     name: Alerty offline / sieciowe (krytyczne)
     description: >-
-      Alarmuj, gdy encja z listy „Obserwacja sieci" poniżej zgłasza
+      Alarmuj, gdy encja z listy „Obserwacja sieci” poniżej zgłasza
       unavailable/unknown, lub (dla device_tracker) not_home. Traktowane
       jako KRYTYCZNE i wysyłane zawsze — nawet w godzinach ciszy. Domyślnie
       włączone, ale nic nie robi, dopóki ta lista jest pusta.
@@ -251,27 +251,27 @@ configuration:
       claude_ha), niezależnie od konsoli. Użyj szybszego, tańszego modelu (np.
       claude-sonnet-4-6) dla błyskawicznych, tanich odpowiedzi w Assist, podczas
       gdy konsola zachowuje własny model. Zostaw puste, aby użyć „Nadpisania
-      modelu" powyżej lub domyślnego modelu Claude.
+      modelu” powyżej lub domyślnego modelu Claude.
   chat_model_voice:
     name: Model głosowy (integracja claude_ha)
     description: >-
       Opcjonalny jeszcze szybszy model TYLKO dla mówionych (głosowych) tur Assist —
       odpowiedzi głosowe są krótkie, więc niższe opóźnienie liczy się bardziej niż
       moc. Np. claude-haiku-4-5-20251001 dla niemal natychmiastowych odpowiedzi
-      głosowych. Zostaw puste, aby dla głosu też użyć „Modelu czatu" powyżej.
+      głosowych. Zostaw puste, aby dla głosu też użyć „Modelu czatu” powyżej.
   chat_model_write:
     name: Model akcji (integracja claude_ha)
     description: >-
       Opcjonalny model do wykonania akcji, którą już potwierdziłeś w czacie. Ten
       krok wywołuje tylko podaną akcję Home Assistant, więc zwykle wystarczy
-      szybszy, tańszy model. Zostaw puste, aby użyć „Modelu czatu" powyżej. Tura
-      głosowa zostaje przy „Modelu głosowym", jeśli jest ustawiony.
+      szybszy, tańszy model. Zostaw puste, aby użyć „Modelu czatu” powyżej. Tura
+      głosowa zostaje przy „Modelu głosowym”, jeśli jest ustawiony.
   chat_model_camera:
     name: Model kamer (integracja claude_ha)
     description: >-
       Opcjonalny model do pytań, na które odpowiedź pochodzi ze zdjęcia z kamery.
-      Zostaw puste, aby użyć „Modelu czatu" powyżej. Tura głosowa zostaje przy
-      „Modelu głosowym", jeśli jest ustawiony.
+      Zostaw puste, aby użyć „Modelu czatu” powyżej. Tura głosowa zostaje przy
+      „Modelu głosowym”, jeśli jest ustawiony.
   chat_daily_budget_usd:
     name: Dzienny budżet czatu (USD)
     description: >-
