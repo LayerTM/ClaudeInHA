@@ -121,7 +121,7 @@ options() {
 reset() {
     rm -rf /data /homeassistant /tmp/cc-skipcheck
     rm -f "${P}"/claude.log "${P}"/claude-env.log "${P}"/console-* "${P}"/update-fails "${P}"/skipcheck-refuses \
-        "${P}"/claude-silent "${P}"/log-env "${P}"/init-ran "${P}"/launched "${P}"/sleep.log "${P}"/notify.log "${P}"/curl.log \
+        "${P}"/claude-silent "${P}"/log-env "${P}"/init-ran "${P}"/launched "${P}"/sleep.log "${P}"/notify.log "${P}"/curl.log "${P}"/curl-stdin.log \
         "${P}"/claude-args.jsonl "${P}"/mp-list "${P}"/plugin-list "${P}"/mcp-list "${P}"/shell-ran
     mkdir -p /data
 }
@@ -543,6 +543,7 @@ ask_fakes() {
     cat > "${bin}/curl" <<'EOF'
 #!/bin/bash
 printf '%q ' "$@" >> /pins/curl.log; echo >> /pins/curl.log
+cat >> /pins/curl-stdin.log
 case "$*" in
     *core/api/states*)
         echo '[{"entity_id":"weather.home","state":"sunny","attributes":{"friendly_name":"Pins Weather","temperature":21}},
@@ -588,8 +589,10 @@ reset
 ask_fakes
 touch "${P}/log-env"
 run_digest
-eq "digest: states are fetched from the Supervisor" "$(head -1 "${P}/curl.log")" \
-    "-sS -H Authorization:\\ Bearer\\ EXAMPLE-sup http://supervisor/core/api/states "
+eq "digest: states are fetched from the Supervisor, no credential in argv" "$(head -1 "${P}/curl.log")" \
+    "-K - -sS http://supervisor/core/api/states "
+eq "digest: the Supervisor bearer travels on stdin, not argv" "$(cat "${P}/curl-stdin.log")" \
+    'header = "Authorization: Bearer EXAMPLE-sup"'
 eq "digest: Claude is called with exactly -p and an empty tool list" \
     "$(jq -c . "${P}/claude-args.jsonl")" '["-p","--allowed-tools",""]'
 yes_ "digest: the prompt goes in on stdin and carries the snapshot as data" \
