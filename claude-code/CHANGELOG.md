@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.59.4] — 2026-09-18
+
+### Changed
+- **Built on ha-agent-core 0.7.5.** A Home Assistant token this add-on's core
+  rejects no longer looks like nothing happened. At start-up the add-on now
+  asks Home Assistant whether its token is accepted and logs one of three
+  answers — accepted, refused (naming the Home Assistant token as the thing
+  to check), or could not be checked — instead of announcing any non-empty
+  token as "configured". A later refusal from Home Assistant itself is now
+  logged too, worded as Home Assistant's own answer, instead of only showing
+  up to the agent as a tool being unavailable. No token is ever logged.
+- **The background loops now reach the Log tab.** The usage upkeep, the
+  proactive monitor, the morning digest and the alerts loop each wrote into a
+  file the Log tab never read, so none of their lines were visible — this
+  includes the empty offline-watch-list message 1.59.3 added, which was
+  written but never actually shown until now. Each accepted connection to the
+  relay is also logged once, with no credential in the line.
+
 ## [1.59.3] — 2026-09-18
 
 ### Changed

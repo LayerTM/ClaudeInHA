@@ -1,8 +1,8 @@
 {
   "lockVersion": 1,
-  "version": "0.7.3",
-  "commit": "cbdf7c25f26fb2119991a6c97644107f46a6432c",
-  "url": "https://github.com/LayerTM/ha-agent-core/releases/download/v0.7.3/ha-agent-core-0.7.3.tar",
-  "sha256": "7bfefc22cc44585226fa02f685b712f0e90e58501d54e5d3a90bc31c48008b21",
+  "version": "0.7.5",
+  "commit": "9cf85a9ff32e1562f971c63acd30f199572686bd",
+  "url": "https://github.com/LayerTM/ha-agent-core/releases/download/v0.7.5/ha-agent-core-0.7.5.tar",
+  "sha256": "fca7d4591c928027aa47dd8431d0d80b25d9dda6522dda3386671689e07ad5f2",
   "adapterApi": 5
 }
