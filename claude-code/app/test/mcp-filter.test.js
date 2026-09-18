@@ -21,13 +21,21 @@ test('the methods a prompt run needs are forwarded', () => {
   // basenames scopes which tools/call a run may make; irrelevant to every other
   // method this checks, but 'x' must be in it for the tools/call case itself.
   const basenames = new Set(['x']);
-  for (const m of [rpc('initialize', 0, {}), rpc('ping', 1), rpc('tools/list', 2), rpc('tools/call', 3, { name: 'x' }),
-    rpc('notifications/initialized'), rpc('notifications/cancelled', undefined, { requestId: 3 })]) {
-    // `calls` (what to record) is this test's business only for tools/call — the
-    // extraction itself is covered where the relay actually records a call.
-    assert.equal(judge(m, basenames).forward, true, m.method);
+  const cases = [
+    [rpc('initialize', 0, {}), []],
+    [rpc('ping', 1), []],
+    [rpc('tools/list', 2), []],
+    [rpc('tools/call', 3, { name: 'x' }), [{ id: 3, answerable: true, name: 'x', args: undefined }]],
+    [rpc('notifications/initialized'), []],
+    [rpc('notifications/cancelled', undefined, { requestId: 3 }), []],
+  ];
+  for (const [m, calls] of cases) {
+    assert.deepEqual(judge(m, basenames), { forward: true, calls }, m.method);
   }
-  assert.equal(judge([rpc('tools/list', 1), rpc('notifications/initialized')], basenames).forward, true);
+  assert.deepEqual(
+    judge([rpc('tools/list', 1), rpc('notifications/initialized')], basenames),
+    { forward: true, calls: [] },
+  );
 });
 
 test('every other method is answered "method not found" and not forwarded', () => {
