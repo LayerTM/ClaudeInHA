@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.59.3] — 2026-09-18
+
+### Changed
+- **The Configuration tab now explains the offline/network watch.**
+  `alert_offline` and `alert_offline_entities` had no description in any
+  language, so enabling Proactive Alerts gave no hint that the offline check
+  watches nothing until an entity is added to the list below it.
+- **Built on ha-agent-core 0.7.3.** When Proactive Alerts and the offline/
+  network check are both on but `alert_offline_entities` is empty, the add-on
+  log now says so once at startup (`offline watch: no entities configured`)
+  instead of staying silent — a silence that looked identical to "watching,
+  all clear."
+
+### Fixed
+- **A stray typewriter quote in the Polish translation.** Every quoted phrase
+  now opens and closes with the correct punctuation mark.
+
 ## [1.59.2] — 2026-09-18
 
 ### Fixed
