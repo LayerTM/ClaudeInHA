@@ -947,6 +947,7 @@ test('status: switching proactive alerts off publishes null, whatever the state 
     const app = createPromptApp({
       token, claudeBin: process.env.CLAUDE_PROMPT_BIN, usageBin: process.env.CLAUDE_PROMPT_USAGE_BIN,
       mcpConfigPath: '', model: '', workDir: TMP, addonVersion: 'test', redact: (x) => x, audit: () => {},
+      haConfigured: false,
       dataDir, proactiveAlerts,
     });
     const srv = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
@@ -971,7 +972,7 @@ test('budget: a spent daily budget answers a read with the notice, in the reques
   const audited = [];
   const app = createPromptApp({
     token, claudeBin: '/nonexistent/claude-must-not-run', usageBin: process.env.CLAUDE_PROMPT_USAGE_BIN,
-    mcpConfigPath: '', model: '', workDir: TMP, addonVersion: 'test', redact: (x) => x,
+    mcpConfigPath: '', model: '', workDir: TMP, addonVersion: 'test', redact: (x) => x, haConfigured: false,
     audit: (line) => audited.push(line), stateDir, dailyBudgetUsd: 2,
   });
   const srv = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });

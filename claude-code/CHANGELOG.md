@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.59.1] — 2026-09-18
+
+### Fixed
+- **A failed write to `settings.json` at startup no longer logs as success.**
+  Seeding or migrating the console's safety hooks and status line moved the
+  rewritten file into place without checking whether that move succeeded, so
+  a `/data` gone read-only produced "Safety hooks configured" / "Status line
+  configured" in the add-on log while nothing had actually been written.
+- **`alert_offline_entities` no longer defaults to a specific device, in this
+  add-on's own configuration.** The default in `config.yaml` is now an empty
+  list, so new installs — and any install that already has the option key —
+  stop getting the previous default's entity id seeded into their options; see
+  DOCS.md for adding your internet gateway or another critical device. An
+  install whose saved options predate the option entirely still gets it from a
+  fallback carried inside the bundled ha-agent-core image; removing that is
+  tracked for a future update.
+
+### Changed
+- Routine dependency update: the bundled Claude CLI to 2.1.276.
+
 ## [1.59.0] — 2026-09-18
 
 ### Changed
