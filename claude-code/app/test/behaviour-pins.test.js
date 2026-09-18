@@ -151,6 +151,7 @@ test('/api/status answers with exactly the recorded set of fields', async () => 
     redact: (x) => x,
     audit: () => {},
     proactiveAlerts: false,
+    haConfigured: false,
   });
   const server = await new Promise((resolve) => {
     const s = app.listen(0, '127.0.0.1', () => resolve(s));

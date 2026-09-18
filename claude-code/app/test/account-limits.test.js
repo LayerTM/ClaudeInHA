@@ -66,6 +66,7 @@ function build({ apiKey = '', oauthToken = '', homeDir = '', upstream }) {
     oauthToken,
     homeDir,
     limitsFetch,
+    haConfigured: false,
   });
   return { app, calls };
 }
