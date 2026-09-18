@@ -18,8 +18,11 @@
 
 ### Added
 - **`transcript_retention_days`** (default 30, 0 = keep): conversation
-  transcripts not written to for this many days are now deleted
-  automatically by the shared core's daily upkeep; their usage stays counted.
+  transcripts not written to for this many days are deleted automatically
+  by the shared core's daily upkeep, which counts a transcript's usage
+  before removing it. The CLI's own transcript cleanup is pushed out of
+  the way (to its longest practical setting) so it can never delete a
+  transcript first — 0 keeps transcripts, short of that ~10-year backstop.
 
 ## [1.58.1] — 2026-09-18
 
