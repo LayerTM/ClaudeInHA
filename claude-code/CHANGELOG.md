@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.59.2] — 2026-09-18
+
+### Fixed
+- **`alert_offline_entities`'s image-side fallback is gone too.** 1.59.1 removed
+  the hardcoded default from this add-on's own `config.yaml`, which stops a
+  fresh install, or one that already has the option key, from getting a
+  specific device id seeded into its options. It could not reach an install
+  whose saved options predate the option's existence entirely — those got the
+  same id from a fallback built into the ha-agent-core image itself, which
+  this release's core pin (below) removes. This is a **different** case from
+  an install whose saved options already have `alert_offline_entities` written
+  into them with the old value: nothing here — no pin, no default change —
+  ever rewrites an already-saved option. Removing an old value already sitting
+  in an install's own configuration needs an explicit edit there.
+
+### Changed
+- **Built on ha-agent-core 0.7.2.** The prompt API's relay now settles the
+  calls still in the air when it shuts down, instead of only when a run ends,
+  so an add-on stopped mid-call no longer erases what a revoke would have
+  written. `cc-hook-audit` can now mark a failed Home Assistant action
+  `(failed)` in `claude-audit.log`; this add-on has registered the hook for
+  that event since 1.59.1, so the marker reaches a console session with this
+  release.
+
 ## [1.59.1] — 2026-09-18
 
 ### Fixed
