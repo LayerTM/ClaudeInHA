@@ -19,8 +19,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const APP = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
-const HTML = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+const APP = fs.readFileSync(path.join(__dirname, '..', 'templates', 'app.js'), 'utf8');
+const HTML = fs.readFileSync(path.join(__dirname, '..', 'templates', 'index.html'), 'utf8');
 
 test('the restart endpoint is called from exactly one place', () => {
   const calls = APP.match(/claude\/respawn/g) || [];
@@ -45,7 +45,7 @@ test('the restart is reachable without an update', () => {
   // The reason this menu exists: the post-update button appears only when an
   // update actually changed the version, so on an up-to-date install there was
   // no way to reach the restart — or the warning — at all.
-  assert.match(HTML, /<button data-session="restart">[^<]*Restart Claude<\/button>/);
+  assert.match(HTML, /<button data-session="restart">[^<]*Restart \{\{agentName\}\}<\/button>/);
   assert.match(HTML, /<button data-session="update">/, 'the update keeps its own way in');
   assert.ok(!/id="btn-update"/.test(HTML), 'the old single-purpose button is gone, not left orphaned');
 });

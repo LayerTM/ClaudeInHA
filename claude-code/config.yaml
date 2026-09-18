@@ -1,5 +1,5 @@
 name: "Claude Code"
-version: "1.58.1"
+version: "1.59.0"
 slug: claude-code
 description: "Claude Code AI assistant embedded in Home Assistant — web console with tabs, clipboard, file attachments, browser testing, and a bundled HA skill pack"
 url: "https://github.com/LayerTM/ClaudeInHA"
@@ -60,6 +60,7 @@ options:
   launch_command: ""
   quick_prompts: []
   upload_retention_days: 14
+  transcript_retention_days: 30
   remote_control: false
   monitoring_interval_hours: 0
   daily_digest_time: ""
@@ -114,6 +115,7 @@ schema:
   quick_prompts:
     - "str"
   upload_retention_days: "int(0,365)?"
+  transcript_retention_days: "int(0,365)?"
   remote_control: bool
   monitoring_interval_hours: "int(0,168)?"
   daily_digest_time: "str?"

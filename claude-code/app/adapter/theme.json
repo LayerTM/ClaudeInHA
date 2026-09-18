@@ -1,0 +1,51 @@
+{
+  "ui": {
+    "bg": "#14141a",
+    "chromeHi": "#20202a",
+    "bgRaised": "#1a1a21",
+    "bgHover": "rgba(255, 255, 255, 0.07)",
+    "fg": "#ede9e0",
+    "fgDim": "#9a9aa4",
+    "accent": "#d97757",
+    "accentSoft": "rgba(217, 119, 87, 0.18)",
+    "accentText": "#f2b49f",
+    "border": "rgba(255, 255, 255, 0.09)",
+    "danger": "#f15b54",
+    "appBackground": "#1c1c1e"
+  },
+  "terminal": {
+    "background": "#14141a",
+    "foreground": "#ede9e0",
+    "cursor": "#d97757",
+    "cursorAccent": "#14141a",
+    "selectionBackground": "#d9775750",
+    "selectionInactiveBackground": "#d9775724",
+    "black": "#2a2a33",
+    "red": "#f15b54",
+    "green": "#6dd17f",
+    "yellow": "#e8bc5a",
+    "blue": "#66aef2",
+    "magenta": "#c98be8",
+    "cyan": "#57d6c4",
+    "white": "#c6c2b9",
+    "brightBlack": "#62626e",
+    "brightRed": "#ff867b",
+    "brightGreen": "#93e6a2",
+    "brightYellow": "#f6d06b",
+    "brightBlue": "#8cc5f7",
+    "brightMagenta": "#dda9f0",
+    "brightCyan": "#82e6d8",
+    "brightWhite": "#fbf8f2",
+    "scrollbarSliderBackground": "#ffffff1f",
+    "scrollbarSliderHoverBackground": "#ffffff33",
+    "scrollbarSliderActiveBackground": "#ffffff40"
+  },
+  "search": {
+    "matchBackground": "#5a3a2e",
+    "matchBorder": "#8a5136",
+    "matchOverviewRuler": "#a05c46",
+    "activeMatchBackground": "#d97757",
+    "activeMatchBorder": "#f2b49f",
+    "activeMatchColorOverviewRuler": "#f2b49f"
+  }
+}

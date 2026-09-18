@@ -227,8 +227,9 @@ eq "ADDON_VERSION from the Supervisor" "$(envv ADDON_VERSION)" 7.7.7
 no_ "auto_update off → no update call" grep -q '|update $' "${P}/claude.log"
 eq "CLAUDE.md = bundled + custom instructions" "$(cat /data/workdir/CLAUDE.md)" "$(expected_claude_md PINS-CUSTOM-MARK)"
 no_ "no /homeassistant → nothing written there" test -e /homeassistant
-eq "settings.json carries hooks and the status line" "$(jq -c 'keys' /data/home/.claude/settings.json)" '["hooks","statusLine"]'
+eq "settings.json carries hooks, the status line and the pushed-out CLI sweep" "$(jq -c 'keys' /data/home/.claude/settings.json)" '["cleanupPeriodDays","hooks","statusLine"]'
 eq "settings.json hook events" "$(jq -c '.hooks | keys' /data/home/.claude/settings.json)" '["Notification","PostToolUse","PreToolUse"]'
+eq "Claude's own transcript sweep is pushed out so the core's sweep counts usage first" "$(jq -r '.cleanupPeriodDays' /data/home/.claude/settings.json)" 3650
 yes_ "ccstatusline settings are seeded" cmp -s /data/home/.config/ccstatusline/settings.json /usr/share/claude-ha/ccstatusline-settings.json
 yes_ "working, upload and skills directories exist" test -d /data/workdir -a -d /data/uploads -a -d /data/home/.claude/skills
 no_ "proactive alerts off → alerts state removed" test -e /data/alerts-state.json
@@ -653,9 +654,35 @@ const { run } = require('/opt/agent-console/server/prompt/run');
 run({ bin: process.argv[2], cwd: '/data/claude-prompt/work', prompt: 'hello', mode: 'read', intents: [] })
   .then((outcome) => console.log(JSON.stringify(outcome)));
 EOF
+# agent-usage speaks the core's incremental --files/--parse protocol (API 5),
+# not a bare dump; this drives it exactly as the core's ha-usage would, one S/L…/E
+# round per file, and prints every record found, sorted for a stable comparison.
+cat > "${P}/usage-record.py" <<'PYEOF'
+import json
+import subprocess
+
+paths = [p for p in subprocess.run(
+    ['/usr/local/bin/agent-usage', '--files'], capture_output=True, check=True,
+).stdout.decode().split('\0') if p]
+proc = subprocess.Popen(['/usr/local/bin/agent-usage', '--parse'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+records = []
+for i, path in enumerate(paths):
+    with open(path, encoding='utf-8') as fh:
+        lines = fh.read().splitlines()
+    payload = [json.dumps(['S', str(i), None])] + [json.dumps(['L', line]) for line in lines] + [json.dumps(['E', str(i)])]
+    proc.stdin.write(('\n'.join(payload) + '\n').encode())
+    proc.stdin.flush()
+    proc.stdout.readline()  # S ack (null)
+    for _ in lines:
+        records.extend(json.loads(proc.stdout.readline()))
+    proc.stdout.readline()  # E ack ({"state": ...})
+proc.stdin.close()
+proc.wait()
+print(json.dumps(records, sort_keys=True))
+PYEOF
 usage_record() {
     local out status
-    out="$(env -i PATH="${BASE_PATH}" HOME=/data/home /usr/local/bin/agent-usage)"
+    out="$(env -i PATH="${BASE_PATH}" HOME=/data/home python3 "${P}/usage-record.py")"
     status=$?
     printf '%s\nexit %s\n' "${out}" "${status}"
 }
@@ -664,7 +691,7 @@ prompt_run() {
 }
 before="$(usage_record)"
 eq "agent-usage reads the console transcript" "${before}" \
-    "$(printf '%s\nexit 0' '{"day": "2026-09-01", "model": "claude-opus-5", "input": 3, "output": 4, "cache_read": 0, "cache_write": 0}')"
+    "$(printf '%s\nexit 0' '[{"cache_read": 0, "cache_write": 0, "day": "2026-09-01", "input": 3, "model": "claude-opus-5", "output": 4}]')"
 prompt_run "${P}/prompt-cli"
 yes_ "a prompt run reached the CLI with the flag" grep -q -- '--no-session-persistence' "${P}/prompt-cli.log"
 eq "agent-usage is unchanged by a prompt run" "$(usage_record)" "${before}"

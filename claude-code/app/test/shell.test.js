@@ -7,7 +7,7 @@ const path = require('node:path');
 const { stampAssetVersion } = require('../server/shell');
 
 const INDEX = fs.readFileSync(
-  path.join(__dirname, '..', 'public', 'index.html'),
+  path.join(__dirname, '..', 'templates', 'index.html'),
   'utf8',
 );
 

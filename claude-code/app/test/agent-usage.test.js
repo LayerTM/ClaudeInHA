@@ -47,14 +47,36 @@ test('the core\'s report on Claude\'s transcripts is the report the add-on built
   });
 });
 
-test('one line per assistant message, in the core\'s keys', () => {
+// One `--parse` round for a single file: S(null) then one L per line, then E.
+function parseLines(env, lines) {
+  const payload = [['S', 'f', null], ...lines.map((l) => ['L', l]), ['E', 'f']]
+    .map((msg) => JSON.stringify(msg)).join('\n');
+  const out = execFileSync(AGENT_USAGE, ['--parse'], { encoding: 'utf8', input: `${payload}\n`, env });
+  const rows = out.trimEnd().split('\n').map((l) => JSON.parse(l));
+  return { started: rows[0], records: rows.slice(1, -1), ended: rows[rows.length - 1] };
+}
+
+test('--files lists the transcripts, NUL-separated; --parse turns their lines into the core\'s keys', () => {
   withData(({ home }) => {
-    const out = execFileSync(AGENT_USAGE, { encoding: 'utf8', env: { ...process.env, HOME: home } });
-    const lines = out.trimEnd().split('\n').map((l) => JSON.parse(l));
-    assert.equal(lines.length, 9);
+    const env = { ...process.env, HOME: home };
+    const files = execFileSync(AGENT_USAGE, ['--files'], { encoding: 'utf8', env })
+      .split('\0').filter(Boolean);
+    assert.equal(files.length, 2, 'the two transcripts under .claude/projects, nothing else');
+    for (const file of files) assert.ok(file.endsWith('.jsonl') && path.isAbsolute(file));
+
+    const perFile = files.map((file) => {
+      const raw = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
+      const { started, records, ended } = parseLines(env, raw);
+      assert.equal(started, null, 'S is answered with null');
+      assert.deepEqual(ended, { state: null }, 'E is answered with a state');
+      assert.equal(records.length, raw.length, 'one records-list per line read');
+      return records.flat();
+    });
+    const lines = perFile.flat();
     for (const line of lines) {
       assert.deepEqual(Object.keys(line), ['day', 'model', 'input', 'output', 'cache_read', 'cache_write']);
     }
+    assert.equal(lines.length, 9);
     assert.deepEqual(lines.find((l) => l.model === 'claude-opus-5' && l.output === 340), {
       day: new Date().toISOString().slice(0, 10), model: 'claude-opus-5',
       input: 12, output: 340, cache_read: 5000, cache_write: 800,
@@ -65,14 +87,20 @@ test('one line per assistant message, in the core\'s keys', () => {
   });
 });
 
+test('a line with no usage record answers with an empty list, not null', () => {
+  const env = { ...process.env, HOME: path.join(os.tmpdir(), 'cc-agent-usage-nowhere') };
+  const { records } = parseLines(env, ['{"type": "user"}', 'not json either']);
+  assert.deepEqual(records, [[], []]);
+});
+
 test('--source names the transcript directory; anything else is a usage error', () => {
   const home = path.join(os.tmpdir(), 'cc-agent-usage-nowhere');
   const env = { ...process.env, HOME: home };
   assert.equal(execFileSync(AGENT_USAGE, ['--source'], { encoding: 'utf8', env }), `${home}/.claude/projects\n`);
-  const bad = spawnSync(AGENT_USAGE, ['--json'], { encoding: 'utf8', env });
+  const bad = spawnSync(AGENT_USAGE, ['--bogus'], { encoding: 'utf8', env });
   assert.equal(bad.status, 2);
   assert.equal(bad.stdout, '');
-  const none = spawnSync(AGENT_USAGE, [], { encoding: 'utf8', env });
+  const none = spawnSync(AGENT_USAGE, ['--files'], { encoding: 'utf8', env });
   assert.equal(none.status, 0, 'no transcripts yet is usage of nothing, not "not reported"');
   assert.equal(none.stdout, '');
 });

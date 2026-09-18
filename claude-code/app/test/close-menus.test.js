@@ -14,8 +14,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const APP = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
-const HTML = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+const APP = fs.readFileSync(path.join(__dirname, '..', 'templates', 'app.js'), 'utf8');
+const HTML = fs.readFileSync(path.join(__dirname, '..', 'templates', 'index.html'), 'utf8');
 
 const closeMenusBody = () => {
   const start = APP.indexOf('function closeMenus()');

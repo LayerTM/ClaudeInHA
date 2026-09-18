@@ -792,7 +792,7 @@ before(async () => {
   } finally {
     console.log = realLog;
   }
-  const bound = logged.join('\n').match(/prompt server listening on :(\d+)\b/);
+  const bound = logged.join('\n').match(/prompt server listening on (?:\[[^\]]+\]|[^\s:]+):(\d+)\b/);
   assert.ok(bound, `the server says which port it bound: ${logged.join(' | ')}`);
   BASE = `http://127.0.0.1:${bound[1]}`;
   TOKEN = fs.readFileSync(path.join(TMP, 'claude-prompt-token'), 'utf8').trim();
