@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Tests for cc-hook-audit (rootfs/usr/local/bin/cc-hook-audit) — the PostToolUse
-# hook that records the HA-affecting actions Claude takes.
+# Tests for cc-hook-audit (rootfs/usr/local/bin/cc-hook-audit) — the hook that
+# records the HA-affecting actions Claude takes, registered on both PostToolUse
+# and PostToolUseFailure.
 #
-# Regression guard, in two halves.
+# Regression guard, in three halves.
 #
 # THE HOOK: it only ever handled Bash/Edit/Write/MultiEdit, and its registration
 # matched the same four names. MCP tools are named mcp__<server>__<tool>, so when
@@ -23,6 +24,14 @@
 # rather than skipped, so a tool this hook has never seen cannot go unrecorded by
 # virtue of being new; a future "tidy-up" that turns the read-only allowlist into
 # a write DENYLIST passes every write case below and fails those.
+#
+# THE FAILURE REGISTRATION, the third half: the engine sends a tool that
+# returned an error to PostToolUseFailure, never to PostToolUse, so the hook's
+# own `(failed)` marker (ha-agent-core's — out of reach from here) never fires
+# unless this add-on registers it for that event too. Every installation before
+# this predates PostToolUseFailure existing at all, so the migration that adds
+# it is the common case below, not the rare one — and it mirrors whatever
+# matcher the user's own PostToolUse entry already carries, never our default.
 #
 # Requires: bash + jq. No Home Assistant, no Supervisor, no container. A missing
 # dependency FAILS rather than skipping: a skip and a pass are the same exit code
@@ -260,21 +269,30 @@ echo "hooks_seed_or_migrate — the fix has to reach an EXISTING installation"
 
 # /data persists across updates, so this is the path every current user takes.
 settings="${work}/settings.json"
-matcher_of() { jq -r '.hooks.PostToolUse[0].matcher // ""' "${settings}"; }
-cmd_of()     { jq -r '.hooks.PostToolUse[0].hooks[0].command // ""' "${settings}"; }
+matcher_of()         { jq -r '.hooks.PostToolUse[0].matcher // ""' "${settings}"; }
+cmd_of()             { jq -r '.hooks.PostToolUse[0].hooks[0].command // ""' "${settings}"; }
+failure_matcher_of() { jq -r '.hooks.PostToolUseFailure[0].matcher // ""' "${settings}"; }
+failure_cmd_of()     { jq -r '.hooks.PostToolUseFailure[0].hooks[0].command // ""' "${settings}"; }
 
 # A fresh install: no hooks at all.
 printf '%s' '{}' > "${settings}"
 check "a fresh install is seeded" "$(hooks_seed_or_migrate "${settings}")" seeded
 check "and gets the current matcher" "$(matcher_of)" "${CC_HOOK_AUDIT_MATCHER}"
+check "and PostToolUseFailure gets the audit hook too" "$(failure_cmd_of)" "${CC_HOOK_AUDIT_CMD}"
+check "on the same matcher" "$(failure_matcher_of)" "${CC_HOOK_AUDIT_MATCHER}"
 check "seeding twice changes nothing" "$(hooks_seed_or_migrate "${settings}")" unchanged
 
 # Chat runs read no settings files, so they are handed the audit hook directly.
-# It must be the entry the console is seeded with, not a second copy of it.
+# It must be the entry the console is seeded with, not a second copy of it, on
+# both events — a call the engine sends to its failure event never reaches a
+# hook registered only on the success one.
 check "chat runs get the seeded audit entry" \
     "$(hooks_audit_settings_json | jq -c '.hooks.PostToolUse[0]')" \
     "$(jq -c '.hooks.PostToolUse[0]' "${settings}")"
-check "and no other hook" "$(hooks_audit_settings_json | jq -c '.hooks | keys')" '["PostToolUse"]'
+check "and the same entry for PostToolUseFailure" \
+    "$(hooks_audit_settings_json | jq -c '.hooks.PostToolUseFailure[0]')" \
+    "$(jq -c '.hooks.PostToolUse[0]' "${settings}")"
+check "and no other hook" "$(hooks_audit_settings_json | jq -c '.hooks | keys')" '["PostToolUse","PostToolUseFailure"]'
 # The core's start script sets the prompt server's settings from the engine's
 # hook, after the user's environment_vars, so the config cannot replace them.
 start="${addon}/rootfs/usr/local/bin/addon-run"
@@ -298,6 +316,8 @@ existing='{"hooks":{"PreToolUse":[{"matcher":"Bash|Edit|Write|MultiEdit","hooks"
 printf '%s' "${existing}" > "${settings}"
 check "an existing installation is migrated" "$(hooks_seed_or_migrate "${settings}")" migrated
 check "and ends up on the current matcher" "$(matcher_of)" "${CC_HOOK_AUDIT_MATCHER}"
+check "and gains a PostToolUseFailure twin" "$(failure_cmd_of)" "${CC_HOOK_AUDIT_CMD}"
+check "on the now-current matcher" "$(failure_matcher_of)" "${CC_HOOK_AUDIT_MATCHER}"
 check "migrating twice changes nothing" "$(hooks_seed_or_migrate "${settings}")" unchanged
 printf '%s' "${existing}" > "${settings}"
 hooks_seed_or_migrate "${settings}" >/dev/null
@@ -305,11 +325,39 @@ check "the other hooks are left alone" \
     "$(jq -r '.hooks.PreToolUse[0].matcher + " " + (.hooks.Notification | length | tostring)' "${settings}")" \
     "Bash|Edit|Write|MultiEdit 1"
 
+# The common case from here on: every install already on the CURRENT matcher —
+# nothing superseded to fix — just predates PostToolUseFailure existing at all,
+# because every install does until this ships.
+printf '%s' "$(jq -nc --arg m "${CC_HOOK_AUDIT_MATCHER}" --arg cmd "${CC_HOOK_AUDIT_CMD}" \
+    '{hooks:{PostToolUse:[{matcher:$m, hooks:[{type:"command", command:$cmd}]}]}}')" > "${settings}"
+check "current matcher, no failure twin yet, is still migrated" "$(hooks_seed_or_migrate "${settings}")" migrated
+check "PostToolUse is untouched" "$(matcher_of)" "${CC_HOOK_AUDIT_MATCHER}"
+check "and gains the failure twin" "$(failure_cmd_of)" "${CC_HOOK_AUDIT_CMD}"
+check "migrating that twice changes nothing" "$(hooks_seed_or_migrate "${settings}")" unchanged
+
 # The direction that matters just as much: a matcher the user has edited is not
-# ours to rewrite.
+# ours to rewrite. The missing failure twin is still ours to add, though — it is
+# a new registration, not a rewrite of anything the user touched — and it
+# mirrors the user's own matcher rather than widening it to our default.
 printf '%s' '{"hooks":{"PostToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/usr/local/bin/cc-hook-audit"}]}]}}' > "${settings}"
-check "a user-edited matcher is NOT migrated" "$(hooks_seed_or_migrate "${settings}")" unchanged
-check "and keeps exactly what the user wrote" "$(matcher_of)" "Bash"
+check "a user-edited matcher gets the missing failure twin" "$(hooks_seed_or_migrate "${settings}")" migrated
+check "but the matcher itself is not rewritten" "$(matcher_of)" "Bash"
+check "and the twin mirrors it, not our default" "$(failure_matcher_of)" "Bash"
+check "migrating that twice changes nothing" "$(hooks_seed_or_migrate "${settings}")" unchanged
+
+# Once both events are already present and correct, nothing to do.
+printf '%s' '{"hooks":{"PostToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/usr/local/bin/cc-hook-audit"}]}],"PostToolUseFailure":[{"matcher":"Bash","hooks":[{"type":"command","command":"/usr/local/bin/cc-hook-audit"}]}]}}' > "${settings}"
+check "both events present on a user matcher is unchanged" "$(hooks_seed_or_migrate "${settings}")" unchanged
+check "and the failure matcher is not silently widened" "$(failure_matcher_of)" "Bash"
+
+# A PostToolUseFailure entry the user installed for their OWN command is not
+# ours either — we only ever add ours, never touch or displace theirs.
+printf '%s' '{"hooks":{"PostToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/usr/local/bin/cc-hook-audit"}]}],"PostToolUseFailure":[{"matcher":"Bash","hooks":[{"type":"command","command":"/usr/local/bin/their-own-hook"}]}]}}' > "${settings}"
+check "the user's own failure hook does not count as ours" "$(hooks_seed_or_migrate "${settings}")" migrated
+check "ours is added alongside it" \
+    "$(jq -r '.hooks.PostToolUseFailure | length' "${settings}")" 2
+check "theirs is still there, untouched" \
+    "$(jq -r '.hooks.PostToolUseFailure[0].hooks[0].command' "${settings}")" "/usr/local/bin/their-own-hook"
 
 # Someone else's hook on our old matcher is not ours either.
 printf '%s' '{"hooks":{"PostToolUse":[{"matcher":"Bash|Edit|Write|MultiEdit","hooks":[{"type":"command","command":"/usr/local/bin/their-own-hook"}]}]}}' > "${settings}"
@@ -346,8 +394,8 @@ unset -f mv
 echo
 # A floor on the assertion count, so a future edit that guts the file cannot
 # report success by running almost nothing.
-if [ "${ran}" -lt 55 ]; then
-    echo "FAIL: only ${ran} cc-hook-audit assertions ran — expected at least 55"
+if [ "${ran}" -lt 85 ]; then
+    echo "FAIL: only ${ran} cc-hook-audit assertions ran — expected at least 85"
     exit 1
 fi
 if [ "${fails}" -eq 0 ]; then

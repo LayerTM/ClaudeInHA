@@ -14,11 +14,17 @@
 # defect as the one the audit hook itself was fixing: the code is right and
 # nothing calls it.
 #
-# The migration therefore rewrites exactly one thing: OUR entry (the one whose
-# command is the audit hook) when its matcher is still byte-for-byte one of OUR
-# previous defaults. A matcher the user has touched is left alone, and so is a
-# hooks config that no longer contains our hook at all. Same rule the statusLine
-# block above it follows for its own superseded commands.
+# The migration rewrites OUR entry (the one whose command is the audit hook)
+# when its matcher is still byte-for-byte one of OUR previous defaults, and adds
+# a PostToolUseFailure twin of it when one is missing — every installation before
+# this predates that event, so this is the common migration, not the rare one.
+# A call the engine sends to its failure event (an MCP tool returning an error
+# result, a failing Bash) never reaches a hook registered only on PostToolUse, so
+# without this the audit hook's own `(failed)` marker never fires and a refused
+# Home Assistant action leaves no line at all. A matcher the user has touched is
+# left alone, and so is a hooks config that no longer contains our hook at all.
+# Same rule the statusLine block above it follows for its own superseded
+# commands.
 
 CC_HOOK_AUDIT_CMD=/usr/local/bin/cc-hook-audit
 CC_HOOK_BACKUP_CMD=/usr/local/bin/cc-hook-backup
@@ -56,11 +62,14 @@ hooks_audit_entry_json() {
 }
 
 # hooks_audit_settings_json
-# A settings object carrying ONLY the audit hook, for `claude --settings`.
+# A settings object carrying ONLY the audit hook, for `claude --settings`. Both
+# PostToolUse and PostToolUseFailure: a call the engine sends to its failure
+# event never reaches a hook registered only on the success one, so the
+# `(failed)` marker the hook itself already knows how to write would never fire.
 hooks_audit_settings_json() {
     local entry
     entry="$(hooks_audit_entry_json)" || return 1
-    jq -cn --argjson entry "${entry}" '{hooks: {PostToolUse: [$entry]}}'
+    jq -cn --argjson entry "${entry}" '{hooks: {PostToolUse: [$entry], PostToolUseFailure: [$entry]}}'
 }
 
 # hooks_seed_or_migrate <settings-file>
@@ -82,9 +91,10 @@ hooks_seed_or_migrate() {
               --arg backup_cmd "${CC_HOOK_BACKUP_CMD}" \
               --arg notify_cmd "${CC_HOOK_NOTIFY_CMD}" '
                 .hooks = {
-                    PreToolUse:   [{matcher: $backup, hooks: [{type: "command", command: $backup_cmd}]}],
-                    PostToolUse:  [$audit_entry],
-                    Notification: [{hooks: [{type: "command", command: $notify_cmd}]}]
+                    PreToolUse:         [{matcher: $backup, hooks: [{type: "command", command: $backup_cmd}]}],
+                    PostToolUse:        [$audit_entry],
+                    PostToolUseFailure: [$audit_entry],
+                    Notification:       [{hooks: [{type: "command", command: $notify_cmd}]}]
                 }' "${sf}" > "${tmp}" 2>/dev/null && mv "${tmp}" "${sf}"; then
             printf 'seeded\n'
             return 0
@@ -94,9 +104,11 @@ hooks_seed_or_migrate() {
         return 1
     fi
 
-    # Hooks exist. Count the entries that are ours AND still on a superseded
-    # matcher. Counting first, rather than diffing the file afterwards, because
-    # jq reformats what it writes — a byte comparison would report a change on a
+    # Hooks exist. Count the entries that are ours and need something: a
+    # superseded matcher, as before, OR no PostToolUseFailure twin at all — every
+    # installation predates that event, so this is the common case, not the rare
+    # one. Counting first, rather than diffing the file afterwards, because jq
+    # reformats what it writes — a byte comparison would report a change on a
     # file that only got re-indented, and then this function would claim a
     # migration that did not happen.
     # The matcher is bound BEFORE the containment test on purpose. Piping into
@@ -108,10 +120,12 @@ hooks_seed_or_migrate() {
     # `unchanged`.
     if ! n="$(jq -r --arg old "${CC_HOOK_AUDIT_SUPERSEDED_MATCHERS}" --arg cmd "${CC_HOOK_AUDIT_CMD}" '
             ($old | split("\n")) as $superseded
+            | ((.hooks.PostToolUseFailure // []) | if type == "array" then . else [] end) as $ptf
+            | ($ptf | any((.hooks // []) | any(.command == $cmd))) as $has_failure
             | ((.hooks.PostToolUse // []) | if type == "array" then . else [] end)
             | map((.matcher // "") as $m
                   | select(((.hooks // []) | any(.command == $cmd))
-                           and (($superseded | index($m)) != null)))
+                           and ((($superseded | index($m)) != null) or ($has_failure | not))))
             | length' "${sf}" 2>/dev/null)"; then
         printf 'failed\n'
         return 1
@@ -131,7 +145,15 @@ hooks_seed_or_migrate() {
                 | if ((.hooks // []) | any(.command == $cmd))
                      and (($superseded | index($m)) != null)
                   then .matcher = $cur
-                  else . end)' "${sf}" > "${tmp}" 2>/dev/null && mv "${tmp}" "${sf}"; then
+                  else . end)
+            | ((.hooks.PostToolUseFailure // []) | if type == "array" then . else [] end) as $ptf
+            | if ($ptf | any((.hooks // []) | any(.command == $cmd)))
+              then .
+              else
+                (((.hooks.PostToolUse // []) | map(select((.hooks // []) | any(.command == $cmd))) | .[0].matcher)
+                 // $cur) as $twin
+                | .hooks.PostToolUseFailure = ($ptf + [{matcher: $twin, hooks: [{type: "command", command: $cmd}]}])
+              end' "${sf}" > "${tmp}" 2>/dev/null && mv "${tmp}" "${sf}"; then
         printf 'migrated\n'
         return 0
     fi
