@@ -10,9 +10,9 @@
     "attributes": { "device_class": "carbon_dioxide", "friendly_name": "Office CO2", "unit_of_measurement": "ppm" }
   },
   {
-    "entity_id": "device_tracker.ucg_fiber",
+    "entity_id": "device_tracker.home_gateway",
     "state": "not_home",
-    "attributes": { "friendly_name": "UniFi Gateway", "source_type": "router" }
+    "attributes": { "friendly_name": "Home Gateway", "source_type": "router" }
   },
   {
     "entity_id": "sensor.nas",
