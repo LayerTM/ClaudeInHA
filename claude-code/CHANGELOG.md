@@ -15,6 +15,7 @@
   address as if those were Home Assistant's real answers. Both checks now
   retry for a few seconds until Core answers, or give up after eight seconds
   each so start-up is never blocked for more than sixteen seconds combined.
+- Routine dependency update: the bundled Claude CLI to 2.1.277.
 
 ## [1.59.4] — 2026-09-18
 
