@@ -322,6 +322,27 @@ printf '%s' '{"hooks":{"Notification":[{"hooks":[{"type":"command","command":"/u
 check "a hooks config without ours is untouched" "$(hooks_seed_or_migrate "${settings}")" unchanged
 check "and no empty PostToolUse is invented" "$(jq -r 'has("hooks") and (.hooks | has("PostToolUse"))' "${settings}")" false
 
+echo "hooks_seed_or_migrate — a write that cannot land is 'failed', never a false 'seeded'/'migrated'"
+
+# What this guards is whether the function checks mv's exit status, so the most
+# direct way to prove it — rather than a directory permission a container's root
+# ignores, which is exactly what this suite runs as in CI — is to make `mv`
+# itself fail: a shell function shadows the command for the rest of this script,
+# deterministically and without touching the filesystem.
+mv() { return 1; }
+
+settings_mvfail="${work}/mvfail-settings.json"
+printf '%s' '{}' > "${settings_mvfail}"
+check "a fresh install whose mv cannot land reports failed, not seeded" \
+    "$(hooks_seed_or_migrate "${settings_mvfail}")" failed
+check "and the settings file is untouched" "$(cat "${settings_mvfail}")" '{}'
+
+printf '%s' "${existing}" > "${settings_mvfail}"
+check "a migration whose mv cannot land reports failed, not migrated" \
+    "$(hooks_seed_or_migrate "${settings_mvfail}")" failed
+check "and the settings file is untouched" "$(cat "${settings_mvfail}")" "${existing}"
+unset -f mv
+
 echo
 # A floor on the assertion count, so a future edit that guts the file cannot
 # report success by running almost nothing.

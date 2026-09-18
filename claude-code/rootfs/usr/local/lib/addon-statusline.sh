@@ -63,8 +63,7 @@ statusline_seed_or_migrate() {
             tmp="$(mktemp)" || { printf 'failed\n'; return 1; }
             if jq --arg cmd "${CC_STATUSLINE_CMD}" --argjson every "${CC_STATUSLINE_REFRESH}" \
                   '.statusLine = {type: "command", command: $cmd, padding: 0, refreshInterval: $every}' \
-                  "${sf}" > "${tmp}" 2>/dev/null; then
-                mv "${tmp}" "${sf}"
+                  "${sf}" > "${tmp}" 2>/dev/null && mv "${tmp}" "${sf}"; then
                 if [ "${state}" = absent ]; then printf 'seeded\n'; else printf 'migrated\n'; fi
                 return 0
             fi
@@ -76,8 +75,7 @@ statusline_seed_or_migrate() {
             # interval; padding and anything else in the object stay as they are.
             tmp="$(mktemp)" || { printf 'failed\n'; return 1; }
             if jq --argjson every "${CC_STATUSLINE_REFRESH}" '.statusLine.refreshInterval = $every' \
-                  "${sf}" > "${tmp}" 2>/dev/null; then
-                mv "${tmp}" "${sf}"
+                  "${sf}" > "${tmp}" 2>/dev/null && mv "${tmp}" "${sf}"; then
                 printf 'migrated\n'
                 return 0
             fi

@@ -118,6 +118,28 @@ printf '{not json\n' > "${settings}"
 check "unparseable settings report failed" "$(statusline_seed_or_migrate "${settings}")" failed
 check "and are not overwritten" "$(cat "${settings}")" '{not json'
 
+echo "a write that cannot land is 'failed', never a false 'seeded'/'migrated'"
+
+# What this guards is whether the function checks mv's exit status, so the most
+# direct way to prove it — rather than a directory permission a container's root
+# ignores, which is exactly what this suite runs as in CI — is to make `mv`
+# itself fail: a shell function shadows the command for the rest of this script,
+# deterministically and without touching the filesystem.
+mv() { return 1; }
+
+settings_mvfail="${work}/mvfail-settings.json"
+printf '{}' > "${settings_mvfail}"
+check "a fresh install whose mv cannot land reports failed, not seeded" \
+    "$(statusline_seed_or_migrate "${settings_mvfail}")" failed
+check "and the settings file is untouched" "$(cat "${settings_mvfail}")" '{}'
+
+no_interval="{\"statusLine\":{\"type\":\"command\",\"command\":\"${CC_STATUSLINE_CMD}\",\"padding\":0}}"
+printf '%s' "${no_interval}" > "${settings_mvfail}"
+check "a no-interval migration whose mv cannot land reports failed, not migrated" \
+    "$(statusline_seed_or_migrate "${settings_mvfail}")" failed
+check "and the settings file is untouched" "$(cat "${settings_mvfail}")" "${no_interval}"
+unset -f mv
+
 echo
 # A floor on the assertion count, so an edit that guts the file cannot report
 # success by running almost nothing.
