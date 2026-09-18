@@ -221,8 +221,10 @@ deliberately much more restricted than the interactive console:
   that call is driven solely by the validated intent, never by the original
   free-form message, so untrusted text never reaches the state-changing path.
 - Rate-limited, concurrency-capped, time-bounded, output-capped, and
-  secret-redacted; every call is written to the audit log (`ha-audit`), and no
-  transcript of a request is kept once it has answered.
+  secret-redacted; a call is written to the audit log (`ha-audit`) once Home
+  Assistant answers it — in this version a write that fails (a full or
+  read-only `/data`) goes undetected, so an action can happen with no line —
+  and no transcript of a request is kept once it has answered.
 - **Its own model — optionally faster for voice.** The companion chat can run a
   different model from the interactive console (`chat_model`) — e.g. a quicker,
   cheaper one for snappy Assist replies — and spoken (voice) turns can use an even
