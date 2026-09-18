@@ -142,10 +142,13 @@ configuration:
     description: >-
       When enabled, a lightweight background loop watches your Home Assistant
       states and notifies you the moment something looks wrong — a water leak,
-      a door or window left open at night, a low battery, or a temperature out
-      of range. It is fully deterministic (fixed rules, no Claude and no plan
-      usage) and only alerts on a NEW problem, not every cycle. Off by default.
-      To reach your phone, also set HA_NOTIFY_SERVICE in Environment Variables.
+      a door or window left open at night, a low battery, a temperature out
+      of range, or a watched device (e.g. your internet gateway) going offline
+      (the last one needs at least one entity listed under Offline / Network
+      Watch List below — it watches nothing on its own). It is fully
+      deterministic (fixed rules, no Claude and no plan usage) and only alerts
+      on a NEW problem, not every cycle. Off by default. To reach your phone,
+      also set HA_NOTIFY_SERVICE in Environment Variables.
   proactive_alerts_interval_minutes:
     name: Alert Check Interval (minutes)
     description: >-
@@ -189,6 +192,20 @@ configuration:
     description: >-
       Alert when an enabled temperature sensor reads above this value
       (default 45). Only used when Temperature Alerts is on.
+  alert_offline:
+    name: Offline / Network Alerts (critical)
+    description: >-
+      Alert when an entity listed under Offline / Network Watch List below
+      reports unavailable/unknown, or (for a device_tracker) not_home.
+      Treated as CRITICAL and always sent — even during quiet hours. On by
+      default, but does nothing while that list is empty.
+  alert_offline_entities:
+    name: Offline / Network Watch List
+    description: >-
+      Entity IDs to watch for going offline — for example your internet
+      gateway's device_tracker, or another critical device. Empty by
+      default: this add-on cannot guess which device matters in your home,
+      so nothing is watched until you add one here.
   alert_quiet_hours:
     name: Alert Quiet Hours (HH:MM-HH:MM)
     description: >-
