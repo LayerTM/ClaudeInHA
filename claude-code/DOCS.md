@@ -7,7 +7,9 @@ Runs the full [Claude Code CLI](https://code.claude.com/docs) inside Home Assist
 1. **Settings → Add-ons → Add-on Store** → ⋮ → **Repositories** → add
    `https://github.com/LayerTM/ClaudeInHA`
 2. Install **Claude Code** and start it.
-3. Open the **Claude Code** sidebar panel.
+3. Open it with **Open Web UI** on the add-on page. Home Assistant leaves
+   **Show in sidebar** off for every add-on it installs — turn it on there if
+   you want a **Claude Code** entry in the sidebar.
 
 ## Authentication (pick one)
 
