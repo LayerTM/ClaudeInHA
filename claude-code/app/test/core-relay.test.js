@@ -146,6 +146,43 @@ test('mcp-session-id survives in both directions', async () => {
   assert.equal(res.headers.get('mcp-session-id'), 'sess-1');
 });
 
+// The audit guarantee lives in what `record` receives on a real tools/call round
+// trip through the relay, not in the shape of the calls the filter reports in
+// isolation — the other tests here never pass a `record` at all. One line per
+// call, `<tool> run=<id>: <arguments>` (the same format the console-run audit
+// hook writes), is what a reader of the audit log relies on to know what ran.
+test('a real record callback receives one line naming the id, tool and arguments of a tools/call', async () => {
+  seen = [];
+  const recorded = [];
+  const auditRelay = await startCoreRelay({
+    coreOrigin, haToken: HA_TOKEN, record: (line) => recorded.push(line),
+  });
+  try {
+    const token = auditRelay.issue('audit-run', { basenames: ['TurnOn'] });
+    const call = {
+      jsonrpc: '2.0',
+      id: 42,
+      method: 'tools/call',
+      params: { name: 'TurnOn', arguments: { entity_id: 'light.kitchen' } },
+    };
+    const res = await fetch(`${auditRelay.url}/api/mcp`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(call),
+    });
+    assert.equal(res.status, 200);
+    await res.json();
+    assert.equal(recorded.length, 1, 'exactly one line is recorded for the one call made');
+    const match = /^(?<name>.+) run=(?<id>[^:]+): (?<args>.*)$/.exec(recorded[0]);
+    assert.ok(match, `record line did not match the audit format: ${recorded[0]}`);
+    assert.equal(match.groups.id, 'audit-run');
+    assert.equal(match.groups.name, 'TurnOn');
+    assert.deepEqual(JSON.parse(match.groups.args), { entity_id: 'light.kitchen' });
+  } finally {
+    auditRelay.close();
+  }
+});
+
 test('server-sent events stream through rather than being buffered', async () => {
   seen = [];
   const res = await fetch(`${relay.url}/api/mcp`, {
