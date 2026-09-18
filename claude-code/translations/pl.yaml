@@ -143,11 +143,14 @@ configuration:
     description: >-
       Gdy włączone, lekka pętla w tle obserwuje stany Home Assistant i
       powiadamia Cię w momencie, gdy coś wygląda źle — wyciek wody, drzwi lub
-      okno zostawione otwarte w nocy, niski poziom baterii albo temperatura poza
-      zakresem. Jest w pełni deterministyczna (stałe reguły, bez Claude i bez
-      zużycia limitu planu) i alarmuje tylko o NOWYM problemie, nie w każdym
-      cyklu. Domyślnie wyłączone. Aby dotrzeć na telefon, ustaw też
-      HA_NOTIFY_SERVICE w zmiennych środowiskowych.
+      okno zostawione otwarte w nocy, niski poziom baterii, temperatura poza
+      zakresem, albo obserwowane urządzenie (np. Twoja brama internetowa)
+      przechodzi offline (to ostatnie wymaga co najmniej jednej encji na
+      liście „Obserwacja sieci" poniżej — sama w sobie niczego nie obserwuje).
+      Jest w pełni deterministyczna (stałe reguły, bez Claude i bez zużycia
+      limitu planu) i alarmuje tylko o NOWYM problemie, nie w każdym cyklu.
+      Domyślnie wyłączone. Aby dotrzeć na telefon, ustaw też HA_NOTIFY_SERVICE
+      w zmiennych środowiskowych.
   proactive_alerts_interval_minutes:
     name: Interwał sprawdzania alertów (minuty)
     description: >-
@@ -195,6 +198,21 @@ configuration:
     description: >-
       Alarmuj, gdy włączony czujnik temperatury pokaże powyżej tej wartości
       (domyślnie 45). Używane tylko, gdy alerty temperatury są włączone.
+  alert_offline:
+    name: Alerty offline / sieciowe (krytyczne)
+    description: >-
+      Alarmuj, gdy encja z listy „Obserwacja sieci" poniżej zgłasza
+      unavailable/unknown, lub (dla device_tracker) not_home. Traktowane
+      jako KRYTYCZNE i wysyłane zawsze — nawet w godzinach ciszy. Domyślnie
+      włączone, ale nic nie robi, dopóki ta lista jest pusta.
+  alert_offline_entities:
+    name: Obserwacja sieci (lista encji)
+    description: >-
+      Identyfikatory encji do obserwowania pod kątem przejścia offline —
+      np. device_tracker Twojej bramy internetowej lub inne krytyczne
+      urządzenie. Domyślnie puste: ten dodatek nie może zgadnąć, które
+      urządzenie jest ważne w Twoim domu, więc nic nie jest obserwowane,
+      dopóki nie dodasz tu przynajmniej jednej encji.
   alert_quiet_hours:
     name: Godziny ciszy alertów (HH:MM-HH:MM)
     description: >-
