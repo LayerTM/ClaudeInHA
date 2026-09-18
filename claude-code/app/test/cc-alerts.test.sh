@@ -89,15 +89,15 @@ case "${m}" in *"Open at night"*) fail "door should still be deduped on re-alert
 
 # --- 4. CO2 + offline/network checks ---
 # Reconfigure: enable the high-CO2 check (>1400 ppm) and watch two entities for
-# going offline (the default internet gateway plus a NAS sensor). Fresh state so
-# the diff for this block is easy to reason about.
+# going offline (a home gateway plus a NAS sensor). Fresh state so the diff for
+# this block is easy to reason about.
 rm -f "${work}/alerts-state.json"
 cat > "${work}/options.json" <<'OPT'
 {
   "proactive_alerts": true,
   "alert_co2_above": 1400,
   "alert_offline": true,
-  "alert_offline_entities": ["device_tracker.ucg_fiber", "sensor.nas"]
+  "alert_offline_entities": ["device_tracker.home_gateway", "sensor.nas"]
 }
 OPT
 
@@ -106,7 +106,7 @@ if notified; then pass "notified on co2/offline cycle"; else fail "expected a co
 m="$(msg)"
 case "${m}" in *"High CO2: Bedroom CO2 (1850 ppm)"*) pass "reports high CO2 above threshold";; *) fail "missing high-CO2 line";; esac
 case "${m}" in *"Office CO2"*) fail "CO2 below threshold should not alert";;             *) pass "ignores CO2 below threshold";; esac
-case "${m}" in *"Offline: UniFi Gateway"*) pass "reports device_tracker not_home as offline";; *) fail "missing offline gateway (not_home) line";; esac
+case "${m}" in *"Offline: Home Gateway"*) pass "reports device_tracker not_home as offline";; *) fail "missing offline gateway (not_home) line";; esac
 case "${m}" in *"Offline: NAS"*) pass "reports unavailable watched entity as offline";; *) fail "missing offline NAS (unavailable) line";; esac
 case "${m}" in *"My Phone"*) fail "a device_tracker that is home should not alert";;     *) pass "ignores device_tracker that is home";; esac
 case "${m}" in *"Garden leak"*) fail "unavailable entity not on the watch list should not alert";; *) pass "ignores unavailable entity not on the watch list";; esac
@@ -150,7 +150,7 @@ if notified; then fail "co2 off (0) + offline off should be silent (got: $(msg))
 #        withheld, then fires once the quiet window ends. Guards the exact
 #        critical/quiet-hours safety behaviour the alerts advertise. ---
 rm -f "${work}/alerts-state.json"   # fresh dedupe memory for this scenario
-printf '%s\n' '{"proactive_alerts": true, "alert_quiet_hours": "13:00-15:00", "alert_offline": true, "alert_offline_entities": ["sensor.nas", "device_tracker.ucg_fiber"], "alert_co2_above": 1400}' > "${work}/options.json"
+printf '%s\n' '{"proactive_alerts": true, "alert_quiet_hours": "13:00-15:00", "alert_offline": true, "alert_offline_entities": ["sensor.nas", "device_tracker.home_gateway"], "alert_co2_above": 1400}' > "${work}/options.json"
 run alerts-co2-offline.json "14:00"   # inside the quiet window
 m="$(msg)"
 case "${m}" in *"Offline: NAS"*) pass "quiet hours: critical offline still sent";;  *) fail "quiet: critical offline must still send (got: ${m})";; esac
@@ -160,19 +160,23 @@ m="$(msg)"
 case "${m}" in *"High CO2: Bedroom CO2 (1850 ppm)"*) pass "withheld CO2 fires once quiet hours end";;  *) fail "CO2 must fire after quiet ends (got: ${m})";; esac
 case "${m}" in *"Offline: NAS"*) fail "already-sent offline must not re-fire after quiet (got: ${m})";;  *) pass "critical offline deduped after quiet ends";; esac
 
-# --- 8. Default gateway watch-list, out of the box. With alert_offline on but
-#        NO alert_offline_entities set, the built-in default
-#        (["device_tracker.ucg_fiber"]) must be injected and catch the gateway
-#        going not_home. ---
+# --- 8. Watching nothing, out of the box. `alert_offline_entities` has no
+#        add-on default any more (config.yaml ships an explicit empty list),
+#        so with alert_offline on and no entities configured, nothing is
+#        watched even when the fixture contains an entity that would
+#        otherwise flag as offline. Whether the SCRIPT itself still falls
+#        back to some built-in default when the key is entirely absent is
+#        ha-agent-core's own behaviour to test, not this add-on's — that
+#        fallback is being removed there (ha-agent-core #49). ---
 rm -f "${work}/alerts-state.json"
 printf '%s\n' '{"proactive_alerts": true, "alert_offline": true}' > "${work}/options.json"
 run alerts-offline-default-gateway.json "14:00"
-case "$(msg)" in *"Offline: UniFi Gateway"*) pass "default watch-list catches the gateway with no entities configured";; *) fail "default gateway watch missed the offline gateway (got: $(msg))";; esac
+if notified; then fail "no entities configured must watch nothing (got: $(msg))"; else pass "no entities configured watches nothing"; fi
 
-# --- 8b. Explicit empty list watches NOTHING. `[]` is truthy to jq, so the
-#         default gateway is NOT re-injected (the `// empty` fallback is only for
-#         an ABSENT list) — an explicit way to disable offline without flipping
-#         alert_offline off. ---
+# --- 8b. Explicit empty list watches NOTHING either, same as an absent list —
+#         an explicit way to disable offline without flipping alert_offline
+#         off. Same fixture, which contains a `not_home` device_tracker that
+#         would flag if it were watched. ---
 rm -f "${work}/alerts-state.json"
 printf '%s\n' '{"proactive_alerts": true, "alert_offline": true, "alert_offline_entities": []}' > "${work}/options.json"
 run alerts-offline-default-gateway.json "14:00"

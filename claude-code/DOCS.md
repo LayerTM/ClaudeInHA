@@ -115,7 +115,7 @@ It watches for:
 - **Temperature out of band** (`alert_temp_enabled`, off by default) — a `temperature` sensor below `alert_temp_low` (5) or above `alert_temp_high` (45). Off by default because sensible bands vary. By default it checks **every** `temperature` sensor — including device temperatures (a NAS or switch CPU running at 45–75°), which would false-trigger. Set `alert_temp_entities` to a list of just your **room** temperature sensors to scope the check to those (see below).
 - **High CO2** (`alert_co2_above`, default 1400 ppm; 0 = off) — any `carbon_dioxide` sensor reading above the threshold, so you know when a room needs airing out. Non-critical (held back during quiet hours).
 - **Humidity out of band** (`alert_humidity_enabled`, off by default) — a `humidity` sensor below `alert_humidity_low` (25%) or above `alert_humidity_high` (70%), so you catch a damp bathroom/cellar or over-dry room. Non-critical (held back during quiet hours).
-- **Offline / network** (`alert_offline`, on) — any entity you list in `alert_offline_entities` that reports `unavailable`/`unknown`, or (for a `device_tracker`) `not_home`. **Critical**: always sent, even during quiet hours. Defaults to watching your internet gateway (`device_tracker.ucg_fiber`), so "the internet/router is down" is caught out of the box.
+- **Offline / network** (`alert_offline`, on) — any entity you list in `alert_offline_entities` that reports `unavailable`/`unknown`, or (for a `device_tracker`) `not_home`. **Critical**: always sent, even during quiet hours. Watches nothing until you list an entity — see below for adding your internet gateway or another critical device.
 
 **Dedupe:** you are notified only when an entity *newly* enters an anomaly. A
 still-open door won't re-notify every cycle — the active anomalies are remembered
@@ -152,13 +152,14 @@ true`, then enable, disable, or tune each check:
 | Humidity | `alert_humidity_enabled`, `alert_humidity_low`, `alert_humidity_high` | `alert_humidity_enabled: false` | set your low/high %RH band |
 | Offline / network | `alert_offline`, `alert_offline_entities` | `alert_offline: false` | edit the watched-entity list |
 
-**Adding a device to the offline watch.** To be alerted when a critical device
-drops off — your NAS, a camera, a second router — add its `entity_id` to
-`alert_offline_entities`:
+**Adding a device to the offline watch.** `alert_offline_entities` is empty by
+default — the check watches nothing until you list an entity. To be alerted
+when a critical device drops off — your internet gateway, a NAS, a camera —
+add its `entity_id`:
 
 ```yaml
 alert_offline_entities:
-  - device_tracker.ucg_fiber   # your internet gateway (the default)
+  - device_tracker.my_gateway
   - sensor.nas_status
   - camera.front_door
 ```
@@ -167,13 +168,10 @@ Any listed entity that reports `unavailable` or `unknown` — or, for a
 `device_tracker`, `not_home` — raises a critical *Offline: …* alert. For a
 `device_tracker`, watch **always-present infrastructure** (a gateway, NAS, or
 camera) — avoid a person's phone tracker, or you'll get an *Offline* alert every
-time they leave home. **To remove** a watched device, delete its line (keep the gateway if you still want
-internet-down detection, or set `alert_offline: false` to switch the whole check
-off). Setting `alert_offline_entities: []` (an explicit empty list) while leaving
-`alert_offline: true` watches **nothing** — an explicit way to disable offline
-alerts without turning `alert_offline` off (an *absent* list, by contrast, falls
-back to watching the default gateway). Changes take effect after you save the options
-and restart the add-on — the alerts loop reads its options when it starts.
+time they leave home. **To remove** a watched device, delete its line, or set
+`alert_offline: false` to switch the whole check off. Changes take effect after
+you save the options and restart the add-on — the alerts loop reads its options
+when it starts.
 
 **Scoping the temperature check.** The temperature alert checks every
 `temperature` sensor by default, which includes **device** temperatures — a NAS,

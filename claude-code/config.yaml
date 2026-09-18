@@ -80,8 +80,7 @@ options:
   alert_humidity_low: 25
   alert_humidity_high: 70
   alert_offline: true
-  alert_offline_entities:
-    - "device_tracker.ucg_fiber"
+  alert_offline_entities: []
   alert_quiet_hours: ""
   prompt_api: true
   api_token: ""
