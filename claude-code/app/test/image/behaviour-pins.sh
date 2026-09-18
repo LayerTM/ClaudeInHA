@@ -156,7 +156,7 @@ expected_claude_md() {
 
 # The audit hook the prompt API is handed, stated here rather than rebuilt with
 # the same helper the service script uses, so a change to that helper shows up.
-AUDIT_SETTINGS='{"hooks":{"PostToolUse":[{"matcher":"Bash|Edit|Write|MultiEdit|^mcp__","hooks":[{"type":"command","command":"/usr/local/bin/cc-hook-audit"}]}]}}'
+AUDIT_SETTINGS='{"hooks":{"PostToolUse":[{"matcher":"Bash|Edit|Write|MultiEdit|^mcp__","hooks":[{"type":"command","command":"/usr/local/bin/cc-hook-audit"}]}],"PostToolUseFailure":[{"matcher":"Bash|Edit|Write|MultiEdit|^mcp__","hooks":[{"type":"command","command":"/usr/local/bin/cc-hook-audit"}]}]}}'
 
 # The names the service script hands to the console, started from an empty
 # environment (fresh install, api_key, model, auto_update off, one user
@@ -228,7 +228,7 @@ no_ "auto_update off → no update call" grep -q '|update $' "${P}/claude.log"
 eq "CLAUDE.md = bundled + custom instructions" "$(cat /data/workdir/CLAUDE.md)" "$(expected_claude_md PINS-CUSTOM-MARK)"
 no_ "no /homeassistant → nothing written there" test -e /homeassistant
 eq "settings.json carries hooks, the status line and the pushed-out CLI sweep" "$(jq -c 'keys' /data/home/.claude/settings.json)" '["cleanupPeriodDays","hooks","statusLine"]'
-eq "settings.json hook events" "$(jq -c '.hooks | keys' /data/home/.claude/settings.json)" '["Notification","PostToolUse","PreToolUse"]'
+eq "settings.json hook events" "$(jq -c '.hooks | keys' /data/home/.claude/settings.json)" '["Notification","PostToolUse","PostToolUseFailure","PreToolUse"]'
 eq "Claude's own transcript sweep is pushed out so the core's sweep counts usage first" "$(jq -r '.cleanupPeriodDays' /data/home/.claude/settings.json)" 3650
 yes_ "ccstatusline settings are seeded" cmp -s /data/home/.config/ccstatusline/settings.json /usr/share/claude-ha/ccstatusline-settings.json
 yes_ "working, upload and skills directories exist" test -d /data/workdir -a -d /data/uploads -a -d /data/home/.claude/skills
