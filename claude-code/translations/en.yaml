@@ -110,7 +110,8 @@ configuration:
     description: >-
       Conversation transcripts not written to for this many days are deleted
       automatically; their usage stays counted either way.
-      Set 0 to keep transcripts forever.
+      Set 0 to keep transcripts (Claude's own cleanup after about 10 years
+      still applies — it cannot be turned off outright).
   remote_control:
     name: Remote Control (Claude mobile app)
     description: >-

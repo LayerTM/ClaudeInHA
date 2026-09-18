@@ -111,7 +111,8 @@ configuration:
     description: >-
       Transkrypty rozmów, do których nie zapisywano przez podaną liczbę dni,
       są usuwane automatycznie; ich zużycie jest liczone tak czy inaczej.
-      Ustaw 0, aby przechowywać transkrypty na zawsze.
+      Ustaw 0, aby przechowywać transkrypty (własne czyszczenie Claude po
+      około 10 latach i tak zadziała — nie da się go całkowicie wyłączyć).
   remote_control:
     name: Zdalne sterowanie (aplikacja mobilna Claude)
     description: >-

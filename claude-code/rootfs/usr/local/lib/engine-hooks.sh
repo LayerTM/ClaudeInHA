@@ -185,9 +185,20 @@ engine_prompt_settings() {
     hooks_audit_settings_json
 }
 
-# Claude has no built-in sweep of its own transcript files, so the core's daily
-# upkeep does it instead (see `agent-usage --files` in the adapter).
+# Claude's own settings carry `cleanupPeriodDays`: its OWN automatic sweep of
+# transcript files (default 30, minimum 1, cannot be turned off — the CLI's
+# settings schema is positive-only). Left alone it deletes a transcript before
+# the core's daily upkeep (`agent-usage --files`) has counted it, and that
+# file's usage is lost silently — the failure core#30 fixed on the core's
+# side. Answering "core" hands deletion to the core, which counts a file
+# before removing it, so Claude's own sweep is pushed out to the CLI's own
+# suggested long-retention value instead of left at its 30-day default.
 engine_transcript_retention() {
+    local settings_file=/data/home/.claude/settings.json
+    local tmp
+    tmp="$(mktemp)" && jq '.cleanupPeriodDays = 3650' "${settings_file}" > "${tmp}" 2>/dev/null \
+        && mv "${tmp}" "${settings_file}" \
+        || rm -f "${tmp}"
     printf 'core\n'
 }
 

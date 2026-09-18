@@ -227,8 +227,9 @@ eq "ADDON_VERSION from the Supervisor" "$(envv ADDON_VERSION)" 7.7.7
 no_ "auto_update off → no update call" grep -q '|update $' "${P}/claude.log"
 eq "CLAUDE.md = bundled + custom instructions" "$(cat /data/workdir/CLAUDE.md)" "$(expected_claude_md PINS-CUSTOM-MARK)"
 no_ "no /homeassistant → nothing written there" test -e /homeassistant
-eq "settings.json carries hooks and the status line" "$(jq -c 'keys' /data/home/.claude/settings.json)" '["hooks","statusLine"]'
+eq "settings.json carries hooks, the status line and the pushed-out CLI sweep" "$(jq -c 'keys' /data/home/.claude/settings.json)" '["cleanupPeriodDays","hooks","statusLine"]'
 eq "settings.json hook events" "$(jq -c '.hooks | keys' /data/home/.claude/settings.json)" '["Notification","PostToolUse","PreToolUse"]'
+eq "Claude's own transcript sweep is pushed out so the core's sweep counts usage first" "$(jq -r '.cleanupPeriodDays' /data/home/.claude/settings.json)" 3650
 yes_ "ccstatusline settings are seeded" cmp -s /data/home/.config/ccstatusline/settings.json /usr/share/claude-ha/ccstatusline-settings.json
 yes_ "working, upload and skills directories exist" test -d /data/workdir -a -d /data/uploads -a -d /data/home/.claude/skills
 no_ "proactive alerts off → alerts state removed" test -e /data/alerts-state.json
