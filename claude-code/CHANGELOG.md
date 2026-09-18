@@ -8,8 +8,22 @@
   rewritten file into place without checking whether that move succeeded, so
   a `/data` gone read-only produced "Safety hooks configured" / "Status line
   configured" in the add-on log while nothing had actually been written.
+- **`alert_offline_entities` no longer defaults to a specific device.** This
+  add-on stopped shipping that default in `config.yaml`, but any install whose
+  saved options predate the option entirely still got the same id from a
+  fallback built into the image itself — that fallback is gone as of
+  `ha-agent-core` 0.7.2. Both defaults are now empty: the offline/network
+  check watches nothing until you list an entity of your own — see DOCS.md
+  for adding your internet gateway or another critical device.
 
 ### Changed
+- **Built on ha-agent-core 0.7.2.** The prompt API's relay now settles the
+  calls still in the air when it shuts down, instead of only when a run ends,
+  so an add-on stopped mid-call no longer erases what a revoke would have
+  written. `cc-hook-audit` gains the ability to mark a failed Home Assistant
+  action `(failed)` in `claude-audit.log`; reaching that from a console session
+  needs this add-on to register the hook for the engine's failure event too,
+  which is not part of this change.
 - Routine dependency update: the bundled Claude CLI to 2.1.276.
 
 ## [1.59.0] — 2026-09-18
