@@ -46,29 +46,32 @@ jobs:
       - name: Run tests
         working-directory: ${{ runner.temp }}/addon/app
         run: npm test
+      # Invoked by path, not `npm run`: these six .test.sh files live only in
+      # this repo, so this workflow owns their names instead of depending on
+      # the shared core's assembled package.json to keep declaring them.
       - name: Run alerts loop tests (bash + jq)
         working-directory: ${{ runner.temp }}/addon/app
-        run: npm run test:alerts
+        run: bash test/cc-alerts.test.sh
 
       - name: Run config-list tests (bash + jq)
         working-directory: ${{ runner.temp }}/addon/app
-        run: npm run test:config
+        run: bash test/config-list.test.sh
 
       - name: Run monitoring loop tests (bash)
         working-directory: ${{ runner.temp }}/addon/app
-        run: npm run test:monitor
+        run: bash test/cc-monitor.test.sh
 
       - name: Run morning briefing tests (bash + jq)
         working-directory: ${{ runner.temp }}/addon/app
-        run: npm run test:digest
+        run: bash test/cc-digest.test.sh
 
       - name: Run audit-log hook tests (bash + jq)
         working-directory: ${{ runner.temp }}/addon/app
-        run: npm run test:audit
+        run: bash test/cc-hook-audit.test.sh
 
       - name: Run status line migration tests (bash + jq)
         working-directory: ${{ runner.temp }}/addon/app
-        run: npm run test:statusline
+        run: bash test/cc-statusline.test.sh
 
   lint-js:
     name: JS lint & types
