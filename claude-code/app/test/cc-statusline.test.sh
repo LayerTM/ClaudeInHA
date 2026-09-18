@@ -120,29 +120,25 @@ check "and are not overwritten" "$(cat "${settings}")" '{not json'
 
 echo "a write that cannot land is 'failed', never a false 'seeded'/'migrated'"
 
-# Same shape as the hooks-audit case: jq succeeds, but the mv that lands the
-# result cannot, because the directory (not the file) refuses the write. The
-# tmp file jq writes to lives outside it, in the system temp dir.
-mvfail_seed_dir="${work}/mv-fail-seed"
-mkdir -p "${mvfail_seed_dir}"
-mvfail_seed_settings="${mvfail_seed_dir}/settings.json"
-printf '{}' > "${mvfail_seed_settings}"
-chmod 555 "${mvfail_seed_dir}"
-check "a fresh install whose mv cannot land reports failed, not seeded" \
-    "$(statusline_seed_or_migrate "${mvfail_seed_settings}")" failed
-chmod 755 "${mvfail_seed_dir}"
-check "and the settings file is untouched" "$(cat "${mvfail_seed_settings}")" '{}'
+# What this guards is whether the function checks mv's exit status, so the most
+# direct way to prove it — rather than a directory permission a container's root
+# ignores, which is exactly what this suite runs as in CI — is to make `mv`
+# itself fail: a shell function shadows the command for the rest of this script,
+# deterministically and without touching the filesystem.
+mv() { return 1; }
 
-mvfail_interval_dir="${work}/mv-fail-interval"
-mkdir -p "${mvfail_interval_dir}"
-mvfail_interval_settings="${mvfail_interval_dir}/settings.json"
+settings_mvfail="${work}/mvfail-settings.json"
+printf '{}' > "${settings_mvfail}"
+check "a fresh install whose mv cannot land reports failed, not seeded" \
+    "$(statusline_seed_or_migrate "${settings_mvfail}")" failed
+check "and the settings file is untouched" "$(cat "${settings_mvfail}")" '{}'
+
 no_interval="{\"statusLine\":{\"type\":\"command\",\"command\":\"${CC_STATUSLINE_CMD}\",\"padding\":0}}"
-printf '%s' "${no_interval}" > "${mvfail_interval_settings}"
-chmod 555 "${mvfail_interval_dir}"
+printf '%s' "${no_interval}" > "${settings_mvfail}"
 check "a no-interval migration whose mv cannot land reports failed, not migrated" \
-    "$(statusline_seed_or_migrate "${mvfail_interval_settings}")" failed
-chmod 755 "${mvfail_interval_dir}"
-check "and the settings file is untouched" "$(cat "${mvfail_interval_settings}")" "${no_interval}"
+    "$(statusline_seed_or_migrate "${settings_mvfail}")" failed
+check "and the settings file is untouched" "$(cat "${settings_mvfail}")" "${no_interval}"
+unset -f mv
 
 echo
 # A floor on the assertion count, so an edit that guts the file cannot report
