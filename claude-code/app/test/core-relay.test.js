@@ -12,7 +12,10 @@ const http = require('node:http');
 const { startCoreRelay } = require('../server/prompt/core-relay');
 
 const HA_TOKEN = 'ha-llat-must-never-leave-the-relay';
-const RELAY_TOKEN = 'relay-token-for-the-child';
+// A bearer is minted per run, via issue(), and carries what that run may do —
+// there is no way to pin a fixed relay token across instances any more, so
+// each relay this file starts issues its own.
+let RELAY_TOKEN;
 
 let core;          // stub Core
 let coreOrigin;
@@ -53,7 +56,8 @@ before(async () => {
   await new Promise((r) => core.listen(0, '127.0.0.1', r));
   coreOrigin = `http://127.0.0.1:${core.address().port}`;
   seen = [];
-  relay = await startCoreRelay({ coreOrigin, haToken: HA_TOKEN, relayToken: RELAY_TOKEN });
+  relay = await startCoreRelay({ coreOrigin, haToken: HA_TOKEN });
+  RELAY_TOKEN = relay.issue('test-run', { cameras: ['camera.front_door'] });
 });
 
 after(() => {
@@ -61,7 +65,9 @@ after(() => {
   core.close();
 });
 
-const auth = { authorization: `Bearer ${RELAY_TOKEN}` };
+// RELAY_TOKEN is only assigned once before() has run; a getter reads it fresh
+// each time this is used (spreading it still copies the resolved value).
+const auth = { get authorization() { return `Bearer ${RELAY_TOKEN}`; } };
 const INIT = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}';
 
 test('binds loopback only', () => {
@@ -164,10 +170,10 @@ test('a 3xx from Core becomes a 502 and the Authorization header is not re-sent'
   const r2 = await startCoreRelay({
     coreOrigin: `http://127.0.0.1:${redirecting.address().port}`,
     haToken: HA_TOKEN,
-    relayToken: RELAY_TOKEN,
   });
+  const authR2 = { authorization: `Bearer ${r2.issue('r2-run')}` };
   try {
-    const res = await fetch(`${r2.url}/api/mcp`, { method: 'POST', headers: auth, body: INIT });
+    const res = await fetch(`${r2.url}/api/mcp`, { method: 'POST', headers: authR2, body: INIT });
     assert.equal(res.status, 502);
     const body = await res.json();
     assert.match(body.error, /redirect/);
@@ -181,10 +187,10 @@ test('an unreachable Core is a 502, not an auth error', async () => {
   const dead = await startCoreRelay({
     coreOrigin: 'http://127.0.0.1:1',   // nothing listens here
     haToken: HA_TOKEN,
-    relayToken: RELAY_TOKEN,
   });
+  const authDead = { authorization: `Bearer ${dead.issue('dead-run')}` };
   try {
-    const res = await fetch(`${dead.url}/api/mcp`, { method: 'POST', headers: auth, body: INIT });
+    const res = await fetch(`${dead.url}/api/mcp`, { method: 'POST', headers: authDead, body: INIT });
     assert.equal(res.status, 502, 'unreachable must never present as 401');
   } finally {
     dead.close();

@@ -1428,27 +1428,36 @@ test('start: saved chat sessions are removed even when the prompt API is off', a
   }
 });
 
-test('start: without the audit hook the prompt API refuses to start, loudly', async () => {
+test('start: a malformed or missing CLAUDE_PROMPT_SETTINGS no longer blocks startup', async () => {
+  // Startup used to refuse unless CLAUDE_PROMPT_SETTINGS carried an audit hook,
+  // because that was the engine's own claim about whether it could record what
+  // it did — a claim nothing behind the flag ever checked, and one an engine
+  // that cannot run hooks could not give truthfully. Every Home Assistant
+  // action now passes through the relay's own audit sink instead (the same
+  // guarantee for every engine, checked at the moment a request tries to act,
+  // not guessed from a settings blob at boot), so the settings value is pure
+  // pass-through configuration for spawned runs and no longer gates whether
+  // the server starts at all.
   const saved = process.env.CLAUDE_PROMPT_SETTINGS;
-  const lines = [];
-  const realLog = console.log;
-  console.log = (msg) => { lines.push(String(msg)); };
   try {
     for (const value of ['', '{}', '{"hooks":{"PostToolUse":[{"matcher":"x","hooks":[{"type":"command","command":""}]}]}}']) {
       process.env.CLAUDE_PROMPT_SETTINGS = value;
-      lines.length = 0;
-      // eslint-disable-next-line no-await-in-loop
-      const stop = await promptServer.start();
-      assert.equal(typeof stop, 'function', JSON.stringify(value));
-      assert.ok(lines.some((l) => /ERROR: CLAUDE_PROMPT_SETTINGS .*prompt API is not started/.test(l)), `${JSON.stringify(value)}: ${lines.join(' | ')}`);
-      assert.ok(!lines.some((l) => /listening/.test(l)), 'nothing was started');
+      const lines = [];
+      const realLog = console.log;
+      console.log = (msg) => { lines.push(String(msg)); };
+      let stop;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        stop = await promptServer.start();
+        assert.ok(lines.some((l) => /listening/.test(l)), `${JSON.stringify(value)}: ${lines.join(' | ')}`);
+      } finally {
+        console.log = realLog;
+        if (stop) stop();
+      }
     }
   } finally {
-    console.log = realLog;
     process.env.CLAUDE_PROMPT_SETTINGS = saved;
   }
-  assert.equal(promptServer.hasAuditHook(saved), true, 'the settings the service script builds pass');
-  assert.equal(promptServer.hasAuditHook('not json'), false);
 });
 
 test('removeSavedPromptSessions: clears the work folder\'s saved sessions once, and nothing else', async () => {
@@ -1711,10 +1720,18 @@ test('concurrency: a third run while two are busy gets 503', async () => {
   await Promise.all([slow1, slow2]);
 });
 
-test('artifacts: token + mcp files are 0600 and audit log is written', () => {
+test('artifacts: token + mcp files are 0600 and audit log is written', async () => {
   const tokenMode = fs.statSync(path.join(TMP, 'claude-prompt-token')).mode & 0o777;
   assert.equal(tokenMode, 0o600);
-  const mcpFile = path.join(TMP, 'claude-prompt', 'ha-mcp.json');
+  // The MCP config is written per run, under its own runs/<runId> directory (so
+  // concurrent runs never share, or race over, one bearer) — inspect it while a
+  // run is in flight, since endRun removes the directory the moment it ends.
+  const runsDir = path.join(TMP, 'claude-prompt', 'runs');
+  const inflight = post({ prompt: 'SLOW artifact check' }, { 'X-Claude-Caller': 'cc.artifact' });
+  await new Promise((r) => { setTimeout(r, 400); }); // let the run enter runClaude
+  const runIds = fs.readdirSync(runsDir);
+  assert.equal(runIds.length, 1, `expected exactly one in-flight run, got: ${runIds.join(', ')}`);
+  const mcpFile = path.join(runsDir, runIds[0], 'ha-mcp.json');
   assert.equal(fs.statSync(mcpFile).mode & 0o777, 0o600);
   const mcpRaw = fs.readFileSync(mcpFile, 'utf8');
   const mcp = JSON.parse(mcpRaw);
@@ -1735,6 +1752,7 @@ test('artifacts: token + mcp files are 0600 and audit log is written', () => {
     `MCP url must target /api/mcp, got ${mcp.mcpServers.ha.url}`,
   );
   assert.ok(fs.existsSync(path.join(TMP, 'claude-audit.log')));
+  await inflight;
 });
 
 // ---------------------------------------------------------------------------
