@@ -13,16 +13,21 @@ const {
 const { startCoreRelay } = require('../server/prompt/core-relay');
 
 const rpc = (method, id, params) => ({ jsonrpc: '2.0', ...(id === undefined ? {} : { id }), method, ...(params ? { params } : {}) });
-const judge = (value) => judgeClientBody(typeof value === 'string' ? value : JSON.stringify(value));
+const judge = (value, basenames) => judgeClientBody(typeof value === 'string' ? value : JSON.stringify(value), basenames);
 
 // --- agent → server -------------------------------------------------------------
 
 test('the methods a prompt run needs are forwarded', () => {
+  // basenames scopes which tools/call a run may make; irrelevant to every other
+  // method this checks, but 'x' must be in it for the tools/call case itself.
+  const basenames = new Set(['x']);
   for (const m of [rpc('initialize', 0, {}), rpc('ping', 1), rpc('tools/list', 2), rpc('tools/call', 3, { name: 'x' }),
     rpc('notifications/initialized'), rpc('notifications/cancelled', undefined, { requestId: 3 })]) {
-    assert.deepEqual(judge(m), { forward: true }, m.method);
+    // `calls` (what to record) is this test's business only for tools/call — the
+    // extraction itself is covered where the relay actually records a call.
+    assert.equal(judge(m, basenames).forward, true, m.method);
   }
-  assert.deepEqual(judge([rpc('tools/list', 1), rpc('notifications/initialized')]), { forward: true });
+  assert.equal(judge([rpc('tools/list', 1), rpc('notifications/initialized')], basenames).forward, true);
 });
 
 test('every other method is answered "method not found" and not forwarded', () => {
@@ -95,7 +100,9 @@ test('server-sent events are filtered one event at a time, however they are spli
 
 // --- through the relay -------------------------------------------------------------
 
-const TOKEN = 'relay-token-filter';
+// A bearer is minted per run, via issue(), and carries what that run may
+// call — there is no way to pin a fixed relay token any more.
+let TOKEN;
 let core;
 let relay;
 let seen;
@@ -112,7 +119,8 @@ before(async () => {
     });
   });
   await new Promise((r) => core.listen(0, '127.0.0.1', r));
-  relay = await startCoreRelay({ coreOrigin: `http://127.0.0.1:${core.address().port}`, haToken: 'ha', relayToken: TOKEN });
+  relay = await startCoreRelay({ coreOrigin: `http://127.0.0.1:${core.address().port}`, haToken: 'ha' });
+  TOKEN = relay.issue('test-run', { basenames: ['GetLiveContext'], cameras: ['camera.door'] });
 });
 
 after(() => {
