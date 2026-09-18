@@ -1390,8 +1390,11 @@ test('buildClaudeArgs: the settings a run is given travel with --settings, next 
     assert.equal(argValue(args, '--setting-sources'), '', mode);
   }
   const hooks = JSON.parse(settings).hooks;
-  assert.deepEqual(Object.keys(hooks), ['PostToolUse'], 'only the audit hook, nothing else from the console');
+  assert.deepEqual(Object.keys(hooks).sort(), ['PostToolUse', 'PostToolUseFailure'],
+    'only the audit hook, on both events, nothing else from the console');
   assert.match(hooks.PostToolUse[0].matcher, /\^mcp__/, 'the matcher covers the Home Assistant tools');
+  assert.deepEqual(hooks.PostToolUseFailure[0], hooks.PostToolUse[0],
+    'a failed Home Assistant call reaches the same audit hook as a successful one');
 });
 
 test('audit: every chat run carries the audit hook the service script built', async () => {

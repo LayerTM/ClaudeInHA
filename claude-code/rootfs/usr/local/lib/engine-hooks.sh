@@ -169,7 +169,7 @@ engine_provision() {
     outcome="$(hooks_seed_or_migrate "${settings_file}")" || true
     case "${outcome}" in
         seeded)   bashio::log.info "Safety hooks configured (backup / audit / notify)" ;;
-        migrated) bashio::log.info "Safety hooks updated (audit log now covers connected tool servers)" ;;
+        migrated) bashio::log.info "Safety hooks updated (audit log configuration refreshed to the current version)" ;;
         failed)   bashio::log.warning "Could not write the safety hooks into ${settings_file} — leaving it as it is" ;;
     esac
 }
