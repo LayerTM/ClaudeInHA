@@ -9,6 +9,9 @@
   a `/data` gone read-only produced "Safety hooks configured" / "Status line
   configured" in the add-on log while nothing had actually been written.
 
+### Changed
+- Routine dependency update: the bundled Claude CLI to 2.1.276.
+
 ## [1.59.0] — 2026-09-18
 
 ### Changed
