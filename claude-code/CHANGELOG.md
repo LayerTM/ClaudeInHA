@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.59.1] — 2026-09-18
+
+### Fixed
+- **A failed write to `settings.json` at startup no longer logs as success.**
+  Seeding or migrating the console's safety hooks and status line moved the
+  rewritten file into place without checking whether that move succeeded, so
+  a `/data` gone read-only produced "Safety hooks configured" / "Status line
+  configured" in the add-on log while nothing had actually been written.
+
 ## [1.59.0] — 2026-09-18
 
 ### Changed
