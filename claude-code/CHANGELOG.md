@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.59.5] — 2026-09-18
+
+### Changed
+- **Built on ha-agent-core 0.7.6.** The token the add-on's core sends to Home
+  Assistant no longer travels on a command line — it used to ride along as a
+  curl flag, which is readable by anything else running in the container for
+  as long as that call is in flight; it now goes to curl as standard input
+  instead, with no change in what any call does or returns.
+- **The start-up token and address checks now wait for Home Assistant Core.**
+  The add-on and Core start together with nothing ordering the two, so on a
+  slow start the add-on could ask both questions before Core was listening —
+  reporting the token as "could not be checked" and falling back to a default
+  address as if those were Home Assistant's real answers. Both checks now
+  retry for a few seconds until Core answers, or give up after eight seconds
+  each so start-up is never blocked for more than sixteen seconds combined.
+
 ## [1.59.4] — 2026-09-18
 
 ### Changed
