@@ -189,16 +189,24 @@ engine_prompt_settings() {
 # transcript files (default 30, minimum 1, cannot be turned off — the CLI's
 # settings schema is positive-only). Left alone it deletes a transcript before
 # the core's daily upkeep (`agent-usage --files`) has counted it, and that
-# file's usage is lost silently — the failure core#30 fixed on the core's
-# side. Answering "core" hands deletion to the core, which counts a file
-# before removing it, so Claude's own sweep is pushed out to the CLI's own
-# suggested long-retention value instead of left at its 30-day default.
+# file's usage is lost silently. Answering "core" hands deletion to the core,
+# which counts a file before removing it, so Claude's own sweep is pushed out
+# to the CLI's own suggested long-retention value instead of left at its
+# 30-day default. The whole point of answering "core" rests on that write
+# actually landing, so a failed write is never silent, and the value is read
+# back rather than assumed.
 engine_transcript_retention() {
     local settings_file=/data/home/.claude/settings.json
     local tmp
-    tmp="$(mktemp)" && jq '.cleanupPeriodDays = 3650' "${settings_file}" > "${tmp}" 2>/dev/null \
+    if tmp="$(mktemp)" \
+        && jq '.cleanupPeriodDays = 3650' "${settings_file}" > "${tmp}" 2>/dev/null \
         && mv "${tmp}" "${settings_file}" \
-        || rm -f "${tmp}"
+        && [ "$(jq -r '.cleanupPeriodDays // empty' "${settings_file}" 2>/dev/null)" = "3650" ]; then
+        :
+    else
+        rm -f "${tmp}"
+        bashio::log.warning "Could not push Claude's own transcript sweep out of the way in ${settings_file} — it may delete transcripts before the core counts them"
+    fi
     printf 'core\n'
 }
 
