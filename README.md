@@ -47,7 +47,9 @@ Anthropic's [Claude Code](https://code.claude.com/docs) CLI, embedded in Home As
    https://github.com/LayerTM/ClaudeInHA
    ```
 2. Install **Claude Code** from the store and start it.
-3. Open the **Claude Code** panel in the sidebar.
+3. Open it with **Open Web UI** on the add-on page. Home Assistant leaves
+   **Show in sidebar** off for every add-on it installs — turn it on there if
+   you want a **Claude Code** entry in the sidebar.
 
 Authenticate by running `claude` in the console and following the login URL
 (subscription), or set an API key / OAuth token in the configuration. See the
