@@ -12,8 +12,16 @@ on:
     branches: [main]
   pull_request:
   # A dispatched run measures the branch as it is (main-measured.yml starts one
-  # for a commit that landed without a push event).
+  # for a commit that landed without a push event). cut_release is the one
+  # thing that also cuts a release from this trigger: release-cadence.yml sets
+  # it, once a day or on a maintainer's explicit dispatch, so a plain re-run of
+  # CI (main-measured.yml, or a human re-checking a commit) never ships one.
   workflow_dispatch:
+    inputs:
+      cut_release:
+        description: Cut a release for main's current version if one is pending
+        type: boolean
+        default: false
   # canary.yml calls this workflow with canary: true.
   workflow_call:
     inputs:
@@ -167,7 +175,7 @@ jobs:
   # Where every upstream pin comes from is declared beside it (see pins.py).
   # Always runs, so the release can need it; it only asks the upstreams when this
   # commit carries a version that has no release yet — i.e. on the pull request
-  # that bumps the version and on the push that would cut it. A release therefore
+  # that bumps the version and on any run that would cut it. A release therefore
   # never ships a pin that is behind, and an upstream that cannot be read fails it.
   pins:
     name: Upstream pins
@@ -181,11 +189,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version="$(grep -oE '^version:[[:space:]]*"?[0-9]+\.[0-9]+\.[0-9]+' claude-code/config.yaml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
-          if [ -z "${version}" ]; then
-            echo "Could not parse version from config.yaml" >&2
-            exit 1
-          fi
+          version="$(python3 .github/scripts/release_notes.py version claude-code/config.yaml)"
           if gh release view "v${version}" >/dev/null 2>&1; then
             echo "v${version} is already released — the pins are checked when the version moves."
             echo "unreleased=false" >> "$GITHUB_OUTPUT"
@@ -360,12 +364,14 @@ jobs:
             --volume "${PWD}/claude-code/app/test/image:/pins-src:ro" \
             --entrypoint bash 'addon-image:${{ matrix.arch }}' /pins-src/behaviour-pins.sh
 
-  # Keeps GitHub Releases in lock-step with the add-on version: whenever main
-  # carries a version with no release, this cuts one. It needs every gate above,
-  # so a release exists only for a commit that passed all of them — and it asks
-  # whether the release is already there rather than guessing from which files a
-  # push happened to touch, so a version that missed its release once is picked
-  # up by the next push instead of staying missing forever.
+  # Keeps GitHub Releases in lock-step with the add-on version, but no longer
+  # from the push that lands a bump: release-cadence.yml dispatches this
+  # workflow with cut_release once a day, or a maintainer does it by hand for
+  # a fix that cannot wait. Either way this needs every gate above, so a
+  # release exists only for a commit that passed all of them on this very run.
+  # A version bumped and superseded before its own cut is not lost: notes.md
+  # carries every changelog section back to the last real release, not just
+  # this version's own.
   release:
     name: Release
     needs:
@@ -380,7 +386,10 @@ jobs:
       - arches
       - core-release
       - image
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.cut_release == true
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -391,11 +400,7 @@ jobs:
       - name: Resolve version from config.yaml
         id: v
         run: |
-          version="$(grep -oE '^version:[[:space:]]*"?[0-9]+\.[0-9]+\.[0-9]+' claude-code/config.yaml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
-          if [ -z "${version}" ]; then
-            echo "Could not parse version from config.yaml" >&2
-            exit 1
-          fi
+          version="$(python3 .github/scripts/release_notes.py version claude-code/config.yaml)"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - name: Create release if missing
@@ -409,15 +414,9 @@ jobs:
             echo "Release ${tag} already exists — nothing to do."
             exit 0
           fi
-          # Extract this version's section from the changelog for the notes.
-          awk -v ver="${VERSION}" '
-            $0 ~ "^## \\[" ver "\\]" { grab = 1; next }
-            grab && /^## \[/ { exit }
-            grab { print }
-          ' claude-code/CHANGELOG.md > notes.md
-          if [ ! -s notes.md ]; then
-            printf 'Release %s\n' "${tag}" > notes.md
-          fi
+          since="$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty' | sed 's/^v//')"
+          python3 .github/scripts/release_notes.py notes claude-code/config.yaml \
+            claude-code/CHANGELOG.md --since "${since}" --write notes.md
           gh release create "${tag}" \
             --title "${tag}" \
             --notes-file notes.md \
