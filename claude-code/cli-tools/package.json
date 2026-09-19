@@ -5,7 +5,7 @@
   "description": "Command-line tools bundled in the Claude Code add-on image; their commands are linked into /usr/local/bin",
   "license": "MIT",
   "dependencies": {
-    "@playwright/mcp": "0.0.81",
+    "@playwright/mcp": "0.0.82",
     "ccstatusline": "2.2.30"
   }
 }

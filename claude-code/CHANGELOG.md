@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.59.6] — 2026-09-19
+
+### Changed
+- Routine dependency updates:
+  - The bundled Claude CLI to 2.1.278.
+  - Playwright MCP 0.0.81 → 0.0.82 ([release notes](https://github.com/microsoft/playwright-mcp/releases/tag/v0.0.82)):
+    a page's WebMCP tools now appear directly in the tool list as `webmcp_<tool>`,
+    replacing `browser_webmcp_list` / `browser_webmcp_call`; adds
+    `browser_emulate_media` (colour scheme, reduced motion, print media) and
+    fixes for a failed file upload and for storage-state capture on origins with
+    a service worker.
+
 ## [1.59.5] — 2026-09-18
 
 ### Changed
