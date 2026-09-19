@@ -184,6 +184,8 @@ jobs:
       - uses: actions/checkout@v7
       - name: Test the script that reads the pins
         run: python3 .github/scripts/test_pins.py
+      - name: Test the script that resolves the release version and its notes
+        run: python3 .github/scripts/test_release_notes.py
       - name: Does this commit carry an unreleased version
         id: release
         env:
@@ -414,9 +416,8 @@ jobs:
             echo "Release ${tag} already exists — nothing to do."
             exit 0
           fi
-          since="$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty' | sed 's/^v//')"
           python3 .github/scripts/release_notes.py notes claude-code/config.yaml \
-            claude-code/CHANGELOG.md --since "${since}" --write notes.md
+            claude-code/CHANGELOG.md --write notes.md
           gh release create "${tag}" \
             --title "${tag}" \
             --notes-file notes.md \
