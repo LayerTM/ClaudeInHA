@@ -192,13 +192,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="$(python3 .github/scripts/release_notes.py version claude-code/config.yaml)"
-          if gh release view "v${version}" >/dev/null 2>&1; then
-            echo "v${version} is already released — the pins are checked when the version moves."
-            echo "unreleased=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "v${version} has no release yet — every pin must match its upstream."
-            echo "unreleased=true" >> "$GITHUB_OUTPUT"
-          fi
+          # 0 released, 1 none, 2 gh could not say. This job only ever adds a
+          # check, so when gh cannot say it takes the stricter reading, out
+          # loud: pins are compared as if the version were unreleased.
+          status=0
+          python3 .github/scripts/release_notes.py released "${version}" || status=$?
+          case "${status}" in
+            0)
+              echo "v${version} is already released — the pins are checked when the version moves."
+              echo "unreleased=false" >> "$GITHUB_OUTPUT"
+              ;;
+            1)
+              echo "v${version} has no release yet — every pin must match its upstream."
+              echo "unreleased=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::warning::could not tell whether v${version} is released — checking every pin as if it were not"
+              echo "unreleased=true" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
       - name: Every pin matches its upstream
         if: steps.release.outputs.unreleased == 'true'
         env:
@@ -391,7 +403,8 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/main' &&
-      inputs.cut_release == true
+      inputs.cut_release == true &&
+      !inputs.canary
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -412,10 +425,18 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           tag="v${VERSION}"
-          if gh release view "${tag}" >/dev/null 2>&1; then
-            echo "Release ${tag} already exists — nothing to do."
-            exit 0
-          fi
+          # 0 released, 1 none, 2 gh could not say — which must stop the job,
+          # not be taken for "none" and cut a release nobody checked.
+          status=0
+          python3 .github/scripts/release_notes.py released "${VERSION}" || status=$?
+          case "${status}" in
+            0)
+              echo "Release ${tag} already exists — nothing to do."
+              exit 0
+              ;;
+            1) ;;
+            *) exit "${status}" ;;
+          esac
           python3 .github/scripts/release_notes.py notes claude-code/config.yaml \
             claude-code/CHANGELOG.md --write notes.md
           gh release create "${tag}" \

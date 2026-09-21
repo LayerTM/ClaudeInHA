@@ -14,6 +14,12 @@ name: release cadence
 # covers every timezone, and this is the best trade-off across the ones that
 # matter most here.
 #
+# This schedule is now the only automatic way a release is cut, and GitHub
+# disables scheduled workflows in a repository with no activity for 60 days,
+# without telling anyone: the releases would simply stop. Re-enabling is a
+# manual step in the Actions tab, and the workflow's state (visible through
+# the API) reads disabled_inactivity while it is off.
+#
 # workflow_dispatch is the exception: a fix that is actively breaking
 # installs should not wait for the clock. It goes through the same gates —
 # reason is required so the run states why it could not wait, but what marks
@@ -48,18 +54,41 @@ jobs:
       REASON: ${{ inputs.reason }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          # pending-since reads when the version was bumped from git history.
+          fetch-depth: 0
 
       - name: Dispatch ci.yml to cut a release, only if one is pending
         run: |
           set -euo pipefail
           version="$(python3 .github/scripts/release_notes.py version claude-code/config.yaml)"
-          if gh release view "v${version}" >/dev/null 2>&1; then
-            echo "v${version} is already released — nothing pending."
-            exit 0
-          fi
+          # 0 released, 1 none, 2 gh could not say — which fails this run
+          # instead of being read as "none" and dispatching on a guess.
+          status=0
+          python3 .github/scripts/release_notes.py released "${version}" || status=$?
+          case "${status}" in
+            0)
+              echo "v${version} is already released — nothing pending."
+              exit 0
+              ;;
+            1) ;;
+            *) exit "${status}" ;;
+          esac
           echo "v${version} has no release yet."
           if [ -n "${REASON:-}" ]; then
             echo "Reason for cutting outside the daily schedule: ${REASON}"
+          fi
+          # The dispatch below is fire-and-forget: this run stays green even if
+          # the ci.yml run it starts goes red. What tells them apart is time —
+          # a version bumped more than a day ago has already been dispatched
+          # by an earlier run of this workflow, and still has no release.
+          if since="$(python3 .github/scripts/release_notes.py pending-since claude-code/config.yaml)"; then
+            waiting=$(( $(date +%s) - since ))
+            if [ "${waiting}" -gt 86400 ]; then
+              echo "::warning::v${version} has been on main for $(( waiting / 3600 )) hours without a release — the ci.yml run an earlier cadence run dispatched did not cut it; look at its result"
+            fi
+          else
+            echo "::warning::could not tell how long v${version} has been waiting for a release"
           fi
           gh workflow run ci.yml --repo "$REPO" --ref main -f cut_release=true
           echo "::notice::dispatched ci.yml to cut v${version}"

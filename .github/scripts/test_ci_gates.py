@@ -12,6 +12,7 @@ Run: python3 .github/scripts/test_ci_gates.py
 from __future__ import annotations
 
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -124,6 +125,13 @@ done = subprocess.run(
 )
 check("exit code", done.returncode, 0)
 check("says nothing", done.stderr.strip(), "")
+
+# canary.yml calls this workflow with canary: true. A release cut from a run
+# whose every pin was moved to its latest would ship what main never carried.
+print("The release job never runs for the canary build")
+release_if = re.search(r"^  release:\n(?:.*\n)*?    if: >-\n((?:      .*\n)+)", WORKFLOW.read_text(encoding="utf-8"), re.MULTILINE)
+check("release job has an if", release_if is not None, True)
+check("it excludes canary", release_if is not None and "!inputs.canary" in release_if.group(1), True)
 
 print(f"\n{'FAILED' if fails else 'ok'} — {fails} failing check(s)")
 sys.exit(1 if fails else 0)
