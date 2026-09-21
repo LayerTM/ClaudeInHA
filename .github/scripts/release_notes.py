@@ -19,7 +19,16 @@ Commands:
                     write the combined notes for every unreleased changelog
                     section to PATH; exit 1 if config.yaml's version is not
                     the top of that unreleased run (nothing pending, or the
-                    changelog was not updated for the bump).
+                    changelog was not updated for the bump), 2 if GitHub
+                    could not be asked.
+  released <version>
+                    exit 0 if v<version> has a release, 1 if GitHub says it has
+                    none, 2 if the lookup itself failed (the reason is printed
+                    to stderr) — a broken lookup is never read as "none".
+  pending-since <config.yaml>
+                    print the commit time (epoch seconds) of the commit that
+                    put config.yaml's current version there; exit 1 if git
+                    history does not show one.
 
 Run: python3 .github/scripts/release_notes.py <command> ...
 """
@@ -37,6 +46,10 @@ VERSION_RE = re.compile(r'^version:\s*"?(\d+\.\d+\.\d+)', re.MULTILINE)
 HEADER_RE = re.compile(r"^## \[(\d+\.\d+\.\d+)\][^\n]*$", re.MULTILINE)
 
 IsReleased = Callable[[str], bool]
+
+
+class ReleaseLookupError(RuntimeError):
+    """`gh` could not say whether a release exists (no network, bad token, rate limit)."""
 
 
 def parse_config_version(text: str) -> str | None:
@@ -78,12 +91,51 @@ def render_notes(sections: list[tuple[str, str]]) -> str:
 
 
 def gh_release_exists(version: str) -> bool:
+    """Whether v<version> has a release; raises ReleaseLookupError if gh cannot tell.
+
+    `gh release view` exits 1 for "no such release" AND for a bad token or no
+    network (measured: a 401 and a refused connection both exit 1), so the
+    exit code alone cannot separate an answer from a broken instrument. What
+    does is gh's own "release not found"; anything else is an error, never
+    "no release yet" — that reading would hand a release the notes of the
+    whole changelog. Limit: "release not found" does not tell a missing
+    release from an unreachable or misnamed repository (gh prints it for
+    both); in the workflows the repository comes from the checkout, which
+    is what holds that limit.
+    """
     result = subprocess.run(
         ["gh", "release", "view", f"v{version}"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
     )
-    return result.returncode == 0
+    if result.returncode == 0:
+        return True
+    if result.returncode == 1 and "release not found" in result.stderr:
+        return False
+    raise ReleaseLookupError(
+        f"gh release view v{version} exited {result.returncode}: "
+        f"{result.stderr.strip() or '(no stderr)'}"
+    )
+
+
+def pending_since(config: pathlib.Path) -> int | None:
+    """Commit time of the commit that put config.yaml's current version there,
+    or None when git history does not show one."""
+    version = parse_config_version(config.read_text(encoding="utf-8"))
+    if not version:
+        return None
+    result = subprocess.run(
+        [
+            "git", "log", "-1", "--format=%ct",
+            f'-G^version:[ ]*"?{re.escape(version)}"?[ ]*$',
+            "--", config.name,
+        ],
+        capture_output=True,
+        text=True,
+        cwd=config.resolve().parent,
+    )
+    out = result.stdout.strip()
+    return int(out) if result.returncode == 0 and out.isdigit() else None
 
 
 def cmd_version(args: argparse.Namespace) -> int:
@@ -95,13 +147,34 @@ def cmd_version(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_released(args: argparse.Namespace, is_released: IsReleased) -> int:
+    try:
+        return 0 if is_released(args.version) else 1
+    except ReleaseLookupError as error:
+        print(error, file=sys.stderr)
+        return 2
+
+
+def cmd_pending_since(args: argparse.Namespace) -> int:
+    since = pending_since(pathlib.Path(args.config))
+    if since is None:
+        print(f"{args.config}: git history does not show when it took its current version", file=sys.stderr)
+        return 1
+    print(since)
+    return 0
+
+
 def cmd_notes(args: argparse.Namespace, is_released: IsReleased) -> int:
     version = parse_config_version(pathlib.Path(args.config).read_text(encoding="utf-8"))
     if not version:
         print(f"Could not parse version from {args.config}", file=sys.stderr)
         return 1
     sections = parse_changelog_sections(pathlib.Path(args.changelog).read_text(encoding="utf-8"))
-    pending = unreleased_prefix(sections, is_released)
+    try:
+        pending = unreleased_prefix(sections, is_released)
+    except ReleaseLookupError as error:
+        print(f"Cannot tell which versions are released, so no notes: {error}", file=sys.stderr)
+        return 2
     if not pending or pending[0][0] != version:
         print(
             f"{args.config} carries {version}, which is not the top of the "
@@ -122,6 +195,14 @@ def main(argv: list[str], is_released: IsReleased | None = None) -> int:
     p_version = sub.add_parser("version")
     p_version.add_argument("config")
     p_version.set_defaults(func=cmd_version)
+
+    p_released = sub.add_parser("released")
+    p_released.add_argument("version")
+    p_released.set_defaults(func=lambda a: cmd_released(a, is_released or gh_release_exists))
+
+    p_since = sub.add_parser("pending-since")
+    p_since.add_argument("config")
+    p_since.set_defaults(func=cmd_pending_since)
 
     p_notes = sub.add_parser("notes")
     p_notes.add_argument("config")
