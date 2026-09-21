@@ -98,7 +98,10 @@ def gh_release_exists(version: str) -> bool:
     exit code alone cannot separate an answer from a broken instrument. What
     does is gh's own "release not found"; anything else is an error, never
     "no release yet" — that reading would hand a release the notes of the
-    whole changelog.
+    whole changelog. Limit: "release not found" does not tell a missing
+    release from an unreachable or misnamed repository (gh prints it for
+    both); in the workflows the repository comes from the checkout, which
+    is what holds that limit.
     """
     result = subprocess.run(
         ["gh", "release", "view", f"v{version}"],
