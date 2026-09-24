@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.59.7] — 2026-09-24
+
+### Fixed
+- **Built on ha-agent-core 0.7.7.** An answer containing an emoji (or any
+  other character outside the Basic Multilingual Plane) no longer fails in
+  the Home Assistant conversation agent: a streamed answer could be cut in
+  the middle of such a character, and the integration rejected the broken
+  line together with the whole answer. The same rule now applies to the
+  stored conversation history and the agent's error output. Reported as
+  [LayerTM/claude-ha#73](https://github.com/LayerTM/claude-ha/issues/73).
+
+### Changed
+- Routine dependency updates:
+  - The bundled Claude CLI 2.1.278 → 2.1.281 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md)).
+  - Node.js 26.9.0 → 26.10.0 ([changelog](https://github.com/nodejs/node/blob/main/doc/changelogs/CHANGELOG_V26.md#26.10.0)).
+
 ## [1.59.6] — 2026-09-19
 
 ### Changed
