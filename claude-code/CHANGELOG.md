@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.59.8] — 2026-09-24
+
+### Fixed
+- **Built on ha-agent-core 0.7.9.** A device named in Assist is now resolved
+  to its real entity id by Home Assistant. Before, the entity id in a
+  proposal could be invented from the name, so the id shown for
+  confirmation could differ from the device that was switched. Home Assistant's own
+  matcher (names, aliases, exposure) now picks the one exposed entity the
+  name refers to; the same lookup fills every `entity_id` of an automation
+  draft. A name that matches no exposed device, or more than one, is not
+  proposed: the answer says which name was not found, or lists the devices
+  it could mean.
+
+### Changed
+- Routine dependency updates:
+  - The bundled Claude CLI 2.1.281 → 2.1.282 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md)).
+
 ## [1.59.7] — 2026-09-24
 
 ### Fixed

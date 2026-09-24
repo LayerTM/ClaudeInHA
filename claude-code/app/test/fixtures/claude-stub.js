@@ -182,7 +182,8 @@ function finish(prompt, wantsProposal) {
         summary: `Turn off the heater; token ${jwt}`,
         intents: [{
           intent: 'HassTurnOff',
-          targets: ['switch.heater'],
+          // Named as the live context names it; the server looks it up.
+          targets: [prompt.includes('UNKNOWNDEV') ? 'Garage Door' : 'Heater'],
           data: { note: `leak ${apiKey} and ${jwt}` },
           // The model's risk hint. Omitted unless the prompt asks for LOWRISK, so
           // the default-to-"sensitive" path is exercised by the plain PROPOSE.
@@ -209,8 +210,8 @@ function finish(prompt, wantsProposal) {
     const existingAlias = ((sysPrompt.match(/"alias"\s*:\s*"([^"]+)"/)) || [])[1] || 'edited automation';
     automation = {
       alias: existingAlias,
-      triggers: [{ trigger: 'state', entity_id: 'person.me', to: 'home' }],
-      actions: [{ action: 'light.turn_on', target: { entity_id: 'light.living_room' } }],
+      triggers: [{ trigger: 'state', entity_id: 'Me', to: 'home' }],
+      actions: [{ action: 'light.turn_on', target: { entity_id: 'Living Room Light' } }],
       mode: 'single',
     };
   } else if (wantsProposal && prompt.includes('MKAUTO')) {
@@ -219,7 +220,7 @@ function finish(prompt, wantsProposal) {
       : {
         alias: `Evening lights ${jwt}`,
         description: 'turn on the living room lights when I get home in the evening',
-        triggers: [{ trigger: 'state', entity_id: 'person.me', to: 'home' }],
+        triggers: [{ trigger: 'state', entity_id: 'Me', to: 'home' }],
         conditions: [{ condition: 'time', after: '17:00:00' }],
         // DEEPAUTO buries a secret past the redactor's tree-walk depth cap inside a
         // choose/sequence chain, to prove deep config blocks are still redacted.
@@ -231,7 +232,7 @@ function finish(prompt, wantsProposal) {
           })()
           : {
             action: 'light.turn_on',
-            target: { entity_id: 'light.living_room' },
+            target: { entity_id: 'Living Room Light' },
             data: { note: `leak ${apiKey}` },
           }],
         mode: 'single',
