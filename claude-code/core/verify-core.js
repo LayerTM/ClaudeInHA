@@ -453,6 +453,138 @@ function consumerEntries(consumer) {
   return found.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 }
 
+// ---------------------------------------------------------------------------
+// Shipped scripts: does what a script names exist in the ASSEMBLED tree?
+// ---------------------------------------------------------------------------
+
+// A shipped `package.json` keeps the scripts `haAgentCore.unshippedScripts` does
+// not drop, and nine of the ten that ship today name files the ADD-ON supplies —
+// its tests, its lint and type configuration. The archive therefore cannot answer
+// whether they resolve; only a tree with both halves can, which is here.
+//
+// THE RULE, stated rather than felt, because a heuristic that under-matches makes
+// this check vacuous while it reads green. A command is split on whitespace, each
+// word is unquoted, and a word is a CLAIM ABOUT THE TREE when all of these hold:
+//
+//   * it does not begin with `-` (an option, not a path);
+//   * it is not a shell operator (`|`, `||`, `&&`, `;`, `&`, a redirection);
+//   * it has no `://` (a URL is not in the tree);
+//   * it does not begin with `/` or `~` (an absolute path is not in the tree);
+//   * and it either contains `/` or ends in .js .mjs .cjs .sh .json .ts.
+//
+// Everything else is left alone, DELIBERATELY: `eslint .` names no path by this
+// rule, and its real dependency (the add-on's `eslint.config.js`) is named by
+// nothing at all, so this check says nothing about `lint`. That silence is the
+// rule's limit, and it is held by a test rather than by this comment.
+//
+// A claim with `*` or `?` must match at least one entry; any other claim must be
+// a file in the tree. The word after `npm run` is a claim of a different kind: a
+// script of the same manifest, which must still be declared there — a chain the
+// list broke is a break at assembly too.
+const CLAIM_SUFFIX = /\.(?:js|mjs|cjs|sh|json|ts)$/;
+const OPERATORS = new Set(['|', '||', '&&', ';', '&', '>', '>>', '<']);
+const GLOB_CHARS = /[*?]/;
+
+function unquote(word) {
+  return word.replace(/^["']|["']$/g, '');
+}
+
+// The words of one command, unquoted and without the operators.
+function words(command) {
+  return String(command).split(/\s+/).filter(Boolean).map(unquote).filter((w) => !OPERATORS.has(w));
+}
+
+function isTreeClaim(word) {
+  if (!word || word.startsWith('-')) return false;
+  if (word.includes('://')) return false;
+  if (word.startsWith('/') || word.startsWith('~')) return false;
+  return word.includes('/') || CLAIM_SUFFIX.test(word);
+}
+
+// The scripts one command asks npm to run: the first non-option word after
+// `npm run`, for each occurrence.
+function runClaims(command) {
+  const list = words(command);
+  const names = [];
+  for (let i = 0; i < list.length - 1; i += 1) {
+    if (list[i] !== 'npm' || list[i + 1] !== 'run') continue;
+    const name = list.slice(i + 2).filter((w) => !w.startsWith('-'))[0];
+    if (name) names.push(name);
+  }
+  return names;
+}
+
+// `app/test/**/*.test.js` -> /^app\/test\/(?:.*\/)?[^/]*\.test\.js$/
+// `**` crosses directories, `*` and `?` do not, and `/**/` also matches none.
+function globToRegExp(claim) {
+  let out = '';
+  for (let i = 0; i < claim.length; i += 1) {
+    const c = claim[i];
+    if (c === '*' && claim[i + 1] === '*') {
+      if (claim.slice(i - 1, i + 3) === '/**/') { out = `${out.slice(0, -1)}/(?:.*/)?`; i += 2; } else { out += '.*'; i += 1; }
+    } else if (c === '*') out += '[^/]*';
+    else if (c === '?') out += '[^/]';
+    else out += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${out}$`);
+}
+
+// Every shipped manifest INSIDE the assembly roots, and only those: outside them
+// `consumerEntries` walks nothing, so the add-on's half of the tree is unknown
+// and a resolution check would be the archive-as-oracle mistake again — one half
+// pretending to be the answer. The core's own root `package.json` is therefore
+// not checked here, and a test holds that too.
+function assembledManifests(manifestFiles) {
+  return manifestFiles
+    .map((f) => f.path)
+    .filter((rel) => path.basename(rel) === 'package.json'
+      && ASSEMBLY_ROOTS.includes(rel.split('/')[0]));
+}
+
+// Refuses when a shipped script names something neither half of the assembled
+// tree has. `tree` is the lower-cased set of files from both halves.
+function checkShippedScripts({ core, manifest, tree }) {
+  const problems = [];
+  let scripts = 0;
+  let claims = 0;
+  for (const rel of assembledManifests(manifest.files)) {
+    const file = path.join(core, rel);
+    const parsed = parseJson(readFileBounded(file, 1024 * 1024, `shipped ${rel}`).toString('utf8'), `shipped ${rel}`);
+    const declared = isPlainObject(parsed.scripts) ? parsed.scripts : {};
+    const dir = path.posix.dirname(rel) === '.' ? '' : path.posix.dirname(rel);
+    for (const [name, command] of Object.entries(declared)) {
+      if (typeof command !== 'string') continue;
+      scripts += 1;
+      for (const claim of words(command).filter(isTreeClaim)) {
+        claims += 1;
+        const full = dir ? `${dir}/${claim}` : claim;
+        const lower = full.toLowerCase();
+        let resolved;
+        if (GLOB_CHARS.test(claim)) {
+          const re = globToRegExp(lower);
+          resolved = false;
+          for (const entry of tree) if (re.test(entry)) { resolved = true; break; }
+        } else {
+          resolved = tree.has(lower);
+        }
+        if (!resolved) {
+          problems.push(`${rel} script ${JSON.stringify(name)} runs ${claim}, and the assembled tree has no ${full}`);
+        }
+      }
+      for (const wanted of runClaims(command)) {
+        if (!Object.hasOwn(declared, wanted)) {
+          problems.push(`${rel} script ${JSON.stringify(name)} runs the script ${JSON.stringify(wanted)}, which ${rel} does not declare`);
+        }
+      }
+    }
+  }
+  if (problems.length) {
+    refuse(`a shipped script names what the assembled tree does not have:\n  ${problems.join('\n  ')}\n`
+      + '  supply the file, or have the core drop the script in haAgentCore.unshippedScripts');
+  }
+  return { scripts, claims };
+}
+
 function checkAssembly({ core, consumer }) {
   const manifestFile = path.join(core, MANIFEST_NAME);
   const manifest = parseJson(
@@ -494,7 +626,18 @@ function checkAssembly({ core, consumer }) {
   }
   if (problems.length) refuse(`the add-on and ${ROOT} ${manifest.version} overlap:\n  ${problems.join('\n  ')}`);
   const files = entries.filter((e) => e.kind !== 'dir').length;
-  return { version: manifest.version, consumerFiles: files, coreFiles: manifest.files.length };
+  // Both halves, as one set of files: the only place a shipped script's claim can
+  // be resolved. Directories are left out — a script names a file to run.
+  const tree = new Set(coreFiles);
+  for (const { rel, kind } of entries) if (kind !== 'dir') tree.add(rel.toLowerCase());
+  const scripts = checkShippedScripts({ core, manifest, tree });
+  return {
+    version: manifest.version,
+    consumerFiles: files,
+    coreFiles: manifest.files.length,
+    scripts: scripts.scripts,
+    claims: scripts.claims,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -583,7 +726,8 @@ function run(argv, out = process.stdout, err = process.stderr) {
       out.write(`lock verified: ${ROOT} ${lock.version}\n`);
     } else if (command === 'check-assembly') {
       const result = checkAssembly(options);
-      out.write(`assembly verified: ${result.consumerFiles} add-on files, ${result.coreFiles} files of ${ROOT} ${result.version}\n`);
+      out.write(`assembly verified: ${result.consumerFiles} add-on files, ${result.coreFiles} files of ${ROOT} ${result.version}, `
+        + `${result.claims} path claims of ${result.scripts} shipped scripts resolved\n`);
     } else {
       const result = install(options);
       out.write(`installed ${ROOT} ${result.version} (${result.files} files) into ${result.dest}\n`);

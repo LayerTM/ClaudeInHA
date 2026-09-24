@@ -58,6 +58,16 @@ const {
   resolveChatModel,
 } = require('../server/prompt/server');
 const { createHistoryStore } = require('../server/prompt/history');
+// The server looks up in Home Assistant every device the model names; its Core
+// here is a fake one (fixtures/fake-core.js). The address is set where the
+// server asks for it, before the server module reads the function.
+const coreTarget = require('../server/prompt/core-target');
+const { startFakeCore } = require('./fixtures/fake-core');
+let fakeCore = null;
+coreTarget.resolveCoreTarget = async () => {
+  if (!fakeCore) fakeCore = await startFakeCore();
+  return { origin: fakeCore.origin, ssl: false, port: Number(new URL(fakeCore.origin).port), source: 'test' };
+};
 const promptServer = require('../server/prompt');
 const runner = require('./fixtures/claude-run');
 
@@ -798,7 +808,10 @@ before(async () => {
   TOKEN = fs.readFileSync(path.join(TMP, 'claude-prompt-token'), 'utf8').trim();
 });
 
-after(() => { if (shutdown) shutdown(); });
+after(() => {
+  if (shutdown) shutdown();
+  if (fakeCore) fakeCore.close();
+});
 
 function auth() { return { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }; }
 
@@ -1054,8 +1067,16 @@ test('read: happy path with deep redaction, proposal, tools_used', async () => {
   assert.ok(!blob.includes('eyJEXAMPLE'), 'no jwt leaks (incl. proposal.data)');
   assert.ok(json.text.includes('[REDACTED]'));
   assert.equal(json.proposal.intents[0].intent, 'HassTurnOff');
+  assert.deepEqual(json.proposal.intents[0].targets, ['switch.heater'], 'the named device leaves as its entity id');
   assert.deepEqual(json.tools_used, ['mcp__ha__GetLiveContext']);
   assert.equal(json.truncated, false);
+});
+
+test('read: a device Home Assistant does not know becomes no proposal, and the answer names it', async () => {
+  const { status, json } = await post({ prompt: 'PROPOSE UNKNOWNDEV please' }, { 'X-Claude-Caller': 'user.unknowndev' });
+  assert.equal(status, 200);
+  assert.equal(json.proposal, null);
+  assert.match(json.text, /couldn't find a device called “Garage Door”/);
 });
 
 test('read: invalid model intent drops the proposal to null', async () => {
@@ -1079,6 +1100,8 @@ test('read: an automation-creation request returns a drafted config, redacted, a
   assert.equal(json.automation.triggers.length, 1);
   assert.equal(json.automation.actions.length, 1);
   assert.equal(json.automation.mode, 'single');
+  assert.equal(json.automation.triggers[0].entity_id, 'person.me', 'a named device in a draft becomes its entity id');
+  assert.equal(json.automation.actions[0].target.entity_id, 'light.living_room');
   // The draft is deep-redacted exactly like the proposal (alias + action data
   // carried secret-shaped values in the stub).
   const blob = JSON.stringify(json.automation);
