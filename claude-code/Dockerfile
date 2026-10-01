@@ -122,14 +122,14 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # documented home, it belongs here: it would let a bump verify that a new version
 # is authentic, where a recorded checksum can only hold it to what was seen.
 # upstream: claude-code CLAUDE_DOWNLOAD_BASE latest
-ARG CLAUDE_CODE_VERSION=2.1.282
+ARG CLAUDE_CODE_VERSION=2.1.286
 # From <version>/manifest.json: .platforms["linux-x64"].checksum and
 # .platforms["linux-arm64"].checksum. A version bump moves these two with it;
 # forgetting stops the build at the checksum rather than at a user's next start.
 # upstream: claude-code-sha256 linux-x64
-ARG CLAUDE_CODE_SHA256_AMD64=3afe8535c0cc33f0e24f7b25dab7a1727b8b592196f8496a8bc302ba2161eed3
+ARG CLAUDE_CODE_SHA256_AMD64=fe503f65c6289d59c23e5b21ae44f03583f997dd33a2cbfc75ab4f96fb8fc73f
 # upstream: claude-code-sha256 linux-arm64
-ARG CLAUDE_CODE_SHA256_ARM64=6764ffc39e9fed425a493ff61ea28506d1ba83996ce81a48d1177dbb393419c9
+ARG CLAUDE_CODE_SHA256_ARM64=0292fa22ac2fd43e16be9d0e511ddd8347280d6e0ebaca744ef5b27e05d8d0f8
 ARG CLAUDE_DOWNLOAD_BASE=https://downloads.claude.ai/claude-code-releases
 # Every fallible step carries its own message. In a single `A && B && C || D`
 # chain the `||` binds to the WHOLE chain, so the first failure jumps straight to
@@ -190,7 +190,7 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 # upstream: github-release home-assistant/cli
 ARG HA_CLI_VERSION=5.5.0
 # upstream: github-release mikefarah/yq
-ARG YQ_VERSION=4.53.6
+ARG YQ_VERSION=4.54.1
 RUN arch="$(dpkg --print-architecture)" \
     && case "${arch}" in \
          amd64) ha_asset=ha_amd64; yq_asset=yq_linux_amd64 ;; \

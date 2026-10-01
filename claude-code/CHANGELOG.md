@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.59.9] — 2026-10-01
+
+### Added
+- **Built on ha-agent-core 0.8.1.** The add-on now states which core it runs:
+  `GET /api/status` publishes `core_version` and `core_commit`, and the
+  console's listening line in the add-on log ends with
+  `(core X.Y.Z, commit <12 hex>)`.
+
+### Fixed
+- **Built on ha-agent-core 0.8.1.** Background loops (used for things like
+  usage and account-limit polling) are now tracked reliably end to end: a
+  loop killed while waiting out its interval used to report its own stop up
+  to a whole interval late, and a service restart used to leave the previous
+  run's loops going alongside the new ones instead of replacing them. Both
+  are fixed, so a stopped loop is reported promptly and a restart always
+  leaves exactly one copy of each loop running.
+
+### Changed
+- Routine dependency updates:
+  - The bundled Claude CLI 2.1.282 → 2.1.286 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md)).
+  - yq 4.53.6 → 4.54.1 ([release notes](https://github.com/mikefarah/yq/releases/tag/v4.54.1)).
+  - The add-on base image 9.4.0 → 9.5.0 ([release notes](https://github.com/hassio-addons/app-debian-base/releases/tag/v9.5.0)): underlying Debian image updated to 13.7.
+  - Playwright MCP 0.0.82 → 0.0.83 ([release notes](https://github.com/microsoft/playwright-mcp/releases/tag/v0.0.83)): bug fixes only, including a Docker-image fix for orphaned browser processes.
+
 ## [1.59.8] — 2026-09-24
 
 ### Fixed
