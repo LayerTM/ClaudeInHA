@@ -164,8 +164,8 @@ test('/api/status answers with exactly the recorded set of fields', async () => 
     const body = await res.json();
     assert.deepEqual(Object.keys(body).sort(), [
       'alerts', 'audit_error', 'audit_recording', 'body_max_bytes', 'budget', 'chat_health', 'claude_version',
-      'engine', 'engine_version', 'ha_mcp', 'ha_mcp_connected', 'model', 'prompt_max_bytes', 'prompt_timeout_ms',
-      'ready', 'request_fields', 'version',
+      'core_commit', 'core_version', 'engine', 'engine_version', 'ha_mcp', 'ha_mcp_connected', 'model',
+      'prompt_max_bytes', 'prompt_timeout_ms', 'ready', 'request_fields', 'version',
     ]);
     assert.deepEqual(Object.keys(body.budget).sort(), ['limit', 'spent']);
     assert.deepEqual(body, {
