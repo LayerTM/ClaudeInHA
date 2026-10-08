@@ -93,6 +93,26 @@ module.exports = {
         || env.CLAUDE_CODE_OAUTH_TOKEN
         || fs.existsSync(`${home}/.claude/.credentials.json`);
     },
+    // Epoch ms after which the stored login needs a fresh sign-in, or null when
+    // that isn't knowable without a model call: an API key or a pasted token
+    // (setup-token output) has no file-based expiry, and a missing or
+    // unparsable credentials file says nothing either way. Read as the later
+    // of the access and refresh deadlines — timestamps only, never the token
+    // values themselves.
+    credentialsExpiry({ env, home }) {
+      if (env.ANTHROPIC_API_KEY || env.CLAUDE_CODE_OAUTH_TOKEN) return null;
+      let stored;
+      try {
+        stored = JSON.parse(fs.readFileSync(`${home}/.claude/.credentials.json`, 'utf8'));
+      } catch {
+        return null;
+      }
+      const oauth = stored && stored.claudeAiOauth;
+      const expiresAt = oauth && Number(oauth.expiresAt);
+      const refreshTokenExpiresAt = oauth && Number(oauth.refreshTokenExpiresAt);
+      if (!Number.isFinite(expiresAt) || !Number.isFinite(refreshTokenExpiresAt)) return null;
+      return Math.max(expiresAt, refreshTokenExpiresAt);
+    },
     async writeMcpConfig({ dir, url, bearer }) {
       await fsp.mkdir(dir, { recursive: true, mode: 0o700 });
       const file = path.join(dir, 'ha-mcp.json');

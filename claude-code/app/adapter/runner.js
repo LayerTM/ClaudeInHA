@@ -150,9 +150,17 @@ function contentBlocks(message) {
   return message && Array.isArray(message.content) ? message.content : [];
 }
 
+// A rejected credential, captured both ways the CLI has been seen to report it
+// (an invalid token, and a session whose refresh also failed): the assistant
+// turn that precedes the result carries this exact structured field. Text is
+// a fallback only, for a future CLI build that drops the field but keeps the
+// same user-facing message.
+const AUTH_EXPIRED_TEXT = /^Failed to authenticate/;
+
 // One run's stream-json events -> the core's neutral events.
 function createDecoder() {
   let initModel = '';
+  let authExpired = false;
   return (ev) => {
     const out = [];
     // Claude Code wraps raw Anthropic stream events under type 'stream_event';
@@ -176,6 +184,7 @@ function createDecoder() {
         tools: Array.isArray(ev.tools) ? ev.tools : [],
       });
     } else if (ev.type === 'assistant') {
+      if (ev.error === 'authentication_failed') authExpired = true;
       for (const block of contentBlocks(ev.message)) {
         if (block && block.type === 'tool_use' && typeof block.name === 'string'
             // internal plumbing of --json-schema, not a real tool
@@ -191,7 +200,7 @@ function createDecoder() {
         }
       }
     } else if (ev.type === 'result') {
-      out.push({
+      const result = {
         type: 'result',
         isError: Boolean(ev.is_error),
         // error_max_turns fails the same way again; other errors are transient.
@@ -201,7 +210,11 @@ function createDecoder() {
         numTurns: ev.num_turns,
         costUsd: ev.total_cost_usd,
         tokens: runTokens(ev, initModel),
-      });
+      };
+      if (authExpired || (typeof ev.result === 'string' && AUTH_EXPIRED_TEXT.test(ev.result))) {
+        result.authExpired = true;
+      }
+      out.push(result);
     }
     return out;
   };
