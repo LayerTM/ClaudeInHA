@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.59.10] — 2026-10-08
+
+### Changed
+- Routine dependency updates:
+  - Node.js 26.10.0 → 26.11.1 ([changelog](https://github.com/nodejs/node/blob/main/doc/changelogs/CHANGELOG_V26.md#26.11.1)).
+  - The bundled Claude CLI 2.1.286 → 2.1.294 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md)).
+
 ## [1.59.9] — 2026-10-01
 
 ### Added
