@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.59.10] — 2026-10-08
+
+### Fixed
+- **Built on ha-agent-core 0.8.2.** Named devices are found again on Home Assistant 2026.10. Its
+  live-context tool no longer puts `success: true` beside the result, and the core read every
+  answer without it as no match, so switching or otherwise acting on a device named in the request
+  was refused as unknown. A result is now read unless Home Assistant marks the call as an error or
+  says `success: false`; answers from earlier Home Assistant versions are read as before.
+
+### Security
+- **Built on ha-agent-core 0.8.2.** `proxy-addr` (the Express dependency that resolves client
+  addresses behind proxies) moves to 2.0.8, fixing
+  [GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h) (IP spoofing through an
+  IPv4-mapped IPv6 trust subnet). The add-on's own server was never exposed to it — neither of the
+  core's Express apps enables `trust proxy`, and nothing in it reads `req.ip` or `req.ips` — but the
+  dependency is updated regardless.
+
+### Changed
+- Routine dependency updates:
+  - Node.js 26.10.0 → 26.11.1 ([changelog](https://github.com/nodejs/node/blob/main/doc/changelogs/CHANGELOG_V26.md#26.11.1)).
+  - The bundled Claude CLI 2.1.286 → 2.1.294 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md)).
+
 ## [1.59.9] — 2026-10-01
 
 ### Added
