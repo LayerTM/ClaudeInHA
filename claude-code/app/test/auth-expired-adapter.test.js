@@ -104,6 +104,27 @@ test('the fallback text match catches a future CLI build that drops the structur
   assert.equal(result.authExpired, true);
 });
 
+test('a successful answer whose text happens to start "Failed to authenticate" is not flagged', () => {
+  const events = [
+    { type: 'result', subtype: 'success', is_error: false, result: 'Failed to authenticate? Here is how...', num_turns: 1 },
+  ];
+  const [result] = decodeAll(events);
+  assert.equal(result.authExpired, undefined);
+});
+
+test('an authentication_failed turn followed by a recovered success is not flagged', () => {
+  const events = [
+    {
+      type: 'assistant', message: { content: [{ type: 'text', text: 'Failed to authenticate. ...' }] },
+      session_id: 's', error: 'authentication_failed', is_api_error_message: true,
+    },
+    { type: 'result', subtype: 'success', is_error: false, result: 'all good after a retry', num_turns: 2, total_cost_usd: 0.02 },
+  ];
+  const [result] = decodeAll(events);
+  assert.equal(result.isError, false);
+  assert.equal(result.authExpired, undefined);
+});
+
 function withCredentials(contents, fn) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-credexp-'));
   fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
@@ -132,6 +153,14 @@ test('credentialsExpiry is null for an API key or a pasted token: no file-based 
 
 test('credentialsExpiry is null when there is no credentials file yet', () => {
   withCredentials(null, (home) => {
+    assert.equal(adapter.prompt.credentialsExpiry({ env: {}, home }), null);
+  });
+});
+
+test('credentialsExpiry is null when refreshTokenExpiresAt is null, not expiresAt alone', () => {
+  // Number(null) === 0, which is finite: a naive coercion would read this as
+  // "expired since epoch 0" instead of "not knowable yet".
+  withCredentials({ claudeAiOauth: { expiresAt: 1791476435552, refreshTokenExpiresAt: null } }, (home) => {
     assert.equal(adapter.prompt.credentialsExpiry({ env: {}, home }), null);
   });
 });

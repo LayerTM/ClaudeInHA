@@ -211,7 +211,7 @@ function createDecoder() {
         costUsd: ev.total_cost_usd,
         tokens: runTokens(ev, initModel),
       };
-      if (authExpired || (typeof ev.result === 'string' && AUTH_EXPIRED_TEXT.test(ev.result))) {
+      if (result.isError && (authExpired || (typeof ev.result === 'string' && AUTH_EXPIRED_TEXT.test(ev.result)))) {
         result.authExpired = true;
       }
       out.push(result);

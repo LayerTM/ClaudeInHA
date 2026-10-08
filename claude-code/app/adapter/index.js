@@ -108,9 +108,9 @@ module.exports = {
         return null;
       }
       const oauth = stored && stored.claudeAiOauth;
-      const expiresAt = oauth && Number(oauth.expiresAt);
-      const refreshTokenExpiresAt = oauth && Number(oauth.refreshTokenExpiresAt);
-      if (!Number.isFinite(expiresAt) || !Number.isFinite(refreshTokenExpiresAt)) return null;
+      const isFiniteNumber = (v) => typeof v === 'number' && Number.isFinite(v);
+      const { expiresAt, refreshTokenExpiresAt } = oauth || {};
+      if (!isFiniteNumber(expiresAt) || !isFiniteNumber(refreshTokenExpiresAt)) return null;
       return Math.max(expiresAt, refreshTokenExpiresAt);
     },
     async writeMcpConfig({ dir, url, bearer }) {
