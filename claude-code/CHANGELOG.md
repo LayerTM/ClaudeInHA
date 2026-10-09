@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.59.11] — 2026-10-09
+
+### Added
+- **Built on ha-agent-core 0.9.0.** An expired or revoked Claude sign-in is now reported as such
+  instead of as a generic model error. `GET /api/status` publishes `auth` (`ok`, `expired` or
+  `unknown`, and since when), kept across restarts and computed without running the agent; a
+  degraded reply during a prompt names the reason, and a write made while signed out is refused
+  with `503` rather than retried as if it might still succeed.
+
+### Changed
+- Routine dependency update: the bundled Claude CLI 2.1.294 → 2.1.295
+  ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md)).
+
 ## [1.59.10] — 2026-10-08
 
 ### Fixed
