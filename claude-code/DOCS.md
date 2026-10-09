@@ -251,8 +251,9 @@ behind the Prompt API, so the integration can adapt to it:
 | `auth` | the sign-in's own state — `ok`, `expired` or `unknown` — and since when; kept across restarts and computed without running the agent |
 
 A reply the agent itself refuses because the sign-in is no longer accepted ends
-with reason `auth-expired` and is never retried; a write made while `auth` is
-`expired` is refused with `503` instead.
+with reason `auth-expired` and is never retried; a write whose run is refused
+for the sign-in answers `503` (`auth_expired`) instead of `500`, and is not
+retried either.
 
 Every error answer carries a stable `code` next to its message (and `field` or
 `limit_bytes` where they apply); the codes are listed in
