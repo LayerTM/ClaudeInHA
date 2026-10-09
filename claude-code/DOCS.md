@@ -248,6 +248,12 @@ behind the Prompt API, so the integration can adapt to it:
 | `claude_version` | the same value, kept for integrations that predate `engine_version` |
 | `request_fields` | the request fields `POST /api/prompt` accepts; a field not listed is refused |
 | `prompt_max_bytes`, `body_max_bytes` | the largest prompt and request body `POST /api/prompt` accepts |
+| `auth` | the sign-in's own state — `ok`, `expired` or `unknown` — and since when; kept across restarts and computed without running the agent |
+
+A reply the agent itself refuses because the sign-in is no longer accepted ends
+with reason `auth-expired` and is never retried; a write whose run is refused
+for the sign-in answers `503` (`auth_expired`) instead of `500`, and is not
+retried either.
 
 Every error answer carries a stable `code` next to its message (and `field` or
 `limit_bytes` where they apply); the codes are listed in

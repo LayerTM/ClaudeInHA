@@ -122,14 +122,14 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # documented home, it belongs here: it would let a bump verify that a new version
 # is authentic, where a recorded checksum can only hold it to what was seen.
 # upstream: claude-code CLAUDE_DOWNLOAD_BASE latest
-ARG CLAUDE_CODE_VERSION=2.1.294
+ARG CLAUDE_CODE_VERSION=2.1.295
 # From <version>/manifest.json: .platforms["linux-x64"].checksum and
 # .platforms["linux-arm64"].checksum. A version bump moves these two with it;
 # forgetting stops the build at the checksum rather than at a user's next start.
 # upstream: claude-code-sha256 linux-x64
-ARG CLAUDE_CODE_SHA256_AMD64=27122ca7b624f537546fbef35b80c66370d974ff258f3d9b10ac50bb8771f262
+ARG CLAUDE_CODE_SHA256_AMD64=4503bfe11a6c7fcc1e0b39b5e0d347c04248f750b03b0977b3ad6b531fe6f358
 # upstream: claude-code-sha256 linux-arm64
-ARG CLAUDE_CODE_SHA256_ARM64=e5d2df19f30a6d63bf11188121f7edb2775249b57352a69269509a4b1496e763
+ARG CLAUDE_CODE_SHA256_ARM64=cfb9dc1332fb6f92a683f835823e91b3179a803398ca7852cd2381a3cb1dea3b
 ARG CLAUDE_DOWNLOAD_BASE=https://downloads.claude.ai/claude-code-releases
 # Every fallible step carries its own message. In a single `A && B && C || D`
 # chain the `||` binds to the WHOLE chain, so the first failure jumps straight to
