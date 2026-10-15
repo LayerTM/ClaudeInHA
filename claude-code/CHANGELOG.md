@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.59.12] — 2026-10-15
+
+### Changed
+- Routine dependency update: the bundled Claude CLI 2.1.295 → 2.1.300
+  ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md)), Node.js
+  26.11.1 → 26.12.0 ([changelog](https://github.com/nodejs/node/blob/main/doc/changelogs/CHANGELOG_V26.md#26.12.0)),
+  ccstatusline 2.2.30 → 2.2.32 ([releases](https://github.com/sirmalloc/ccstatusline/releases)).
+
 ## [1.59.11] — 2026-10-09
 
 ### Added
