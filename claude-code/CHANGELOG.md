@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.59.13] — 2026-10-15
+
+### Changed
+- Built on ha-agent-core 0.9.1 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.9.1)):
+  Express 5.3.0 brings `qs` 6.16.0, which fixes
+  [GHSA-w7fw-mjwx-w883](https://github.com/advisories/GHSA-w7fw-mjwx-w883),
+  [GHSA-4mjr-xmp4-gh2g](https://github.com/advisories/GHSA-4mjr-xmp4-gh2g) and
+  [GHSA-x5fp-wj9c-mxmx](https://github.com/advisories/GHSA-x5fp-wj9c-mxmx). The add-on was not
+  exposed: query strings use Express's default simple parser and no URL-encoded bodies are
+  accepted, so `qs` never reads a request. The dashboard screenshot helper uses `playwright-core`
+  1.64.1 (was 1.64.0).
+
 ## [1.59.12] — 2026-10-15
 
 ### Changed
