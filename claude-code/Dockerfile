@@ -46,11 +46,11 @@ RUN apt-get update \
 # unpacked, so a download that differs from what was seen at the bump — however
 # it came to differ — stops the build instead of being installed.
 # upstream: nodejs lts-ready
-ARG NODE_VERSION=26.11.1
+ARG NODE_VERSION=26.12.0
 # upstream: nodejs-sha256 linux-x64
-ARG NODE_SHA256_AMD64=3883bfc73f9a680ca4eab04b196068aaaab1373ffa77d8fc1a4408222495b651
+ARG NODE_SHA256_AMD64=fd47865ecd6391ebb431fc815e01b9135bf83ded5cf373247e9331e196b7aded
 # upstream: nodejs-sha256 linux-arm64
-ARG NODE_SHA256_ARM64=0945e2cde6aa0f54d980f03874dfe5cf3a549ce714c7fb9019e591ce0accf282
+ARG NODE_SHA256_ARM64=fd6cc729fa4448c2ac27c3fca5606019ced63c65a15c152c8df03e0cbce7f4c5
 RUN arch="$(dpkg --print-architecture)" \
     && case "${arch}" in \
          amd64) node_arch="x64";   expected="${NODE_SHA256_AMD64}" ;; \
@@ -122,14 +122,14 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # documented home, it belongs here: it would let a bump verify that a new version
 # is authentic, where a recorded checksum can only hold it to what was seen.
 # upstream: claude-code CLAUDE_DOWNLOAD_BASE latest
-ARG CLAUDE_CODE_VERSION=2.1.295
+ARG CLAUDE_CODE_VERSION=2.1.300
 # From <version>/manifest.json: .platforms["linux-x64"].checksum and
 # .platforms["linux-arm64"].checksum. A version bump moves these two with it;
 # forgetting stops the build at the checksum rather than at a user's next start.
 # upstream: claude-code-sha256 linux-x64
-ARG CLAUDE_CODE_SHA256_AMD64=4503bfe11a6c7fcc1e0b39b5e0d347c04248f750b03b0977b3ad6b531fe6f358
+ARG CLAUDE_CODE_SHA256_AMD64=674deba0bba9aee479f4503c438b49303b6fdd304b9a471b14977aaec5215453
 # upstream: claude-code-sha256 linux-arm64
-ARG CLAUDE_CODE_SHA256_ARM64=cfb9dc1332fb6f92a683f835823e91b3179a803398ca7852cd2381a3cb1dea3b
+ARG CLAUDE_CODE_SHA256_ARM64=ae2295ae2da156936bf5831ab01971ce924d0c9a0af174e28d96fffa8d5fa0a6
 ARG CLAUDE_DOWNLOAD_BASE=https://downloads.claude.ai/claude-code-releases
 # Every fallible step carries its own message. In a single `A && B && C || D`
 # chain the `||` binds to the WHOLE chain, so the first failure jumps straight to

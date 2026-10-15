@@ -6,6 +6,6 @@
   "license": "MIT",
   "dependencies": {
     "@playwright/mcp": "0.0.83",
-    "ccstatusline": "2.2.30"
+    "ccstatusline": "2.2.32"
   }
 }
