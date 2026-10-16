@@ -235,8 +235,10 @@ configuration:
       Home Assistant Long-Lived Access Token used ONLY by prompt-API Claude
       sessions to read Home Assistant state through the Model Context Protocol
       Server integration. Best practice: create a dedicated non-admin Home
-      Assistant user and paste that user's token here. Leave empty to fall back
-      to 'HA Token'. Either way, Claude can only see entities exposed to
+      Assistant user and paste that user's token here. If the Model Context
+      Protocol Server's 'Require an administrator account' option is on, the
+      token must belong to an administrator (see the Documentation tab). Leave
+      empty to fall back to 'HA Token'. Either way, Claude can only see entities exposed to
       Assist.
   chat_model:
     name: Chat Model (claude_ha integration)
