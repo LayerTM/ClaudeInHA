@@ -66,6 +66,25 @@ Authenticate by running `claude` in the console and following the login URL
 Full documentation lives in the add-on's **Documentation** tab, or in
 [`claude-code/DOCS.md`](claude-code/DOCS.md).
 
+## Development
+
+The add-on is assembled from its own sources and a pinned release of the
+shared core: run `claude-code/core/assemble.sh <core archive> claude-code <dir>`
+(the archive is the one named in `claude-code/core/core.lock.json`), then work
+in `<dir>/app`. There, `npm test`, `npm run lint` (eslint) and
+`npm run typecheck` (tsc --checkJs) must pass, as must `npm run test:alerts`
+and `npm run test:config`.
+
+From the repository root, `python .github/scripts/test_secret_scan.py` followed
+by `python .github/scripts/secret_scan.py .` must be clean. CI also runs the
+add-on linter and hadolint on `claude-code/config.yaml` and
+`claude-code/Dockerfile`.
+
+A change in behaviour bumps the version in `claude-code/config.yaml`, adds an
+entry to `claude-code/CHANGELOG.md`, and updates `claude-code/DOCS.md` and this
+README where they describe it. Changes to the HTTP API are additive; a change
+to the wire format is agreed with the Home Assistant integration first.
+
 ## License
 
 [MIT](LICENSE) © 2026 LayerTM
