@@ -85,7 +85,7 @@ reconciled on every start.
 | `proactive_alerts` + `alert_*` | Opt-in **deterministic** anomaly alerts (no Claude, no plan usage): notify on a water leak, door/window open at night, low battery, temperature out of band, high CO2, humidity out of band, or a watched device/internet gateway going offline. See *Proactive alerts* below. |
 | `prompt_api` | Serve the secure Prompt API for the companion **Claude** (`claude_ha`) integration (on by default). See *The companion integration* below. |
 | `api_token` | Optional fixed bearer token for the Prompt API. Leave empty — the add-on generates one and hands it to the integration via discovery. |
-| `prompt_ha_token` | Optional HA token used only by Prompt-API sessions to read state through the MCP Server integration. Best practice: a dedicated non-admin user's token. Falls back to `ha_token`. |
+| `prompt_ha_token` | Optional HA token used only by Prompt-API sessions to read state through the MCP Server integration. Best practice: a dedicated non-admin user's token — which works only while the MCP Server's *Require an administrator account* option is off (see *The Home Assistant token for live context* below). Falls back to `ha_token`. |
 
 ## Claude in Home Assistant
 
@@ -235,6 +235,21 @@ deliberately much more restricted than the interactive console:
   to use the console's model. Replies are also written in your Home
   Assistant language, and voice replies are kept to one short, spoken-friendly
   sentence.
+
+### The Home Assistant token for live context (`prompt_ha_token`)
+
+Since Home Assistant 2026.10 the Model Context Protocol Server has a
+*Require an administrator account* option (Settings → Devices & services →
+Model Context Protocol Server → Configure). It is **on** when the integration is
+added on 2026.10 or later, and stays **off** for an integration added before.
+While it is on, Home Assistant answers `401` to a non-administrator's token, so
+Prompt-API sessions get no live context: the add-on log shows `relay upstream:
+Home Assistant refused the add-on's Home Assistant token (401) … for POST
+/api/mcp` and the audit log marks each session `mcp=FAILED`. Choose one:
+
+- keep the dedicated non-admin user and turn *Require an administrator account*
+  off — then any Home Assistant user's token can use the endpoint; or
+- leave the option on and set `prompt_ha_token` to an administrator's token.
 
 ### What the add-on reports about itself (`/api/status`)
 

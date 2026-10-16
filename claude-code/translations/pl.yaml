@@ -241,8 +241,10 @@ configuration:
       Długoterminowy token dostępu Home Assistant używany WYŁĄCZNIE przez sesje
       prompt API do odczytu stanu Home Assistant przez integrację Model Context
       Protocol Server. Najlepsza praktyka: utwórz dedykowanego użytkownika Home
-      Assistant bez uprawnień administratora i wklej jego token tutaj. Zostaw
-      puste, aby użyć 'Token HA'. Tak czy inaczej Claude widzi tylko encje
+      Assistant bez uprawnień administratora i wklej jego token tutaj. Jeśli w
+      Model Context Protocol Server włączona jest opcja 'Require an
+      administrator account', token musi należeć do administratora (zobacz
+      kartę Documentation). Zostaw puste, aby użyć 'Token HA'. Tak czy inaczej Claude widzi tylko encje
       udostępnione dla Assist.
   chat_model:
     name: Model czatu (integracja claude_ha)
