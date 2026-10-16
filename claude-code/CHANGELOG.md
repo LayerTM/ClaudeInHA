@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.59.14] — 2026-10-16
+
+### Added
+- `/api/status` publishes `ha_mcp_auth` (`ok`, `unauthorized`, `unreachable` or `null`): whether
+  Home Assistant accepts the add-on's token on its MCP endpoint, checked at start, every five
+  minutes and on every answer a run gets, so a refused token shows before the first chat. While the
+  token is refused the timer does not check, because Home Assistant counts each refusal as a failed
+  login. Home Assistant 2026.10 can require an administrator for its Model Context Protocol
+  Server; a non-administrator's token is then refused and reads as `unauthorized`.
+
+### Changed
+- Built on ha-agent-core 0.9.2
+  ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.9.2)). The add-on log
+  line for a refused token also names the MCP Server's administrator requirement as a cause.
+- Claude CLI 2.1.300 → 2.1.301.
+
 ## [1.59.13] — 2026-10-15
 
 ### Changed
