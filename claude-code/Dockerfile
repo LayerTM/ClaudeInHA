@@ -211,7 +211,7 @@ ARG HASS_CLI_VERSION=1.0.0
 # upstream: pypi hass-mcp
 ARG HASS_MCP_VERSION=0.6.0
 # upstream: pypi Pillow
-ARG PILLOW_VERSION=12.3.0
+ARG PILLOW_VERSION=13.0.0
 RUN pip install --no-cache-dir --break-system-packages \
         "homeassistant-cli==${HASS_CLI_VERSION}" \
         "hass-mcp==${HASS_MCP_VERSION}" \
