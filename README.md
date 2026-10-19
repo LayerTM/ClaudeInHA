@@ -40,6 +40,11 @@ Anthropic's [Claude Code](https://code.claude.com/docs) CLI, embedded in Home As
 - **Mobile-friendly** — touch key bar, full-screen kiosk mode, installable as a PWA
 - **Remote Control** (optional) — drive the session from the official Claude mobile app
 
+## Works with
+
+- [**claude-ha**](https://github.com/LayerTM/claude-ha) — the companion integration: chat with Claude from Assist and automations through this add-on (HACS default repository).
+- [**CodexInHA**](https://github.com/LayerTM/CodexInHA) — the same console and Assist chat for OpenAI's coding agent.
+
 ## Installation
 
 1. Click the badge above, or add this repository under
