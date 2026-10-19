@@ -79,6 +79,26 @@ test('a session whose refresh token had already expired flags the same way, with
   assert.equal(result.authExpired, true);
 });
 
+test('a revoked OAuth token flags the result event as auth-expired', () => {
+  // The result text the CLI returns for a token the server has revoked.
+  const text = 'Failed to authenticate: OAuth token revoked. Please log in again or contact your administrator.';
+  const events = [
+    {
+      type: 'assistant',
+      message: { model: '<synthetic>', role: 'assistant', type: 'message', content: [{ type: 'text', text }] },
+      session_id: 's', error: 'authentication_failed', is_api_error_message: true,
+    },
+    {
+      type: 'result', subtype: 'success', is_error: true, api_error_status: null,
+      terminal_reason: 'api_error', result: text, num_turns: 1, total_cost_usd: 0,
+    },
+  ];
+  const [result] = decodeAll(events);
+  assert.equal(result.type, 'result');
+  assert.equal(result.isError, true);
+  assert.equal(result.authExpired, true);
+});
+
 test('a result with no preceding authentication_failed event, and no matching text, is not flagged', () => {
   const events = [
     { type: 'result', subtype: 'error', is_error: true, result: 'model exploded', num_turns: 3, total_cost_usd: 0.1 },
