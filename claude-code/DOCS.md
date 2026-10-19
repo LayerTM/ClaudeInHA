@@ -369,6 +369,11 @@ Everything that matters lives in `/data` and survives restarts and updates: logi
   `$HA_URL` always holds the right address — prefer it over a hardcoded one in scripts.
 - **`bypass_permissions` refuses to start** — the add-on sets `IS_SANDBOX=1` automatically; if a CLI update ever breaks this, run `claude install <previous-version> --force` in a shell tab and report an issue.
 
+## Works with
+
+- [**claude-ha**](https://github.com/LayerTM/claude-ha) — the companion integration: chat with Claude from Assist and automations through this add-on (HACS default repository).
+- [**CodexInHA**](https://github.com/LayerTM/CodexInHA) — the same console and Assist chat for OpenAI's coding agent.
+
 ## Support
 
 Issues: [github.com/LayerTM/ClaudeInHA](https://github.com/LayerTM/ClaudeInHA/issues)
