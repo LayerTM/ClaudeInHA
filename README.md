@@ -24,6 +24,8 @@ Anthropic's [Claude Code](https://code.claude.com/docs) CLI, embedded in Home As
 
 <img src="images/screenshot.png" alt="Claude Code console in the Home Assistant sidebar" width="820">
 
+<img src="images/console-demo.gif" alt="The /ha-debug skill finding why a Home Assistant button went unavailable, from the console in the sidebar" width="820">
+
 </div>
 
 ## Features
