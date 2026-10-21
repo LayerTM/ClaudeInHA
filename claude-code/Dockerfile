@@ -188,7 +188,7 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # --- Home Assistant CLIs (static, arch-aware) ---
 # upstream: github-release home-assistant/cli
-ARG HA_CLI_VERSION=5.5.0
+ARG HA_CLI_VERSION=5.6.0
 # upstream: github-release mikefarah/yq
 ARG YQ_VERSION=4.54.1
 RUN arch="$(dpkg --print-architecture)" \

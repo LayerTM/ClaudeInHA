@@ -5,6 +5,7 @@
 ### Changed
 - Claude CLI 2.1.301 → 2.1.306.
 - Pillow 12.3.0 → 13.0.0.
+- Home Assistant CLI 5.5.0 → 5.6.0.
 
 ## [1.59.14] — 2026-10-16
 
