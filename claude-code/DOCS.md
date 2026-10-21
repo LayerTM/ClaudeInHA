@@ -276,6 +276,11 @@ were sent.
 A reply the agent itself refuses because the sign-in is no longer accepted ends
 with reason `auth-expired` and is never retried.
 
+A read whose Home Assistant token Home Assistant refuses (HTTP 401/403) ends as a
+degraded read with reason `ha-token-refused`: the text names the two causes — a
+revoked token, or a non-administrator's token while the MCP Server requires an
+administrator — and the fix for each.
+
 A confirmed action runs without a model: the add-on calls the Home Assistant
 action for each target itself and answers with `actions`, one entry per target
 with `ok` and, when it failed, `error` as Home Assistant reported it. Every

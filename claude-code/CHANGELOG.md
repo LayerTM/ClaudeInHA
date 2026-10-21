@@ -25,6 +25,12 @@
 - Home Assistant CLI 5.5.0 → 5.6.0.
 
 ### Fixed
+- A camera question asked right after the add-on restarts is retried once when its first run
+  stopped while starting up, instead of ending as a failed read.
+- A chat read whose Home Assistant token Home Assistant refuses (HTTP 401/403) now ends as a
+  degraded read with reason `ha-token-refused` and a localized text naming both causes (a revoked
+  token, or a non-administrator's token while the MCP Server requires an administrator) and how to
+  fix each, instead of the model guessing.
 - The Configuration tab showed the raw keys `quick_prompts`, `alert_temp_entities`,
   `alert_co2_above` and `alert_humidity_enabled`/`_low`/`_high` instead of a name and description.
   They are now translated in English, Polish and Ukrainian, and a test fails when any option lacks
