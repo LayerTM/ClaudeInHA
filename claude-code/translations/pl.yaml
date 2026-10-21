@@ -300,10 +300,9 @@ configuration:
   chat_model_write:
     name: Model akcji (integracja claude_ha)
     description: >-
-      Opcjonalny model do wykonania akcji, którą już potwierdziłeś w czacie. Ten
-      krok wywołuje tylko podaną akcję Home Assistant, więc zwykle wystarczy
-      szybszy, tańszy model. Zostaw puste, aby użyć „Modelu czatu” powyżej. Tura
-      głosowa zostaje przy „Modelu głosowym”, jeśli jest ustawiony.
+      Już nieużywane: akcja potwierdzona w czacie jest teraz wykonywana bez modelu,
+      więc to ustawienie nie ma żadnego wpływu. Zostaje, aby istniejące
+      konfiguracje pozostały poprawne.
   chat_model_camera:
     name: Model kamer (integracja claude_ha)
     description: >-

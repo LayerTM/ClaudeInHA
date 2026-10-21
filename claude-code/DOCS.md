@@ -229,10 +229,10 @@ deliberately much more restricted than the interactive console:
   different model from the interactive console (`chat_model`) — e.g. a quicker,
   cheaper one for snappy Assist replies — and spoken (voice) turns can use an even
   faster model (`chat_model_voice`), since voice answers are short and lower
-  latency matters more there than raw capability. Carrying out a confirmed action
-  (`chat_model_write`) and answering from a camera snapshot (`chat_model_camera`)
-  can each have their own model too. All of these are optional; leave them empty
-  to use the console's model. Replies are also written in your Home
+  latency matters more there than raw capability. Answering from a camera snapshot
+  (`chat_model_camera`) can have its own model too. All of these are optional;
+  leave them empty to use the console's model. `chat_model_write` is no longer
+  used: a confirmed action runs without a model. Replies are also written in your Home
   Assistant language, and voice replies are kept to one short, spoken-friendly
   sentence.
 
@@ -274,9 +274,13 @@ add-on stores no copy of the facts, and its audit log records only how many
 were sent.
 
 A reply the agent itself refuses because the sign-in is no longer accepted ends
-with reason `auth-expired` and is never retried; a write whose run is refused
-for the sign-in answers `503` (`auth_expired`) instead of `500`, and is not
-retried either.
+with reason `auth-expired` and is never retried.
+
+A confirmed action runs without a model: the add-on calls the Home Assistant
+action for each target itself and answers with `actions`, one entry per target
+with `ok` and, when it failed, `error` as Home Assistant reported it. Every
+action is attempted; the answer is `200` only when all of them were carried out,
+and `502` (`action_failed`) with the same `actions` otherwise.
 
 Every error answer carries a stable `code` next to its message (and `field` or
 `limit_bytes` where they apply); the codes are listed in

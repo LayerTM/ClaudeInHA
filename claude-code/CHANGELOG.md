@@ -11,6 +11,12 @@
   only their number.
 
 ### Changed
+- A confirmed action no longer runs a model. The add-on calls the Home Assistant action for each
+  target itself and answers with `actions` (target, `ok`, and Home Assistant's `error` when it
+  failed). The answer is `200` only when every action was carried out, otherwise `502`
+  (`action_failed`) with the same `actions`, so a client can never report "done" after a failure.
+  A failed action no longer marks the Home Assistant connection as down. `chat_model_write` stays
+  accepted but has no effect.
 - Built on ha-agent-core 0.10.0
   ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.10.0)).
 - Claude CLI 2.1.301 → 2.1.306.

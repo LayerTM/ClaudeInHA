@@ -293,10 +293,9 @@ configuration:
   chat_model_write:
     name: Action Model (claude_ha integration)
     description: >-
-      Optional model for carrying out an action you have already confirmed in the
-      chat. That step only calls the exact Home Assistant action it was given, so a
-      faster, cheaper model is usually enough. Leave empty to use the Chat Model
-      above. A voice turn keeps the Voice Chat Model when one is set.
+      No longer used: an action you have confirmed in the chat now runs without a
+      model, so this setting has no effect. It is kept so existing configurations
+      stay valid.
   chat_model_camera:
     name: Camera Model (claude_ha integration)
     description: >-
