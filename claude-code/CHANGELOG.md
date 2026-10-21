@@ -24,6 +24,11 @@
   They are now translated in English, Polish and Ukrainian, and a test fails when any option lacks
   a name and description in a shipped language.
 
+### Documentation
+- **Clarified skills and plugin removal in DOCS.md.** Skills must sit in a top-level folder with a
+  `SKILL.md`, and removing a `plugins` or `marketplaces` entry does not uninstall it; the docs now
+  name the console commands for that. Docs-only.
+
 ## [1.59.14] — 2026-10-16
 
 ### Added

@@ -58,7 +58,7 @@ All of it lives in `/data/home/.claude` and **persists across add-on updates**;
 provisioning runs once in the background (see `/data/provision.log`).
 
 Add your own with the `plugins`, `marketplaces`, and `skills_git` options —
-reconciled on every start.
+reconciled on every start. Entries you remove from `plugins` or `marketplaces` are not uninstalled; remove them in the console with `claude plugin uninstall <name>` or `claude plugin marketplace remove <name>`.
 
 ## Configuration options
 
@@ -74,7 +74,7 @@ reconciled on every start.
 | `init_commands` | Shell commands run at startup (install tools, MCP servers). |
 | `plugins` | Extra plugins to install, `name@marketplace` per entry. |
 | `marketplaces` | Extra plugin marketplaces (GitHub `owner/repo`, URL, or path). |
-| `skills_git` | Git repo of your own skills, synced into `~/.claude/skills` each start. |
+| `skills_git` | Git repo of your own skills, synced into `~/.claude/skills` each start. Each top-level folder must hold a SKILL.md; skills nested deeper (for example in a `skills/` subfolder) are not picked up. |
 | `extra_args` | Extra `claude` CLI arguments, one per entry. |
 | `launch_command` | Full replacement for the default `claude` invocation. |
 | `quick_prompts` | Your own prompts for the 💡 menu — a list of strings. Each becomes a button that *inserts* the text (never auto-runs), shown under *Your prompts*. |
