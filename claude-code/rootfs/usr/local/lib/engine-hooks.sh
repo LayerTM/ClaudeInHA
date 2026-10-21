@@ -18,6 +18,7 @@ ENGINE_BIN_DIR=/data/home/.local/bin
 ENGINE_PROMPT_BIN=/data/home/.local/bin/claude
 ENGINE_INSTRUCTIONS_SOURCE=/usr/share/claude-ha/CLAUDE.md
 ENGINE_INSTRUCTIONS_FILE=CLAUDE.md
+ENGINE_USER_INSTRUCTIONS=/data/home/.claude/CLAUDE.md
 ENGINE_STATE_DIR=/data/home/.claude
 ENGINE_SKILLS_DIR=/data/home/.claude/skills
 

@@ -150,8 +150,10 @@ run_service() {
 }
 
 expected_claude_md() {
+    printf '%s\n' '<!-- BEGIN add-on instructions: rewritten at every start; edit custom_instructions instead -->'
     cat /usr/share/claude-ha/CLAUDE.md
     if [ -n "${1:-}" ]; then printf "\n\n---\n\n# User Custom Instructions\n\n%s\n" "$1"; fi
+    printf '\n%s\n' '<!-- END add-on instructions -->'
 }
 
 # The audit hook the prompt API is handed, stated here rather than rebuilt with
@@ -225,7 +227,7 @@ eq "CLAUDE_PROMPT_HA_MCP_URL cannot be set from options" "$(envv CLAUDE_PROMPT_H
 eq "CLAUDE_PROMPT_SETTINGS is the audit-hook settings" "$(envv CLAUDE_PROMPT_SETTINGS)" "${AUDIT_SETTINGS}"
 eq "ADDON_VERSION from the Supervisor" "$(envv ADDON_VERSION)" 7.7.7
 no_ "auto_update off → no update call" grep -q '|update $' "${P}/claude.log"
-eq "CLAUDE.md = bundled + custom instructions" "$(cat /data/workdir/CLAUDE.md)" "$(expected_claude_md PINS-CUSTOM-MARK)"
+eq "the instructions block in the engine's user file = bundled + custom instructions" "$(cat /data/home/.claude/CLAUDE.md)" "$(expected_claude_md PINS-CUSTOM-MARK)"
 no_ "no /homeassistant → nothing written there" test -e /homeassistant
 eq "settings.json carries hooks, the status line and the pushed-out CLI sweep" "$(jq -c 'keys' /data/home/.claude/settings.json)" '["cleanupPeriodDays","hooks","statusLine"]'
 eq "settings.json hook events" "$(jq -c '.hooks | keys' /data/home/.claude/settings.json)" '["Notification","PostToolUse","PostToolUseFailure","PreToolUse"]'
@@ -284,7 +286,8 @@ run_service
 eq "a failed update does not stop the start" "$?" 0
 eq "older persistent CLI is replaced by the image's" "$(persistent_version)" "${IMG}"
 yes_ "the failed update is reported" grep -q 'Update check failed (non-critical)' "${P}/run.out"
-eq "CLAUDE.md is placed in an empty /homeassistant" "$(cat /homeassistant/CLAUDE.md)" "$(expected_claude_md)"
+no_ "nothing is placed in /homeassistant" test -e /homeassistant/CLAUDE.md
+eq "the instructions block is written to the engine's user file" "$(cat /data/home/.claude/CLAUDE.md)" "$(expected_claude_md)"
 eq "login state survives the sync" "$(cat /data/home/.claude/.credentials.json)" keep-me
 
 # --- 4. service script, persistent CLI that cannot run ------------------------

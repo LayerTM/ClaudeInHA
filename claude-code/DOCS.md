@@ -69,7 +69,7 @@ reconciled on every start. Entries you remove from `plugins` or `marketplaces` a
 | `bypass_permissions` | Start Claude with `--dangerously-skip-permissions` (fully autonomous). |
 | `auto_update` | Update the CLI at every add-on start. Manual `update-claude` always works. |
 | `model` | Model override, e.g. `claude-sonnet-4-6`. |
-| `custom_instructions` | Text appended to the built-in HA context (CLAUDE.md). |
+| `custom_instructions` | Text appended to the built-in HA context. Edit your instructions here; they reach the console at the next start. |
 | `environment_vars` | Extra env vars, `KEY=VALUE` per entry. |
 | `init_commands` | Shell commands run at startup (install tools, MCP servers). |
 | `plugins` | Extra plugins to install, `name@marketplace` per entry. |
@@ -96,7 +96,7 @@ curl -sS -H "Authorization: Bearer $SUPERVISOR_TOKEN" \
   http://supervisor/core/api/states | jq '.[].entity_id'
 ```
 
-The bundled `CLAUDE.md` teaches Claude the HA API, config patterns, and safety rules (validate config before restart, prefer reloads, and so on).
+The bundled instructions teach Claude the HA API, config patterns, and safety rules (validate config before restart, prefer reloads, and so on). They live in `/data/home/.claude/CLAUDE.md`, which Claude reads in every working directory. At each start the add-on rewrites its own block of that file (marked by the `BEGIN`/`END` comment lines), so edit `custom_instructions` rather than the block; text you add outside the block, including what Claude saves with `/memory`, is kept. A copy left in `/homeassistant` by an earlier version is renamed to `CLAUDE.md.previous`.
 
 MCP servers, skills, and plugins work exactly as in the desktop CLI: `.mcp.json` in `/homeassistant`, skills under `/data/home/.claude/skills/`, `claude plugin install <name>`.
 

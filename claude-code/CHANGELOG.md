@@ -18,6 +18,11 @@
   A failed action no longer marks the Home Assistant connection as down. `chat_model_write` stays
   accepted but has no effect.
 - Built on ha-agent-core 0.10.0
+- Custom instructions now apply after a restart, and so does every later update of the bundled
+  instructions. The console reads them from `/data/home/.claude/CLAUDE.md` in every working
+  directory; the add-on rewrites its own block of that file at each start and keeps everything
+  you added outside the block. An earlier copy in the config folder (`/homeassistant/CLAUDE.md`)
+  is renamed to `CLAUDE.md.previous`.
   ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.10.0)).
 - Claude CLI 2.1.301 → 2.1.306.
 - Node.js 26.12.0 → 26.12.1.
