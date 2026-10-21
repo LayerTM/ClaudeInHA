@@ -263,7 +263,15 @@ behind the Prompt API, so the integration can adapt to it:
 | `claude_version` | the same value, kept for integrations that predate `engine_version` |
 | `request_fields` | the request fields `POST /api/prompt` accepts; a field not listed is refused |
 | `prompt_max_bytes`, `body_max_bytes` | the largest prompt and request body `POST /api/prompt` accepts |
+| `memory_max_bytes` | the largest total size of the remembered facts a request may send in `memory` |
 | `auth` | the sign-in's own state — `ok`, `expired` or `unknown` — and since when; kept across restarts and computed without running the agent |
+
+Remembered facts are kept by the integration, not by the add-on: a request may
+send them in `memory`, and they reach the agent as data, never as instructions.
+When a message asks to remember or forget something, the answer carries
+`memory_change` for the integration to apply after the user confirms it. The
+add-on stores no copy of the facts, and its audit log records only how many
+were sent.
 
 A reply the agent itself refuses because the sign-in is no longer accepted ends
 with reason `auth-expired` and is never retried; a write whose run is refused

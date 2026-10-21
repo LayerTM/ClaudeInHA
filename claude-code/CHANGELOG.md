@@ -1,9 +1,20 @@
 # Changelog
 
-## [1.59.15] — 2026-10-22
+## [1.60.0] — 2026-10-22
+
+### Added
+- The Prompt API accepts `memory`: facts the user chose to keep across conversations, sent by
+  the integration with a request and handed to the agent as data. When a message asks to
+  remember or forget something, the answer carries `memory_change` for the integration to
+  apply. `memory` is listed in `request_fields`, and `/api/status` publishes
+  `memory_max_bytes` (16 KiB). The add-on keeps no copy of the facts; the audit log records
+  only their number.
 
 ### Changed
+- Built on ha-agent-core 0.10.0
+  ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.10.0)).
 - Claude CLI 2.1.301 → 2.1.306.
+- Node.js 26.12.0 → 26.12.1.
 - Pillow 12.3.0 → 13.0.0.
 - Home Assistant CLI 5.5.0 → 5.6.0.
 

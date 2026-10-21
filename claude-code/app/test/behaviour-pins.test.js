@@ -165,7 +165,7 @@ test('/api/status answers with exactly the recorded set of fields', async () => 
     assert.deepEqual(Object.keys(body).sort(), [
       'alerts', 'audit_error', 'audit_recording', 'auth', 'body_max_bytes', 'budget', 'chat_health',
       'claude_version', 'core_commit', 'core_version', 'engine', 'engine_version', 'ha_mcp', 'ha_mcp_auth',
-      'ha_mcp_connected',
+      'ha_mcp_connected', 'memory_max_bytes',
       'model', 'prompt_max_bytes', 'prompt_timeout_ms', 'ready', 'request_fields', 'version',
     ]);
     assert.deepEqual(Object.keys(body.budget).sort(), ['limit', 'spent']);
@@ -177,11 +177,12 @@ test('/api/status answers with exactly the recorded set of fields', async () => 
       engine_version: '9.9.9',
       request_fields: [
         'prompt', 'mode', 'conversation_id', 'intents', 'confirmation', 'image_entity', 'stream', 'language',
-        'surface', 'edit_automation',
+        'surface', 'edit_automation', 'memory',
       ],
       model: 'm',
       prompt_max_bytes: 8 * 1024,
       body_max_bytes: 64 * 1024,
+      memory_max_bytes: 16 * 1024,
       ha_mcp: false,
       ha_mcp_auth: null,
       ha_mcp_connected: false,
