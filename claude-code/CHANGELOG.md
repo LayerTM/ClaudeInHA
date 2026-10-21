@@ -18,6 +18,12 @@
 - Pillow 12.3.0 → 13.0.0.
 - Home Assistant CLI 5.5.0 → 5.6.0.
 
+### Fixed
+- The Configuration tab showed the raw keys `quick_prompts`, `alert_temp_entities`,
+  `alert_co2_above` and `alert_humidity_enabled`/`_low`/`_high` instead of a name and description.
+  They are now translated in English, Polish and Ukrainian, and a test fails when any option lacks
+  a name and description in a shipped language.
+
 ## [1.59.14] — 2026-10-16
 
 ### Added
