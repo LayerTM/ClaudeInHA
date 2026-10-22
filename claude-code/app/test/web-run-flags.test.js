@@ -101,12 +101,21 @@ test('the guard allows a listed host and denies preapproved docs hosts and subdo
   assert.match(verdict(null, ['example.com']), /valid URL/);
 });
 
-test('the guard script prints a deny decision for docs.python.org and nothing for a listed host', () => {
+test('the guard script exits 2 with a reason for docs.python.org, garbage and no input, and 0 for a listed host', () => {
   const { spawnSync } = require('node:child_process');
   const script = require.resolve('../adapter/web-fetch-guard');
-  const run = (url) => spawnSync(process.execPath, [script, 'example.com'], { input: JSON.stringify({ tool_input: { url } }), encoding: 'utf8' });
-  assert.equal(run('https://example.com/').stdout, '');
-  const out = JSON.parse(run('https://docs.python.org/3/').stdout);
-  assert.equal(out.hookSpecificOutput.permissionDecision, 'deny');
-  assert.equal(JSON.parse(spawnSync(process.execPath, [script, 'example.com'], { input: 'garbage', encoding: 'utf8' }).stdout).hookSpecificOutput.permissionDecision, 'deny');
+  const run = (input) => spawnSync(process.execPath, [script, 'example.com'], { input, encoding: 'utf8' });
+  const ok = run(JSON.stringify({ tool_input: { url: 'https://example.com/' } }));
+  assert.equal(ok.status, 0);
+  assert.equal(ok.stderr, '');
+  for (const input of [JSON.stringify({ tool_input: { url: 'https://docs.python.org/3/' } }), 'garbage', '', '{}']) {
+    const denied = run(input);
+    assert.equal(denied.status, 2, input);
+    assert.ok(denied.stderr.length > 0, input);
+  }
+});
+
+test('the hook runs the node binary of this process by absolute path', () => {
+  const s = settingsOf(argsFor(web({ fetch: true, domains: ['example.com'] })));
+  assert.ok(s.hooks.PreToolUse[0].hooks[0].command.startsWith(`'${process.execPath}' `));
 });

@@ -12,24 +12,29 @@ const { verdict } = require('./web-host-policy');
 //
 // Anything it cannot read or parse is denied.
 
+// A hook that fails to decide must not let the fetch through: the CLI treats
+// every non-zero exit but 2 as a non-blocking error, so every path out of here
+// that is not an explicit allow ends in exit 2 with the reason on stderr.
+function deny(reason) {
+  process.stderr.write(`${reason}\n`);
+  process.exit(2);
+}
+
 function main() {
   const domains = process.argv.slice(2);
   let raw = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (c) => { raw += c; });
+  process.stdin.on('error', () => deny('the WebFetch call could not be read'));
   process.stdin.on('end', () => {
-    let payload = null;
-    try { payload = JSON.parse(raw); } catch { /* denied below */ }
-    const reason = verdict(payload, domains);
-    if (reason === null) return;
-    process.stdout.write(JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse',
-        permissionDecision: 'deny',
-        permissionDecisionReason: reason,
-      },
-    }));
+    try {
+      const reason = verdict(JSON.parse(raw), domains);
+      if (reason !== null) deny(reason);
+    } catch {
+      deny('the WebFetch call could not be checked');
+    }
   });
 }
 
+process.on('uncaughtException', () => deny('the WebFetch guard failed'));
 main();

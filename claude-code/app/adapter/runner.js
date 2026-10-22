@@ -45,9 +45,10 @@ const WEB_FETCH_GUARD = path.join(__dirname, 'web-fetch-guard.js');
 // allows its built-in documentation hosts in `dontAsk` regardless of the
 // allowlist, so a PreToolUse hook (web-fetch-guard.js) denies every other host.
 // The domains are already in the core's lower-case host form, so they are safe
-// as shell words; the script path is quoted.
+// as shell words; the node binary and script paths are quoted, and the binary is
+// the one running the prompt server, so the hook never depends on PATH.
 function webFetchGuard(domains) {
-  const command = ['node', `'${WEB_FETCH_GUARD}'`, ...domains].join(' ');
+  const command = [`'${process.execPath}'`, `'${WEB_FETCH_GUARD}'`, ...domains].join(' ');
   return { hooks: { PreToolUse: [{ matcher: WEB_FETCH, hooks: [{ type: 'command', command }] }] } };
 }
 
