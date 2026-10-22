@@ -318,3 +318,18 @@ configuration:
       zabezpieczenie przed zapętloną automatyzacją lub intensywnym użyciem
       wyczerpującym Twój plan. Nie dotyczy konsoli. Ustaw 0, aby wyłączyć (bez
       limitu). Resetuje się codziennie i przy restarcie dodatku.
+  chat_web:
+    name: Odpowiedzi czatu z sieci (integracja claude_ha)
+    description: >-
+      Pozwala czatowi towarzyszącemu odpowiedzieć na pytanie z sieci, gdy
+      integracja o to poprosi. Odpowiedź z sieci to sam tekst i nic nie wie o
+      Twoim domu: ani o urządzeniach, stanach, pamięci czy wcześniejszej rozmowie,
+      i nie może niczego wykonać. Domyślnie wyłączone. Wszystko, co zawiera takie
+      pytanie, może opuścić Twoją sieć jako zapytanie do wyszukiwarki.
+  chat_web_domains:
+    name: Strony sieciowe dla czatu (integracja claude_ha)
+    description: >-
+      Publiczne witryny (np. docs.example.com), których strony odpowiedź z sieci
+      może otwierać. Same wyniki wyszukiwania nie są ograniczone tą listą. Gdy
+      lista jest pusta, odpowiedź z sieci może wyszukiwać, ale nie otwiera stron.
+      Tylko nazwy hostów: bez http://, ścieżki i portu.

@@ -27,6 +27,31 @@ const BUILTIN_TOOLS_READ = '';
 const BUILTIN_TOOLS_VISION = 'Read';
 const BUILTIN_TOOLS_WRITE = '';
 
+// A web run (the core's answer-only grant) sees the web tools and nothing else:
+// no MCP config, no Home Assistant tools, no Read. WebSearch cannot be limited
+// to sites on Claude; WebFetch is allowed per listed domain only, and is not
+// even offered to the model when the list is empty.
+const WEB_SEARCH = 'WebSearch';
+const WEB_FETCH = 'WebFetch';
+
+// What the adapter can do on the web, declared to the core (runner.webCapability).
+const WEB_CAPABILITY = Object.freeze({ search: true, fetch: true });
+
+// `--tools` and `--allowed-tools` for a web grant `{ search, fetch, domains }`.
+function webTools(web) {
+  const tools = [];
+  const allowed = [];
+  if (web.search) {
+    tools.push(WEB_SEARCH);
+    allowed.push(WEB_SEARCH);
+  }
+  if (web.fetch && web.domains.length) {
+    tools.push(WEB_FETCH);
+    for (const domain of web.domains) allowed.push(`${WEB_FETCH}(domain:${domain})`);
+  }
+  return { tools: tools.join(','), allowed };
+}
+
 // Tools of the `ha` MCP server are published as `mcp__ha__<name>`, and Home
 // Assistant itself may namespace <name> (`homeassistant__GetLiveContext`; every
 // tool once more than one API is selected). The core pins basenames only.
@@ -66,6 +91,8 @@ const PASSTHROUGH_ENV = [
 function launch(spec, { env }) {
   const allowedTools = [...spec.haAllowed];
   if (spec.vision) allowedTools.push(`Read(${spec.imagePath})`);
+  const web = spec.web ? webTools(spec.web) : null;
+  if (web) allowedTools.push(...web.allowed);
 
   const args = [
     '-p',
@@ -73,7 +100,7 @@ function launch(spec, { env }) {
     '--verbose',
     '--permission-mode', 'dontAsk',
     '--allowed-tools', allowedTools.join(','),
-    '--tools', spec.vision ? BUILTIN_TOOLS_VISION : (spec.read ? BUILTIN_TOOLS_READ : BUILTIN_TOOLS_WRITE),
+    '--tools', web ? web.tools : (spec.vision ? BUILTIN_TOOLS_VISION : (spec.read ? BUILTIN_TOOLS_READ : BUILTIN_TOOLS_WRITE)),
     // The console's settings files are the user's interactive setup: its hooks,
     // plugins, skills and per-model options added ~1,300 tokens to every model
     // call and broke prompt caching between identical requests. This child needs
@@ -221,5 +248,5 @@ function createDecoder() {
 }
 
 module.exports = {
-  launch, createDecoder, toolName, toolBasename, runTokens,
+  launch, createDecoder, toolName, toolBasename, runTokens, WEB_CAPABILITY,
 };

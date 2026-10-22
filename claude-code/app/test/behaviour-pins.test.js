@@ -166,8 +166,9 @@ test('/api/status answers with exactly the recorded set of fields', async () => 
       'alerts', 'audit_error', 'audit_recording', 'auth', 'body_max_bytes', 'budget', 'chat_health',
       'claude_version', 'core_commit', 'core_version', 'engine', 'engine_version', 'ha_mcp', 'ha_mcp_auth',
       'ha_mcp_connected', 'memory_max_bytes',
-      'model', 'prompt_max_bytes', 'prompt_timeout_ms', 'ready', 'request_fields', 'version',
+      'model', 'prompt_max_bytes', 'prompt_timeout_ms', 'ready', 'request_fields', 'version', 'web',
     ]);
+    assert.equal(body.web, null, 'the web is off unless the options turn it on');
     assert.deepEqual(Object.keys(body.budget).sort(), ['limit', 'spent']);
     assert.deepEqual(body, {
       ...body,
@@ -177,7 +178,7 @@ test('/api/status answers with exactly the recorded set of fields', async () => 
       engine_version: '9.9.9',
       request_fields: [
         'prompt', 'mode', 'conversation_id', 'intents', 'confirmation', 'image_entity', 'stream', 'language',
-        'surface', 'edit_automation', 'memory',
+        'surface', 'edit_automation', 'memory', 'web',
       ],
       model: 'm',
       prompt_max_bytes: 8 * 1024,

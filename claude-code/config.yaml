@@ -90,6 +90,8 @@ options:
   chat_model_write: ""
   chat_model_camera: ""
   chat_daily_budget_usd: 0
+  chat_web: false
+  chat_web_domains: []
 
 schema:
   api_key: "password"
@@ -146,3 +148,6 @@ schema:
   chat_model_write: "str?"
   chat_model_camera: "str?"
   chat_daily_budget_usd: "float(0,)?"
+  chat_web: bool
+  chat_web_domains:
+    - "str"

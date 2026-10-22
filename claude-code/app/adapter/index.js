@@ -66,6 +66,7 @@ module.exports = {
     createDecoder: runner.createDecoder,
     toolName: runner.toolName,
     toolBasename: runner.toolBasename,
+    webCapability: runner.WEB_CAPABILITY,
   },
   prompt: {
     // Only a subscription has account limits. An API key is billed per request,
