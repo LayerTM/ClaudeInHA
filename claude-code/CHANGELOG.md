@@ -24,7 +24,7 @@
   you added outside the block. An earlier copy in the config folder (`/homeassistant/CLAUDE.md`)
   is renamed to `CLAUDE.md.previous`.
   ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.10.0)).
-- Claude CLI 2.1.301 → 2.1.306.
+- Claude CLI 2.1.301 → 2.1.308.
 - Node.js 26.12.0 → 26.12.1.
 - Pillow 12.3.0 → 13.0.0.
 - Home Assistant CLI 5.5.0 → 5.6.0.
