@@ -1,5 +1,7 @@
 'use strict';
 
+const path = require('node:path');
+
 // How one prompt-API request becomes a `claude -p` call, and how its stream-json
 // output becomes the core's neutral events. The core (server/prompt/run.js) owns
 // the request policy, the prompts and schemas, the process lifecycle and the
@@ -37,10 +39,24 @@ const WEB_FETCH = 'WebFetch';
 // What the adapter can do on the web, declared to the core (runner.webCapability).
 const WEB_CAPABILITY = Object.freeze({ search: true, fetch: true });
 
-// `--tools` and `--allowed-tools` for a web grant `{ search, fetch, domains }`.
+const WEB_FETCH_GUARD = path.join(__dirname, 'web-fetch-guard.js');
+
+// The `--settings` object that holds WebFetch to the listed domains. The CLI
+// allows its built-in documentation hosts in `dontAsk` regardless of the
+// allowlist, so a PreToolUse hook (web-fetch-guard.js) denies every other host.
+// The domains are already in the core's lower-case host form, so they are safe
+// as shell words; the script path is quoted.
+function webFetchGuard(domains) {
+  const command = ['node', `'${WEB_FETCH_GUARD}'`, ...domains].join(' ');
+  return { hooks: { PreToolUse: [{ matcher: WEB_FETCH, hooks: [{ type: 'command', command }] }] } };
+}
+
+// `--tools`, `--allowed-tools` and the guard settings (null when WebFetch is not
+// offered) for a web grant `{ search, fetch, domains }`.
 function webTools(web) {
   const tools = [];
   const allowed = [];
+  let guard = null;
   if (web.search) {
     tools.push(WEB_SEARCH);
     allowed.push(WEB_SEARCH);
@@ -48,8 +64,9 @@ function webTools(web) {
   if (web.fetch && web.domains.length) {
     tools.push(WEB_FETCH);
     for (const domain of web.domains) allowed.push(`${WEB_FETCH}(domain:${domain})`);
+    guard = webFetchGuard(web.domains);
   }
-  return { tools: tools.join(','), allowed };
+  return { tools: tools.join(','), allowed, guard };
 }
 
 // Tools of the `ha` MCP server are published as `mcp__ha__<name>`, and Home
@@ -82,6 +99,15 @@ const PASSTHROUGH_ENV = [
   'http_proxy', 'https_proxy', 'no_proxy',
   'USER', 'LOGNAME',
 ];
+
+// The run's settings JSON: the core's (audit hook) plus the web guard's hooks.
+function mergeSettings(given, guard) {
+  if (!guard) return given;
+  const base = given ? JSON.parse(given) : {};
+  const hooks = { ...(base.hooks || {}) };
+  hooks.PreToolUse = [...(hooks.PreToolUse || []), ...guard.hooks.PreToolUse];
+  return JSON.stringify({ ...base, hooks });
+}
 
 /**
  * The complete command line for one run spec from the core. CI hands the same
@@ -120,7 +146,8 @@ function launch(spec, { env }) {
   // What the settings files are still needed for, declared per run: the audit
   // hook that records each Home Assistant tool call WITH its arguments. The
   // allowlist gates by tool name only, so the arguments are the record.
-  if (spec.settings) args.push('--settings', spec.settings);
+  const settings = mergeSettings(spec.settings, web && web.guard);
+  if (settings) args.push('--settings', settings);
   if (spec.model) args.push('--model', spec.model);
   // Fine-grained partial-message events only when a streaming consumer is
   // attached; without this flag stream-json emits whole messages only.
