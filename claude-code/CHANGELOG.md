@@ -8,6 +8,9 @@
   no entities, memory, history or actions. Web search is not limited by domain; opening a page
   is allowed only on a listed domain. See the documentation for what leaves your network.
 
+### Changed
+- Claude CLI 2.1.308 → 2.1.309.
+
 ## [1.60.0] — 2026-10-22
 
 ### Added
