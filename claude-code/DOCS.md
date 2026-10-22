@@ -314,6 +314,9 @@ answered from the web. A web answer is a separate kind of run:
 - **A question leaves your network.** If the prompt contains something from your
   home (a room name, a person, a device), it can reach the search provider as
   part of a search query. Keep that in mind before enabling it.
+- **Pages are fetched from your network.** A listed site whose name resolves to a
+  home-network address is fetched from inside your network, because the page is
+  opened on the add-on host. List only sites you trust.
 
 ### Chat reliability (`chat_health`)
 
