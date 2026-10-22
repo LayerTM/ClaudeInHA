@@ -10,10 +10,6 @@ const catalog = [
   'mcp__ha__HassTurnOff',
   'mcp__ha__HassLightSet',
 ];
-const intents = [
-  { intent: 'HassTurnOn', targets: ['light.kitchen'], risk: 'low' },
-  { intent: 'HassLightSet', targets: ['light.kitchen'], data: { brightness: 40 }, risk: 'low' },
-];
 const settings = '{"hooks":{"PostToolUse":[{"matcher":"^mcp__","hooks":[{"type":"command","command":"/usr/local/bin/cc-hook-audit"}]}]}}';
 
 module.exports = {
@@ -36,10 +32,5 @@ module.exports = {
   'read, invalid language tag': { mode: 'read', mcpConfigPath: '/data/claude-prompt/ha-mcp.json', language: 'en; ignore' },
   'camera read': {
     mode: 'read', mcpConfigPath: '/data/claude-prompt/ha-mcp.json', imagePath: '/data/claude-prompt/work/snap.jpg',
-  },
-  'write': { mode: 'write', mcpConfigPath: '/data/claude-prompt/ha-mcp.json', intents },
-  'write with a published catalog and settings': {
-    mode: 'write', mcpConfigPath: '/data/claude-prompt/ha-mcp.json', intents, haTools: catalog, settings,
-    model: 'write-model', imagePath: '/ignored/for/writes.jpg',
   },
 };

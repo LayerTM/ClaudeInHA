@@ -1,5 +1,54 @@
 # Changelog
 
+## [1.60.0] — 2026-10-22
+
+### Added
+- The Prompt API accepts `memory`: facts the user chose to keep across conversations, sent by
+  the integration with a request and handed to the agent as data. When a message asks to
+  remember or forget something, the answer carries `memory_change` for the integration to
+  apply. `memory` is listed in `request_fields`, and `/api/status` publishes
+  `memory_max_bytes` (16 KiB). The add-on keeps no copy of the facts; the audit log records
+  only their number.
+
+### Changed
+- A confirmed action no longer runs a model. The add-on calls the Home Assistant action for each
+  target itself and answers with `actions` (target, `ok`, and Home Assistant's `error` when it
+  failed). The answer is `200` only when every action was carried out, otherwise `502`
+  (`action_failed`) with the same `actions`, so a client can never report "done" after a failure.
+  A failed action no longer marks the Home Assistant connection as down. `chat_model_write` stays
+  accepted but has no effect.
+- Built on ha-agent-core 0.10.0
+- Custom instructions now apply after a restart, and so does every later update of the bundled
+  instructions. The console reads them from `/data/home/.claude/CLAUDE.md` in every working
+  directory; the add-on rewrites its own block of that file at each start and keeps everything
+  you added outside the block. An earlier copy in the config folder (`/homeassistant/CLAUDE.md`)
+  is renamed to `CLAUDE.md.previous`.
+  ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.10.0)).
+- Claude CLI 2.1.301 → 2.1.308.
+- Node.js 26.12.0 → 26.12.1.
+- Pillow 12.3.0 → 13.0.0.
+- Home Assistant CLI 5.5.0 → 5.6.0.
+- Base image Debian base 9.5.0 → 9.5.1.
+
+### Fixed
+- A camera question asked right after the add-on restarts is retried once when its first run
+  stopped while starting up, instead of ending as a failed read.
+- A chat read whose Home Assistant token Home Assistant refuses (HTTP 401/403) now ends as a
+  degraded read with reason `ha-token-refused` and a localized text naming both causes (a revoked
+  token, or a non-administrator's token while the MCP Server requires an administrator) and how to
+  fix each, instead of the model guessing. This also holds for a chat answer shown as it is
+  written: once the token is refused no further model text is shown, so the answer is not left
+  as half a sentence, and the reply is marked as partial.
+- The Configuration tab showed the raw keys `quick_prompts`, `alert_temp_entities`,
+  `alert_co2_above` and `alert_humidity_enabled`/`_low`/`_high` instead of a name and description.
+  They are now translated in English, Polish and Ukrainian, and a test fails when any option lacks
+  a name and description in a shipped language.
+
+### Documentation
+- **Clarified skills and plugin removal in DOCS.md.** Skills must sit in a top-level folder with a
+  `SKILL.md`, and removing a `plugins` or `marketplaces` entry does not uninstall it; the docs now
+  name the console commands for that. Docs-only.
+
 ## [1.59.14] — 2026-10-16
 
 ### Added

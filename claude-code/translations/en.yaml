@@ -99,6 +99,12 @@ configuration:
       wrapping claude in another tool or running a different binary.
       Example: claude --resume --dangerously-skip-permissions
       Leave empty to use the default launch behavior.
+  quick_prompts:
+    name: Your Quick Prompts
+    description: >-
+      Your own prompts for the 💡 menu, one per entry. Each becomes a button
+      under 'Your prompts' that inserts the text into the console for you to
+      review and send — it never runs automatically.
   upload_retention_days:
     name: Uploaded File Retention (days)
     description: >-
@@ -192,6 +198,35 @@ configuration:
     description: >-
       Alert when an enabled temperature sensor reads above this value
       (default 45). Only used when Temperature Alerts is on.
+  alert_temp_entities:
+    name: Room Temperature Sensors
+    description: >-
+      Entity IDs of the temperature sensors that Temperature Alerts should
+      check, one per entry. Leave empty to check every temperature sensor —
+      which includes device temperatures (a NAS or switch CPU) that can
+      false-trigger.
+  alert_co2_above:
+    name: High CO2 Threshold (ppm)
+    description: >-
+      Alert when a carbon-dioxide sensor reads above this value, so you know
+      when a room needs airing out (default 1400). 0 turns it off. Not critical:
+      held back during quiet hours.
+  alert_humidity_enabled:
+    name: Humidity Alerts
+    description: >-
+      Alert when a humidity sensor reads below the low or above the high band
+      below, to catch a damp bathroom or cellar or an over-dry room. Off by
+      default. Not critical: held back during quiet hours.
+  alert_humidity_low:
+    name: Humidity Low (%)
+    description: >-
+      Alert when a humidity sensor reads below this value (default 25). Only
+      used when Humidity Alerts is on.
+  alert_humidity_high:
+    name: Humidity High (%)
+    description: >-
+      Alert when a humidity sensor reads above this value (default 70). Only
+      used when Humidity Alerts is on.
   alert_offline:
     name: Offline / Network Alerts (critical)
     description: >-
@@ -258,10 +293,9 @@ configuration:
   chat_model_write:
     name: Action Model (claude_ha integration)
     description: >-
-      Optional model for carrying out an action you have already confirmed in the
-      chat. That step only calls the exact Home Assistant action it was given, so a
-      faster, cheaper model is usually enough. Leave empty to use the Chat Model
-      above. A voice turn keeps the Voice Chat Model when one is set.
+      No longer used: an action you have confirmed in the chat now runs without a
+      model, so this setting has no effect. It is kept so existing configurations
+      stay valid.
   chat_model_camera:
     name: Camera Model (claude_ha integration)
     description: >-

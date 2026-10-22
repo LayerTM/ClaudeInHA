@@ -40,9 +40,37 @@ function reply(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+// The intent tools a confirmed write calls. The core carries the write out
+// itself, so Home Assistant answers each action the way a real intent does.
+const ACTIONABLE = new Set(['HassTurnOn', 'HassTurnOff', 'HassOpen', 'HassLightSet']);
+// An entity Home Assistant refuses to act on: the intent runs and names it in
+// `data.failed`, which is how a real intent response reports a target it could
+// not act on.
+const REFUSED = 'switch.refuses';
+
+function intentAnswer(target) {
+  const failed = target === REFUSED ? [{ type: 'entity', name: target }] : [];
+  const text = JSON.stringify({
+    response_type: 'action_done',
+    speech: { plain: { speech: failed.length ? 'Sorry, could not do that' : 'Done' } },
+    data: { targets: [], success: failed.length ? [] : [{ type: 'entity', name: target }], failed },
+  });
+  return { content: [{ type: 'text', text }], isError: false };
+}
+
 function answerMcp({ id, method, params }) {
   if (method === 'tools/list') {
-    return { jsonrpc: '2.0', id, result: { tools: [{ name: 'GetLiveContext', inputSchema: { type: 'object' } }] } };
+    return {
+      jsonrpc: '2.0',
+      id,
+      result: {
+        tools: [{ name: 'GetLiveContext', inputSchema: { type: 'object' } },
+          ...[...ACTIONABLE].map((name) => ({ name, inputSchema: { type: 'object' } }))],
+      },
+    };
+  }
+  if (method === 'tools/call' && params && ACTIONABLE.has(params.name)) {
+    return { jsonrpc: '2.0', id, result: intentAnswer((params.arguments || {}).name) };
   }
   if (method === 'tools/call' && params && params.name === 'GetLiveContext') {
     const text = JSON.stringify(liveContext(params.arguments || {}));
@@ -51,8 +79,10 @@ function answerMcp({ id, method, params }) {
   return { jsonrpc: '2.0', id, error: { code: -32601, message: `unknown method ${method}` } };
 }
 
-/** Start it on a port the system picks; resolves to {origin, close}. */
+/** Start it on a port the system picks; resolves to {origin, calls, close}. */
 function startFakeCore() {
+  // Every tools/call it answered, in order: what Home Assistant was really asked.
+  const calls = [];
   const server = http.createServer((req, res) => {
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
@@ -62,6 +92,7 @@ function startFakeCore() {
       } else if (req.method === 'POST' && req.url === '/api/mcp') {
         let rpc;
         try { rpc = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { rpc = {}; }
+        if (rpc.method === 'tools/call') calls.push(rpc.params);
         reply(res, 200, answerMcp(rpc));
       } else {
         reply(res, 404, { message: 'not found' });
@@ -71,9 +102,10 @@ function startFakeCore() {
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => resolve({
       origin: `http://127.0.0.1:${server.address().port}`,
+      calls,
       close: () => { server.closeAllConnections(); server.close(); },
     }));
   });
 }
 
-module.exports = { startFakeCore, HOME };
+module.exports = { startFakeCore, HOME, REFUSED };

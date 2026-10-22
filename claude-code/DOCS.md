@@ -58,7 +58,7 @@ All of it lives in `/data/home/.claude` and **persists across add-on updates**;
 provisioning runs once in the background (see `/data/provision.log`).
 
 Add your own with the `plugins`, `marketplaces`, and `skills_git` options —
-reconciled on every start.
+reconciled on every start. Entries you remove from `plugins` or `marketplaces` are not uninstalled; remove them in the console with `claude plugin uninstall <name>` or `claude plugin marketplace remove <name>`.
 
 ## Configuration options
 
@@ -69,12 +69,12 @@ reconciled on every start.
 | `bypass_permissions` | Start Claude with `--dangerously-skip-permissions` (fully autonomous). |
 | `auto_update` | Update the CLI at every add-on start. Manual `update-claude` always works. |
 | `model` | Model override, e.g. `claude-sonnet-4-6`. |
-| `custom_instructions` | Text appended to the built-in HA context (CLAUDE.md). |
+| `custom_instructions` | Text appended to the built-in HA context. Edit your instructions here; they reach the console at the next start. |
 | `environment_vars` | Extra env vars, `KEY=VALUE` per entry. |
 | `init_commands` | Shell commands run at startup (install tools, MCP servers). |
 | `plugins` | Extra plugins to install, `name@marketplace` per entry. |
 | `marketplaces` | Extra plugin marketplaces (GitHub `owner/repo`, URL, or path). |
-| `skills_git` | Git repo of your own skills, synced into `~/.claude/skills` each start. |
+| `skills_git` | Git repo of your own skills, synced into `~/.claude/skills` each start. Each top-level folder must hold a SKILL.md; skills nested deeper (for example in a `skills/` subfolder) are not picked up. |
 | `extra_args` | Extra `claude` CLI arguments, one per entry. |
 | `launch_command` | Full replacement for the default `claude` invocation. |
 | `quick_prompts` | Your own prompts for the 💡 menu — a list of strings. Each becomes a button that *inserts* the text (never auto-runs), shown under *Your prompts*. |
@@ -96,7 +96,7 @@ curl -sS -H "Authorization: Bearer $SUPERVISOR_TOKEN" \
   http://supervisor/core/api/states | jq '.[].entity_id'
 ```
 
-The bundled `CLAUDE.md` teaches Claude the HA API, config patterns, and safety rules (validate config before restart, prefer reloads, and so on).
+The bundled instructions teach Claude the HA API, config patterns, and safety rules (validate config before restart, prefer reloads, and so on). They live in `/data/home/.claude/CLAUDE.md`, which Claude reads in every working directory. At each start the add-on rewrites its own block of that file (marked by the `BEGIN`/`END` comment lines), so edit `custom_instructions` rather than the block; text you add outside the block, including what Claude saves with `/memory`, is kept. A copy left in `/homeassistant` by an earlier version is renamed to `CLAUDE.md.previous`.
 
 MCP servers, skills, and plugins work exactly as in the desktop CLI: `.mcp.json` in `/homeassistant`, skills under `/data/home/.claude/skills/`, `claude plugin install <name>`.
 
@@ -229,10 +229,10 @@ deliberately much more restricted than the interactive console:
   different model from the interactive console (`chat_model`) — e.g. a quicker,
   cheaper one for snappy Assist replies — and spoken (voice) turns can use an even
   faster model (`chat_model_voice`), since voice answers are short and lower
-  latency matters more there than raw capability. Carrying out a confirmed action
-  (`chat_model_write`) and answering from a camera snapshot (`chat_model_camera`)
-  can each have their own model too. All of these are optional; leave them empty
-  to use the console's model. Replies are also written in your Home
+  latency matters more there than raw capability. Answering from a camera snapshot
+  (`chat_model_camera`) can have its own model too. All of these are optional;
+  leave them empty to use the console's model. `chat_model_write` is no longer
+  used: a confirmed action runs without a model. Replies are also written in your Home
   Assistant language, and voice replies are kept to one short, spoken-friendly
   sentence.
 
@@ -263,12 +263,29 @@ behind the Prompt API, so the integration can adapt to it:
 | `claude_version` | the same value, kept for integrations that predate `engine_version` |
 | `request_fields` | the request fields `POST /api/prompt` accepts; a field not listed is refused |
 | `prompt_max_bytes`, `body_max_bytes` | the largest prompt and request body `POST /api/prompt` accepts |
+| `memory_max_bytes` | the largest total size of the remembered facts a request may send in `memory` |
 | `auth` | the sign-in's own state — `ok`, `expired` or `unknown` — and since when; kept across restarts and computed without running the agent |
 
+Remembered facts are kept by the integration, not by the add-on: a request may
+send them in `memory`, and they reach the agent as data, never as instructions.
+When a message asks to remember or forget something, the answer carries
+`memory_change` for the integration to apply after the user confirms it. The
+add-on stores no copy of the facts, and its audit log records only how many
+were sent.
+
 A reply the agent itself refuses because the sign-in is no longer accepted ends
-with reason `auth-expired` and is never retried; a write whose run is refused
-for the sign-in answers `503` (`auth_expired`) instead of `500`, and is not
-retried either.
+with reason `auth-expired` and is never retried.
+
+A read whose Home Assistant token Home Assistant refuses (HTTP 401/403) ends as a
+degraded read with reason `ha-token-refused`: the text names the two causes — a
+revoked token, or a non-administrator's token while the MCP Server requires an
+administrator — and the fix for each.
+
+A confirmed action runs without a model: the add-on calls the Home Assistant
+action for each target itself and answers with `actions`, one entry per target
+with `ok` and, when it failed, `error` as Home Assistant reported it. Every
+action is attempted; the answer is `200` only when all of them were carried out,
+and `502` (`action_failed`) with the same `actions` otherwise.
 
 Every error answer carries a stable `code` next to its message (and `field` or
 `limit_bytes` where they apply); the codes are listed in

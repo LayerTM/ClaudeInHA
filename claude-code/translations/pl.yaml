@@ -100,6 +100,12 @@ configuration:
       opakowanie claude innym narzędziem lub uruchomienie innego binarium.
       Przykład: claude --resume --dangerously-skip-permissions
       Zostaw puste, aby zachować domyślne zachowanie uruchamiania.
+  quick_prompts:
+    name: Twoje szybkie polecenia
+    description: >-
+      Twoje własne polecenia do menu 💡, po jednym w wierszu. Każde staje się
+      przyciskiem w sekcji „Twoje polecenia”, który wstawia tekst do konsoli,
+      abyś mógł go przejrzeć i wysłać — nic nie uruchamia się automatycznie.
   upload_retention_days:
     name: Przechowywanie przesłanych plików (dni)
     description: >-
@@ -198,6 +204,36 @@ configuration:
     description: >-
       Alarmuj, gdy włączony czujnik temperatury pokaże powyżej tej wartości
       (domyślnie 45). Używane tylko, gdy alerty temperatury są włączone.
+  alert_temp_entities:
+    name: Pokojowe czujniki temperatury
+    description: >-
+      Identyfikatory czujników temperatury, które mają sprawdzać alerty
+      temperatury, po jednym w wierszu. Pozostaw puste, aby sprawdzać wszystkie
+      czujniki temperatury — także temperatury urządzeń (procesor NAS lub
+      przełącznika), które mogą dawać fałszywe alarmy.
+  alert_co2_above:
+    name: Próg CO2 (ppm)
+    description: >-
+      Alarmuj, gdy czujnik dwutlenku węgla pokaże powyżej tej wartości, abyś
+      wiedział, kiedy pokój trzeba przewietrzyć (domyślnie 1400). 0 wyłącza. Nie
+      jest krytyczny: w cichych godzinach wstrzymywany.
+  alert_humidity_enabled:
+    name: Alerty wilgotności
+    description: >-
+      Alarmuj, gdy czujnik wilgotności pokaże poniżej dolnej lub powyżej górnej
+      granicy poniżej — aby wychwycić wilgotną łazienkę, piwnicę lub zbyt suche
+      powietrze. Domyślnie wyłączone. Nie jest krytyczny: w cichych godzinach
+      wstrzymywany.
+  alert_humidity_low:
+    name: Dolna granica wilgotności (%)
+    description: >-
+      Alarmuj, gdy czujnik wilgotności pokaże poniżej tej wartości (domyślnie
+      25). Używane tylko, gdy alerty wilgotności są włączone.
+  alert_humidity_high:
+    name: Górna granica wilgotności (%)
+    description: >-
+      Alarmuj, gdy czujnik wilgotności pokaże powyżej tej wartości (domyślnie
+      70). Używane tylko, gdy alerty wilgotności są włączone.
   alert_offline:
     name: Alerty offline / sieciowe (krytyczne)
     description: >-
@@ -264,10 +300,9 @@ configuration:
   chat_model_write:
     name: Model akcji (integracja claude_ha)
     description: >-
-      Opcjonalny model do wykonania akcji, którą już potwierdziłeś w czacie. Ten
-      krok wywołuje tylko podaną akcję Home Assistant, więc zwykle wystarczy
-      szybszy, tańszy model. Zostaw puste, aby użyć „Modelu czatu” powyżej. Tura
-      głosowa zostaje przy „Modelu głosowym”, jeśli jest ustawiony.
+      Już nieużywane: akcja potwierdzona w czacie jest teraz wykonywana bez modelu,
+      więc to ustawienie nie ma żadnego wpływu. Zostaje, aby istniejące
+      konfiguracje pozostały poprawne.
   chat_model_camera:
     name: Model kamer (integracja claude_ha)
     description: >-

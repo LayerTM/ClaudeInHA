@@ -46,11 +46,11 @@ RUN apt-get update \
 # unpacked, so a download that differs from what was seen at the bump — however
 # it came to differ — stops the build instead of being installed.
 # upstream: nodejs lts-ready
-ARG NODE_VERSION=26.12.0
+ARG NODE_VERSION=26.12.1
 # upstream: nodejs-sha256 linux-x64
-ARG NODE_SHA256_AMD64=fd47865ecd6391ebb431fc815e01b9135bf83ded5cf373247e9331e196b7aded
+ARG NODE_SHA256_AMD64=6170b2d474e1c626f43cff3adc118df9fe3b573258a4fc3d850c8dbc6b079bbd
 # upstream: nodejs-sha256 linux-arm64
-ARG NODE_SHA256_ARM64=fd6cc729fa4448c2ac27c3fca5606019ced63c65a15c152c8df03e0cbce7f4c5
+ARG NODE_SHA256_ARM64=42aa04922591ee5d4dbc7740d452621acf28508239daa512f5ee8c47ee224fdb
 RUN arch="$(dpkg --print-architecture)" \
     && case "${arch}" in \
          amd64) node_arch="x64";   expected="${NODE_SHA256_AMD64}" ;; \
@@ -122,14 +122,14 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # documented home, it belongs here: it would let a bump verify that a new version
 # is authentic, where a recorded checksum can only hold it to what was seen.
 # upstream: claude-code CLAUDE_DOWNLOAD_BASE latest
-ARG CLAUDE_CODE_VERSION=2.1.301
+ARG CLAUDE_CODE_VERSION=2.1.308
 # From <version>/manifest.json: .platforms["linux-x64"].checksum and
 # .platforms["linux-arm64"].checksum. A version bump moves these two with it;
 # forgetting stops the build at the checksum rather than at a user's next start.
 # upstream: claude-code-sha256 linux-x64
-ARG CLAUDE_CODE_SHA256_AMD64=bc1aad9982c7b59c7d889ff92595d61cf46e0a6eae074cb551d932a989bcd222
+ARG CLAUDE_CODE_SHA256_AMD64=356733f185fa988e6bf3aa9a555269fdd167982a2e2a80d3c8a78037bb92ad58
 # upstream: claude-code-sha256 linux-arm64
-ARG CLAUDE_CODE_SHA256_ARM64=1e119036a802d359ba5f9886428e031586e8796f7a858d5a8ee179ac7b8604f0
+ARG CLAUDE_CODE_SHA256_ARM64=fdd22e6cbb734d580f5664c48df4294eeec850218ff07f186f9af30426396ee1
 ARG CLAUDE_DOWNLOAD_BASE=https://downloads.claude.ai/claude-code-releases
 # Every fallible step carries its own message. In a single `A && B && C || D`
 # chain the `||` binds to the WHOLE chain, so the first failure jumps straight to
@@ -188,7 +188,7 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # --- Home Assistant CLIs (static, arch-aware) ---
 # upstream: github-release home-assistant/cli
-ARG HA_CLI_VERSION=5.5.0
+ARG HA_CLI_VERSION=5.6.0
 # upstream: github-release mikefarah/yq
 ARG YQ_VERSION=4.54.1
 RUN arch="$(dpkg --print-architecture)" \
@@ -211,7 +211,7 @@ ARG HASS_CLI_VERSION=1.0.0
 # upstream: pypi hass-mcp
 ARG HASS_MCP_VERSION=0.6.0
 # upstream: pypi Pillow
-ARG PILLOW_VERSION=12.3.0
+ARG PILLOW_VERSION=13.0.0
 RUN pip install --no-cache-dir --break-system-packages \
         "homeassistant-cli==${HASS_CLI_VERSION}" \
         "hass-mcp==${HASS_MCP_VERSION}" \
