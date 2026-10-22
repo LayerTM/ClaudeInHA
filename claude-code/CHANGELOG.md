@@ -28,6 +28,7 @@
 - Node.js 26.12.0 → 26.12.1.
 - Pillow 12.3.0 → 13.0.0.
 - Home Assistant CLI 5.5.0 → 5.6.0.
+- Base image Debian base 9.5.0 → 9.5.1.
 
 ### Fixed
 - A camera question asked right after the add-on restarts is retried once when its first run
