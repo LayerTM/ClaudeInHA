@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.61.0] — 2026-10-29
+## [1.61.0] — 2026-10-23
 
 ### Added
 - Web answers for the companion chat, opt-in with `chat_web` (and `chat_web_domains` for the
