@@ -310,3 +310,18 @@ configuration:
       this, the chat politely pauses until the next day — a guard against a
       runaway automation or heavy use draining your plan. The console is not
       affected. Set 0 to disable (no cap). Resets daily and on add-on restart.
+  chat_web:
+    name: Chat Web Answers (claude_ha integration)
+    description: >-
+      Allow the companion chat to answer a question from the web when the
+      integration asks for it. A web answer is text only and knows nothing about
+      your home: no devices, states, memory or earlier conversation, and it cannot
+      act. Off by default. Anything in such a question can leave your network as a
+      search query.
+  chat_web_domains:
+    name: Chat Web Pages (claude_ha integration)
+    description: >-
+      Public sites (for example docs.example.com) whose pages a web answer may
+      open. Search results themselves are not limited to this list. With the list
+      empty, a web answer can search but opens no page. Host names only: no
+      http://, path or port.

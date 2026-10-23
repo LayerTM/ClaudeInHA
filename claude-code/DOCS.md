@@ -209,7 +209,8 @@ deliberately much more restricted than the interactive console:
   the token and shares it with the integration automatically through Supervisor
   discovery — you configure nothing.
 - **Each prompt runs a fresh, stateless, read-only Claude** with deny-by-default
-  permissions: shell, file, and web tools are removed entirely, and the child
+  permissions: shell and file tools are removed entirely (web tools only for an
+  opt-in web answer, see below), and the child
   process gets **none** of your Supervisor or Home Assistant credentials in its
   environment. Home Assistant access, when enabled, is only through the
   **Model Context Protocol Server** integration, so Claude can see and touch
@@ -290,6 +291,32 @@ and `502` (`action_failed`) with the same `actions` otherwise.
 Every error answer carries a stable `code` next to its message (and `field` or
 `limit_bytes` where they apply); the codes are listed in
 [ha-agent-core](https://github.com/LayerTM/ha-agent-core#error-answers).
+
+### Web answers (`chat_web`, `chat_web_domains`)
+
+Off by default. With `chat_web` on, the integration can ask for a question to be
+answered from the web. A web answer is a separate kind of run:
+
+- **Text only.** It cannot propose or perform an action, and it cannot draft an
+  automation.
+- **No home.** It sees no entities or states, no remembered facts, no earlier
+  conversation and no camera snapshot, and it gets no Home Assistant access at
+  all. The answer is not added to the conversation, so later turns never see it.
+- **Search is not limited by domain.** Claude's web search can return and
+  summarise any public site. `chat_web_domains` lists the sites whose pages the
+  answer may additionally *open*; a page on any other site is denied. With the
+  list empty there is search only and no page is opened. Entries are public host
+  names (`docs.example.com`); names that resolve inside a home or office network
+  and bare addresses are refused, and an invalid entry turns the web off with an
+  error in the log.
+- **Same daily budget.** A web answer counts against `chat_daily_budget_usd`
+  like any other chat run.
+- **A question leaves your network.** If the prompt contains something from your
+  home (a room name, a person, a device), it can reach the search provider as
+  part of a search query. Keep that in mind before enabling it.
+- **Pages are fetched from your network.** A listed site whose name resolves to a
+  home-network address is fetched from inside your network, because the page is
+  opened on the add-on host. List only sites you trust.
 
 ### Chat reliability (`chat_health`)
 

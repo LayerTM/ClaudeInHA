@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.61.0] — 2026-10-23
+
+### Added
+- Web answers for the companion chat, opt-in with `chat_web` (and `chat_web_domains` for the
+  sites whose pages may be opened). A web answer is text only and has no access to the home:
+  no entities, memory, history or actions. Web search is not limited by domain; opening a page
+  is allowed only on a listed domain. See the documentation for what leaves your network.
+
+### Changed
+- Claude CLI 2.1.308 → 2.1.309.
+
 ## [1.60.0] — 2026-10-22
 
 ### Added
