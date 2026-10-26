@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.62.0] — 2026-10-29
+## [1.62.0] — 2026-10-26
 
 ### Added
 - New option `protect_secrets`, on by default: Claude can no longer read or change the files where
