@@ -57,9 +57,12 @@ Compare `last_updated` to now. If it should be moving but isn't → the source (
 - List config entries and their state:
 
 ```bash
-jq '.data.entries[] | {domain, title, state, disabled_by}' \
-  /homeassistant/.storage/core.config_entries
+curl -s -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+  http://supervisor/core/api/config/config_entries/entry \
+  | jq '.[] | {domain, title, state, disabled_by}'
 ```
+
+  (Not `.storage/core.config_entries`: it holds every integration's credentials, and the app keeps it from the agent.)
 
   `state: loaded` is healthy; `setup_error` / `setup_retry` points straight at the failing integration.
 - Confirm Core itself is healthy: `ha core info`.

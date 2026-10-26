@@ -35,6 +35,15 @@ configuration:
       Odpowiada fladze --dangerously-skip-permissions.
       Dodatek automatycznie ustawia IS_SANDBOX=1, aby ta flaga działała mimo
       że kontener działa jako root.
+  protect_secrets:
+    name: Ochrona sekretów
+    description: >-
+      Nie pozwala Claude czytać ani zmieniać plików, w których Home Assistant
+      przechowuje dane logowania: secrets.yaml, tokenów i haseł użytkowników,
+      kluczy integracji oraz logowania do Home Assistant Cloud. Domyślnie
+      włączone. Chroni przed otwarciem tych plików przez agenta, ale nie przed
+      wszystkim, co może zrobić agent z dostępem do konfiguracji — zobacz
+      „Security and privacy” w dokumentacji.
   auto_update:
     name: Automatyczna aktualizacja Claude Code
     description: >-

@@ -45,7 +45,7 @@ Full vs partial:
 ## Where backups live
 
 - Stored in **`/backup`** as `.tar` archives.
-- From this add-on, treat `/backup` as **read-only** — do not write, move, or delete files there by hand. Manage backups only through `ha backups ...` or the HA UI.
+- From this add-on, treat `/backup` as **read-only** — do not write, move, or delete files there by hand. Manage backups only through `ha backups ...` or the HA UI. With the app's `protect_secrets` option on (the default) the archives cannot be opened at all — a backup holds a copy of every credential.
 
 ## Restoring
 

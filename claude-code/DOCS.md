@@ -67,6 +67,7 @@ reconciled on every start. Entries you remove from `plugins` or `marketplaces` a
 | `api_key` / `oauth_token` | Authentication (see above). Stored encrypted by the Supervisor. |
 | `ha_token` | A Home Assistant Long-Lived Access Token (Profile → Security). Enables dashboard screenshots, `hass-cli`, `hass-mcp` — including its tools for reading **and editing** Lovelace dashboards — and WebSocket/REST access as you. Persists across updates. Optional. |
 | `bypass_permissions` | Start Claude with `--dangerously-skip-permissions` (fully autonomous). |
+| `protect_secrets` | On by default. Claude can neither read nor change the files where Home Assistant keeps credentials. See [Security and privacy](#security-and-privacy) for the list and its limits. Takes effect at the next app start. |
 | `auto_update` | Update the CLI at every app start. Manual `update-claude` always works. |
 | `model` | Model override, e.g. `claude-sonnet-4-6`. |
 | `custom_instructions` | Text appended to the built-in HA context. Edit your instructions here; they reach the console at the next start. |
@@ -397,6 +398,112 @@ To use it, install the `claude_ha` integration (it will detect this app
 automatically) and, for live HA context, install Home Assistant's *Model Context
 Protocol Server* integration and set `prompt_ha_token`. To turn the endpoint off
 entirely, set `prompt_api` to false.
+
+## Security and privacy
+
+Claude can read and change your Home Assistant configuration and run shell commands, so know what it
+can reach before you give it a task.
+
+### What the app can reach
+
+| Folder | Access |
+|---|---|
+| `/homeassistant` (your configuration) | read and write, except the protected files below |
+| `/config` (this app's own configuration folder) | read and write |
+| `/share` | read and write |
+| `/media` | read and write |
+| `/ssl` | read-only; with `protect_secrets` on, the private keys cannot be read |
+| `/backup` | read-only; with `protect_secrets` on, the archives cannot be opened |
+
+Beyond the folders, the app uses the Supervisor API with the `manager` role (it can create backups
+and manage other apps) and the Home Assistant API. The Supervisor access does not depend on the
+`ha_token` option.
+
+### Protected files
+
+With `protect_secrets` on (the default), Claude cannot read or change:
+
+- `secrets.yaml`, and any `secrets.yaml` below the configuration folder (ESPHome keeps one)
+- `.storage/auth` — users' refresh tokens, long-lived access tokens and signing keys
+- `.storage/auth_provider.homeassistant` — password hashes
+- `.storage/core.config_entries` — every integration's credentials
+- `.storage/application_credentials` — OAuth client secrets
+- `.cloud/` — the Home Assistant Cloud sign-in
+- TLS private keys in `/ssl` (`*.key`, `privkey*.pem`); certificates stay readable
+- the archives in `/backup`, which carry a copy of all of the above (backups are still made, listed and
+  restored through the Supervisor)
+
+Two things enforce it. The app's AppArmor profile puts the whole console (every tab), the Prompt
+API and everything Claude runs into a mode where the kernel refuses these files to any program,
+however it opens them. And Claude Code checks each tool call before running it, so a request that
+names one of these files is refused with a reason instead of an error. Claude can still use a secret
+without seeing it: write `!secret name` in the configuration and add the value to `secrets.yaml`
+yourself (see below). The app's log says at start-up which protection is on.
+
+On a host that runs apps without AppArmor (Home Assistant OS always has it), the kernel half is not
+available: only Claude Code's check of each tool call is on, and the start-up log warns about it. If
+AppArmor is on but the app runs without its own profile (a damaged install), the app does not start
+while the option is on; reinstalling it, or turning the option off, starts it again. That check
+reads what a call names, so a command that reaches a protected file without naming it (a search
+over the whole folder, a script) is not stopped there.
+
+### Working with the protected files
+
+- **Adding a secret.** Claude cannot read or change `secrets.yaml`, so it cannot add a value there
+  either. It writes `!secret name` into the configuration and gives you the exact line to add to
+  `secrets.yaml` yourself (with the File editor, for example).
+- **Searching the configuration.** A search over the whole configuration folder still finds what it
+  looks for; the protected files are skipped with a "Permission denied" line for each.
+- **Git in the configuration folder.** Keep the protected files out of the repository with
+  `.gitignore` (`secrets.yaml`, `.storage/`, `.cloud/`); then `git status`, `git add -A` and commits
+  work as before. If a protected file is already tracked, git keeps working until that file changes;
+  once it has changed (or when it is forced in with `git add -f`), `git add` and `git commit` stop with
+  "Permission denied" and nothing is staged or committed. Remove it from the repository
+  (`git rm --cached secrets.yaml`) and ignore it.
+
+### What the protection does not cover
+
+It keeps the files away from Claude. It does not make Claude unable to reach a credential in every
+possible way:
+
+- **Backups through the Supervisor.** The app may create backups, and the Supervisor API would hand one
+  out for download; a backup contains these files.
+- **The next start.** Claude can change the app's options through the Supervisor, including turning
+  `protect_secrets` off, and the change applies when the app restarts. It cannot change them, or the
+  files that set up the protection, from inside the app — but anything else it changes in the app
+  (an `init_commands` entry, a program it installs) runs at the next start like everything else, with
+  the protection applied as the options say. What decides the protection at start-up (the
+  app's options file, its start scripts and the static shell that runs them) is out of its reach.
+- **Home Assistant itself.** Claude writes your configuration and automations; one written to expose a
+  value would make Home Assistant reveal it.
+- **The app's own credentials.** The Supervisor token, `ha_token` and the Claude sign-in are what the
+  app works with, so they are in its environment and its own files, not behind the protection.
+- **Other places.** A credential copied into another file (a script, an automation, a note) is not
+  protected.
+
+Treat it as protection against Claude opening your credentials by accident or because a task led it
+there — not as a wall against an agent set on getting them.
+
+### What leaves your home
+
+Whatever Claude reads or runs in a session — a file, a command's output, an entity state — becomes
+part of the conversation and is sent to Anthropic, to answer you. Nothing is sent through any other
+server.
+
+### Permission prompts
+
+With `bypass_permissions` off (the default) Claude asks before it runs a shell command (apart from a
+built-in set of read-only ones) and before it edits or writes a file; reading files in the folder it
+starts in, `/homeassistant`, is not prompted for. With `bypass_permissions` on it asks about nothing.
+`protect_secrets` holds in both. Chats from Assist or automations through the companion integration
+never prompt: they run with a narrow, fixed set of allowed tools and everything else is refused.
+
+### The Home Assistant token
+
+`ha_token` is optional. When set, Claude calls the Home Assistant API with that user's rights, so it
+can do whatever that user can. Reading and editing dashboards through `hass-mcp` needs an
+administrator: Home Assistant refuses to save or delete a dashboard configuration for any other
+user. If you do not need that, use the token of a dedicated non-administrator user, or leave it empty.
 
 ## Persistence
 

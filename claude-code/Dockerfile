@@ -16,10 +16,15 @@ ENV LANG=C.UTF-8
 # - build-essential python3: node-pty native build + npm packages with gyp deps
 # - tmux: session persistence across browser disconnects
 # - ripgrep: Claude Code search (USE_BUILTIN_RIPGREP=0)
+# - bash-static: runs what s6 starts before protect_secrets confines the
+#   service (secrets-guard, the finish script, the health check). A static
+#   shell loads no shared library, so nothing the agent could change takes part
+#   in that decision
 # - remaining: general CLI tooling for Claude and MCP servers
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
+        bash-static \
         build-essential \
         ca-certificates \
         curl \
@@ -278,6 +283,8 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/claude-code/run \
              /usr/local/bin/start-claude \
              /usr/local/bin/start-remote \
              /usr/local/bin/update-claude \
+             /usr/local/bin/secrets-guard \
+             /usr/local/bin/secrets-guard-hook \
              /usr/local/bin/provision-extras \
              /usr/local/bin/cc-monitor \
              /usr/local/bin/cc-digest \
@@ -297,10 +304,11 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/claude-code/run \
 # Surface console health to the Supervisor. Hits the loopback health endpoint
 # (allowed by the console's IP guard); marks the add-on unhealthy if the Node
 # console stops responding. Generous start period covers first-run home setup.
-# Exec form: no shell needed, and Docker already treats every non-zero probe
-# exit (curl's 7 refused / 22 HTTP error / 28 timeout) as unhealthy.
+# Docker runs this outside the service's guarded mode (protect_secrets), so it
+# runs the static shell by its path — no program found through PATH, no shared
+# library — and speaks HTTP itself.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-    CMD ["curl", "-fsS", "http://127.0.0.1:8099/api/health"]
+    CMD ["/usr/bin/bash-static", "-c", "exec 3<>/dev/tcp/127.0.0.1/8099 && printf 'GET /api/health HTTP/1.0\\r\\nHost: 127.0.0.1\\r\\n\\r\\n' >&3 && read -r -t 4 status <&3 && [[ $status =~ ^HTTP/1\\.[01]\\ 2[0-9][0-9] ]]"]
 
 LABEL \
     io.hass.name="Claude Code" \

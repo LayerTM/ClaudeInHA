@@ -82,6 +82,7 @@ test('the CLI gets exactly the allowlisted environment, and no credential of Hom
     HA_NOTIFY_SERVICE: 'notify.phone',
     CUSTOM_USER_VAR: 'from-environment_vars',
     ANTHROPIC_MODEL: 'console-model',
+    PROTECT_SECRETS_LEVEL: 'kernel',
   };
   try {
     for (const k of Object.keys(process.env)) delete process.env[k];
@@ -112,6 +113,7 @@ test('the CLI gets exactly the allowlisted environment, and no credential of Hom
     no_proxy: 'localhost',
     USER: 'root',
     LOGNAME: 'root',
+    PROTECT_SECRETS_LEVEL: 'kernel',
   });
 });
 

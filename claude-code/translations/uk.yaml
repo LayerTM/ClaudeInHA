@@ -35,6 +35,15 @@ configuration:
       Відповідає прапорцю --dangerously-skip-permissions.
       Аддон автоматично встановлює IS_SANDBOX=1, щоб цей прапорець працював
       навіть попри те, що контейнер працює від root.
+  protect_secrets:
+    name: Захист секретів
+    description: >-
+      Не дає Claude читати чи змінювати файли, де Home Assistant зберігає
+      облікові дані: secrets.yaml, токени й паролі користувачів, ключі
+      інтеграцій і вхід у Home Assistant Cloud. Увімкнено за замовчуванням.
+      Захищає від того, що агент відкриє ці файли, але не від усього, що може
+      агент із доступом до вашої конфігурації, — див. «Security and privacy» у
+      документації.
   auto_update:
     name: Автооновлення Claude Code
     description: >-

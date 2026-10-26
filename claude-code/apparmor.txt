@@ -1,0 +1,109 @@
+#include <tunables/global>
+
+# The app's own profile: what Docker's default profile allows, plus one way
+# into the child profile below. The Supervisor renames the first profile line
+# to the app's slug, so nothing here spells that name.
+profile claude-code flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  network,
+  capability,
+  file,
+  umount,
+  unix,
+  dbus,
+  signal,
+  ptrace (trace,read,tracedby,readby) peer=@{profile_name},
+  ptrace (tracedby,readby) peer=@{profile_name}//guarded,
+
+  deny @{PROC}/* w,
+  deny @{PROC}/{[^1-9],[^1-9][^0-9],[^1-9s][^0-9y][^0-9s],[^1-9][^0-9][^0-9][^0-9/]*}/** w,
+  deny @{PROC}/sys/[^k]** w,
+  deny @{PROC}/sys/kernel/{?,??,[^s][^h][^m]**} w,
+  deny @{PROC}/sysrq-trigger rwklx,
+  deny @{PROC}/kcore rwklx,
+  deny mount,
+  deny /sys/[^f]*/** wklx,
+  deny /sys/f[^s]*/** wklx,
+  deny /sys/fs/[^c]*/** wklx,
+  deny /sys/fs/c[^g]*/** wklx,
+  deny /sys/fs/cg[^r]*/** wklx,
+  deny /sys/firmware/** rwklx,
+  deny /sys/devices/virtual/powercap/** rwklx,
+  deny /sys/kernel/security/** rwklx,
+
+  # The agent runs here when protect_secrets is on.
+  change_profile -> @{profile_name}//guarded,
+
+  # Everything above, minus the protected files, and no way back out.
+  profile guarded flags=(attach_disconnected,mediate_deleted) {
+    #include <abstractions/base>
+
+    network,
+    capability,
+    file,
+    umount,
+    unix,
+    dbus,
+    signal (receive),
+    signal (send) peer=@{profile_name},
+    ptrace (trace,read,tracedby,readby) peer=@{profile_name},
+    ptrace (tracedby,readby),
+
+    deny @{PROC}/* w,
+    deny @{PROC}/{[^1-9],[^1-9][^0-9],[^1-9s][^0-9y][^0-9s],[^1-9][^0-9][^0-9][^0-9/]*}/** w,
+    deny @{PROC}/sys/[^k]** w,
+    deny @{PROC}/sys/kernel/{?,??,[^s][^h][^m]**} w,
+    deny @{PROC}/sysrq-trigger rwklx,
+    deny @{PROC}/kcore rwklx,
+    deny mount,
+    deny /sys/[^f]*/** wklx,
+    deny /sys/f[^s]*/** wklx,
+    deny /sys/fs/[^c]*/** wklx,
+    deny /sys/fs/c[^g]*/** wklx,
+    deny /sys/fs/cg[^r]*/** wklx,
+    deny /sys/firmware/** rwklx,
+    deny /sys/devices/virtual/powercap/** rwklx,
+    deny /sys/kernel/security/** rwklx,
+
+    # The guard's own inputs: what runs outside this mode — s6 restarting the
+    # service, its finish script, Docker's health check — and decides whether
+    # the service enters it. Static programs named by their real paths, and
+    # the directories on those paths cannot be swapped.
+    deny /data/options.json wl,
+    deny /init wl,
+    deny /command{,/**} wl,
+    deny /package{,/**} wl,
+    deny /etc/s6-overlay{,/**} wl,
+    deny /run/s6{,/**} wl,
+    deny /run/s6-rc*{,/**} wl,
+    deny /run/service{,/**} wl,
+    deny /usr/bin/bash-static wl,
+    deny /usr/local/bin/secrets-guard* wl,
+    deny /{bin,data,etc,run,usr,usr/bin,usr/local,usr/local/bin}{,/} wl,
+    # What a static glibc program can still load at run time.
+    deny /etc/{nsswitch.conf,ld.so.preload,ld.so.conf} wl,
+    deny /etc/ld.so.conf.d/** wl,
+    deny /usr/lib{,64}/**ld-linux*.so* wl,
+    deny /usr/lib/*/{libc,libnss_*}.so* wl,
+    deny /usr/lib/*/gconv/** wl,
+    # Layer 1's own files.
+    deny /usr/share/agent-core{,/**} wl,
+    deny /etc/claude-code{,/**} wl,
+
+    # BEGIN protected paths
+    deny /homeassistant/secrets.yaml rwklmx,
+    deny /homeassistant/**/secrets.yaml rwklmx,
+    deny /homeassistant/.storage/auth rwklmx,
+    deny /homeassistant/.storage/auth_provider.homeassistant rwklmx,
+    deny /homeassistant/.storage/core.config_entries rwklmx,
+    deny /homeassistant/.storage/application_credentials rwklmx,
+    deny /homeassistant/.cloud/** rwklmx,
+    deny /ssl/*.key rwklmx,
+    deny /ssl/**/*.key rwklmx,
+    deny /ssl/privkey*.pem rwklmx,
+    deny /ssl/**/privkey*.pem rwklmx,
+    deny /backup/** rwklmx,
+    # END protected paths
+  }
+}
