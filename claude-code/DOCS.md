@@ -4,12 +4,12 @@ Runs the full [Claude Code CLI](https://code.claude.com/docs) inside Home Assist
 
 ## Installation
 
-1. **Settings → Apps → App Store** → ⋮ → **Repositories** → add
-   `https://github.com/LayerTM/ClaudeInHA`
-2. Install **Claude Code** and start it.
-3. Open it with **Open Web UI** on the app page. Home Assistant leaves
-   **Show in sidebar** off for every app it installs — turn it on there if
-   you want a **Claude Code** entry in the sidebar.
+1. Go to **Settings → Apps → Install app**, open the **⋮** menu (top right) →
+   **Repositories**, paste `https://github.com/LayerTM/ClaudeInHA` and press **Add**.
+2. Open **Claude Code** in the App store, then **Install** and **Start**.
+3. Click **Open Web UI**. For a **Claude Code** entry in the sidebar, turn on
+   **Show in sidebar** on the app's **Info** tab: Home Assistant leaves that
+   switch off for every app it installs.
 
 ## Authentication (pick one)
 
