@@ -2,16 +2,16 @@
 
 <img src="images/logo.png" alt="Claude Code for Home Assistant" width="440">
 
-# Claude Code — Home Assistant Add-on
+# Claude Code — Home Assistant App
 
-Anthropic's [Claude Code](https://code.claude.com/docs) CLI, embedded in Home Assistant as a polished web console — right in the sidebar.
+A Home Assistant app (formerly called an add-on) that runs Anthropic's [Claude Code](https://code.claude.com/docs) CLI as a polished web console — right in the sidebar.
 
-[![Open your Home Assistant instance and show the add-on repository dialog.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FLayerTM%2FClaudeInHA)
+[![Open your Home Assistant instance and show the app repository dialog.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FLayerTM%2FClaudeInHA)
 
 [![Version](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2FLayerTM%2FClaudeInHA%2Fmain%2Fclaude-code%2Fconfig.yaml&query=%24.version&prefix=v&label=version&color=D97757)](claude-code/CHANGELOG.md)
 [![Project Stage](https://img.shields.io/badge/stage-stable-44cc11)](https://developers.home-assistant.io/docs/add-ons/configuration#add-on-config)
 [![License](https://img.shields.io/github/license/LayerTM/ClaudeInHA?color=blue)](LICENSE)
-[![Home Assistant Add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-18BCF2?logo=home-assistant&logoColor=white)](https://www.home-assistant.io/)
+[![Home Assistant App](https://img.shields.io/badge/Home%20Assistant-App-18BCF2?logo=home-assistant&logoColor=white)](https://www.home-assistant.io/)
 
 [![amd64](https://img.shields.io/badge/amd64-supported-2ea043)](claude-code/config.yaml)
 [![aarch64](https://img.shields.io/badge/aarch64-supported-2ea043)](claude-code/config.yaml)
@@ -36,7 +36,7 @@ Anthropic's [Claude Code](https://code.claude.com/docs) CLI, embedded in Home As
 - **Tabs** — the Claude session alongside any number of shell tabs
 - **Clipboard that works everywhere**, including plain-HTTP setups and the mobile companion app
 - **Attachments** — drag & drop files, paste images, or pick from your camera/gallery
-- **One-click CLI updates** without restarting the add-on (auto-update on start included)
+- **One-click CLI updates** without restarting the app (auto-update on start included)
 - **Full Home Assistant access** — config files, REST API, Supervisor API, and (with an HA token) WebSocket
 - **Session persistence** via tmux — closing the browser never kills Claude
 - **Mobile-friendly** — touch key bar, full-screen kiosk mode, installable as a PWA
@@ -44,20 +44,21 @@ Anthropic's [Claude Code](https://code.claude.com/docs) CLI, embedded in Home As
 
 ## Works with
 
-- [**claude-ha**](https://github.com/LayerTM/claude-ha) — the companion integration: chat with Claude from Assist and automations through this add-on (HACS default repository).
+- [**claude-ha**](https://github.com/LayerTM/claude-ha) — the companion integration: chat with Claude from Assist and automations through this app (HACS default repository).
 - [**CodexInHA**](https://github.com/LayerTM/CodexInHA) — the same console and Assist chat for OpenAI's coding agent.
 
 ## Installation
 
-1. Click the badge above, or add this repository under
-   **Settings → Add-ons → Add-on Store → ⋮ → Repositories**:
+1. Click the badge above, or add this repository yourself: **Settings → Apps →
+   Install app → ⋮** (top right) **→ Repositories**, paste
    ```
    https://github.com/LayerTM/ClaudeInHA
    ```
-2. Install **Claude Code** from the store and start it.
-3. Open it with **Open Web UI** on the add-on page. Home Assistant leaves
-   **Show in sidebar** off for every add-on it installs — turn it on there if
-   you want a **Claude Code** entry in the sidebar.
+   and click **Add**.
+2. In the app store, open **Claude Code**, then **Install** and **Start**.
+3. Click **Open Web UI**. Home Assistant leaves **Show in sidebar** off for every
+   app it installs — turn it on in the app's **Info** tab if you want a
+   **Claude Code** entry in the sidebar.
 
 Authenticate by running `claude` in the console and following the login URL
 (subscription), or set an API key / OAuth token in the configuration. See the
@@ -68,14 +69,21 @@ Authenticate by running `claude` in the console and following the login URL
 - Home Assistant OS or Supervised (`amd64` or `aarch64`)
 - A Claude subscription (Pro/Max/Team) or an Anthropic API key
 
+## Security and privacy
+
+The app can read and change your Home Assistant configuration, including
+`secrets.yaml`, and what Claude reads in a session is sent to Anthropic. See
+[Security and privacy](claude-code/DOCS.md#security-and-privacy) before you
+install it.
+
 ## Documentation
 
-Full documentation lives in the add-on's **Documentation** tab, or in
+Full documentation lives in the app's **Documentation** tab, or in
 [`claude-code/DOCS.md`](claude-code/DOCS.md).
 
 ## Development
 
-The add-on is assembled from its own sources and a pinned release of the
+The app is assembled from its own sources and a pinned release of the
 shared core: run `claude-code/core/assemble.sh <core archive> claude-code <dir>`
 (the archive is the one named in `claude-code/core/core.lock.json`), then work
 in `<dir>/app`. There, `npm test`, `npm run lint` (eslint) and
@@ -84,7 +92,7 @@ and `npm run test:config`.
 
 From the repository root, `python .github/scripts/test_secret_scan.py` followed
 by `python .github/scripts/secret_scan.py .` must be clean. CI also runs the
-add-on linter and hadolint on `claude-code/config.yaml` and
+app linter and hadolint on `claude-code/config.yaml` and
 `claude-code/Dockerfile`.
 
 A change in behaviour bumps the version in `claude-code/config.yaml`, adds an
@@ -97,5 +105,5 @@ to the wire format is agreed with the Home Assistant integration first.
 [MIT](LICENSE) © 2026 LayerTM
 
 Claude and Claude Code are products of Anthropic. This is an independent,
-community-maintained add-on and is not affiliated with or endorsed by
+community-maintained app and is not affiliated with or endorsed by
 Anthropic or the Home Assistant project.

@@ -1,21 +1,42 @@
-# Claude Code — Home Assistant Add-on
+# Claude Code — Home Assistant App
 
 Runs the full [Claude Code CLI](https://code.claude.com/docs) inside Home Assistant, presented as a web console in the sidebar. Claude has direct access to your HA configuration and APIs: it can create automations, debug integrations, run shell commands, and manage your setup through conversation.
 
 ## Installation
 
-1. **Settings → Add-ons → Add-on Store** → ⋮ → **Repositories** → add
+1. **Settings → Apps → App Store** → ⋮ → **Repositories** → add
    `https://github.com/LayerTM/ClaudeInHA`
 2. Install **Claude Code** and start it.
-3. Open it with **Open Web UI** on the add-on page. Home Assistant leaves
-   **Show in sidebar** off for every add-on it installs — turn it on there if
+3. Open it with **Open Web UI** on the app page. Home Assistant leaves
+   **Show in sidebar** off for every app it installs — turn it on there if
    you want a **Claude Code** entry in the sidebar.
+
+## Security and privacy
+
+Claude Code is a coding agent with a shell, running inside the app container. Install it only if you are comfortable with what that means.
+
+**What the app can reach.** The folders the app mounts:
+
+| Folder | Access |
+|---|---|
+| Home Assistant configuration (`/homeassistant`) | read and write — this includes `secrets.yaml` and the `.storage` folder |
+| App configuration and `/share` | read and write |
+| `/media` | read and write |
+| `/ssl` and the backups folder | read only |
+
+Besides the folders, the app holds a Supervisor token with the *manager* role and access to the Home Assistant Core API. That is how Claude takes backups and manages other apps; it does not depend on the `ha_token` option.
+
+**What leaves your home.** Whatever Claude reads or runs during a session — file contents (a `secrets.yaml` it opens included), command output, entity states — becomes part of the conversation and is sent to Anthropic. There is no relay or proxy server of this project in between.
+
+**Permission prompts.** With `bypass_permissions` off (the default) Claude asks before it runs a shell command (apart from a built-in set of read-only ones) and before it edits or writes a file. Reading files is not prompted for the folder Claude starts in, `/homeassistant`, so `secrets.yaml` can be read without a question. With `bypass_permissions` on, Claude asks about nothing. Chats started from Assist or automations through the companion integration do not prompt at all: they run with a narrow, fixed set of allowed tools and everything else is refused.
+
+**The `ha_token` option** is optional. It gives Claude the Home Assistant API with the rights of the user the token belongs to. Reading and editing dashboards through `hass-mcp` needs an administrator: Home Assistant refuses to save or delete a dashboard configuration for any other user. If you do not need that, create a dedicated non-administrator user and use its token.
 
 ## Authentication (pick one)
 
 | Method | How |
 |---|---|
-| **Subscription (recommended for interactive console use)** | Leave both fields empty, open the console, run `claude` and follow the login URL. The session survives restarts, but the login can lapse server-side after a period without use (the length is set by the server and not published) — Assist then fails to answer until someone logs in again. For an add-on left unattended, use the OAuth token below instead. |
+| **Subscription (recommended for interactive console use)** | Leave both fields empty, open the console, run `claude` and follow the login URL. The session survives restarts, but the login can lapse server-side after a period without use (the length is set by the server and not published) — Assist then fails to answer until someone logs in again. For an app left unattended, use the OAuth token below instead. |
 | **OAuth token (recommended for Assist/automation)** | On any machine run `claude setup-token`, paste the printed token into **OAuth Token**. No interactive login needed, and it's long-lived. One limit: this token type does not support Remote Control. |
 | **API key** | Paste a key from [console.anthropic.com](https://console.anthropic.com) into **API Key**. Pay-per-use. |
 
@@ -29,7 +50,7 @@ Runs the full [Claude Code CLI](https://code.claude.com/docs) inside Home Assist
 - **Quick prompts** — the 💡 button drops down a few ready-made prompts (*What changed today?*, *Check my dashboard*, *Check config health*, *Offline / low battery?*, *Recent log errors*). Tapping one inserts the prompt into the console for you to review and send with Enter — nothing runs automatically. Add your own with the `quick_prompts` option — they appear under *Your prompts* in the same menu.
 - **Alerts & notifications** — the 🔔 button shows whether proactive alerts are on, any currently-active alerts (leak / low battery / door open at night, with criticals in red), and the messages in your Home Assistant notification bell. Read-only. A badge on the 🔔 shows how many alerts are currently active at a glance (red if any is critical), so you don't have to open the menu to notice.
 - **Attach files & images** — drag & drop anywhere, paste an image from the clipboard, or use 📎 (opens camera/gallery on phones). The file is saved under `/data/uploads` and its path is typed into the prompt.
-- **Update Claude** — ⬆ button, or `update-claude` in a shell tab (`update-claude 2.1.150` installs a specific version). Only the Claude session restarts; the add-on keeps running. With **Auto-Update** enabled the CLI also updates at every add-on start.
+- **Update Claude** — ⬆ button, or `update-claude` in a shell tab (`update-claude 2.1.150` installs a specific version). Only the Claude session restarts; the app keeps running. With **Auto-Update** enabled the CLI also updates at every app start.
 - **Mobile** — a key bar (Esc, Tab, arrows, ^C…) appears on touch devices; ⛶ hides the HA chrome for a full-screen terminal.
 
 ## Home Assistant tooling (built in)
@@ -54,7 +75,7 @@ A **Home Assistant skill pack** is bundled: `/ha-config-edit`, `/ha-automation`,
 `/ha-onboard`. General plugins are bundled too (superpowers, frontend-design,
 skill-creator, security-guidance, context7, code-review, code-simplifier,
 feature-dev, commit-commands, claude-md-management, hookify, document-skills).
-All of it lives in `/data/home/.claude` and **persists across add-on updates**;
+All of it lives in `/data/home/.claude` and **persists across app updates**;
 provisioning runs once in the background (see `/data/provision.log`).
 
 Add your own with the `plugins`, `marketplaces`, and `skills_git` options —
@@ -67,7 +88,7 @@ reconciled on every start. Entries you remove from `plugins` or `marketplaces` a
 | `api_key` / `oauth_token` | Authentication (see above). Stored encrypted by the Supervisor. |
 | `ha_token` | A Home Assistant Long-Lived Access Token (Profile → Security). Enables dashboard screenshots, `hass-cli`, `hass-mcp` — including its tools for reading **and editing** Lovelace dashboards — and WebSocket/REST access as you. Persists across updates. Optional. |
 | `bypass_permissions` | Start Claude with `--dangerously-skip-permissions` (fully autonomous). |
-| `auto_update` | Update the CLI at every add-on start. Manual `update-claude` always works. |
+| `auto_update` | Update the CLI at every app start. Manual `update-claude` always works. |
 | `model` | Model override, e.g. `claude-sonnet-4-6`. |
 | `custom_instructions` | Text appended to the built-in HA context. Edit your instructions here; they reach the console at the next start. |
 | `environment_vars` | Extra env vars, `KEY=VALUE` per entry. |
@@ -84,7 +105,7 @@ reconciled on every start. Entries you remove from `plugins` or `marketplaces` a
 | `monitoring_interval_hours` | Opt-in proactive monitoring: every N hours Claude reviews the error log and config and notifies you only if it finds something (0 = off). |
 | `proactive_alerts` + `alert_*` | Opt-in **deterministic** anomaly alerts (no Claude, no plan usage): notify on a water leak, door/window open at night, low battery, temperature out of band, high CO2, humidity out of band, or a watched device/internet gateway going offline. See *Proactive alerts* below. |
 | `prompt_api` | Serve the secure Prompt API for the companion **Claude** (`claude_ha`) integration (on by default). See *The companion integration* below. |
-| `api_token` | Optional fixed bearer token for the Prompt API. Leave empty — the add-on generates one and hands it to the integration via discovery. |
+| `api_token` | Optional fixed bearer token for the Prompt API. Leave empty — the app generates one and hands it to the integration via discovery. |
 | `prompt_ha_token` | Optional HA token used only by Prompt-API sessions to read state through the MCP Server integration. Best practice: a dedicated non-admin user's token — which works only while the MCP Server's *Require an administrator account* option is off (see *The Home Assistant token for live context* below). Falls back to `ha_token`. |
 
 ## Claude in Home Assistant
@@ -96,7 +117,7 @@ curl -sS -H "Authorization: Bearer $SUPERVISOR_TOKEN" \
   http://supervisor/core/api/states | jq '.[].entity_id'
 ```
 
-The bundled instructions teach Claude the HA API, config patterns, and safety rules (validate config before restart, prefer reloads, and so on). They live in `/data/home/.claude/CLAUDE.md`, which Claude reads in every working directory. At each start the add-on rewrites its own block of that file (marked by the `BEGIN`/`END` comment lines), so edit `custom_instructions` rather than the block; text you add outside the block, including what Claude saves with `/memory`, is kept. A copy left in `/homeassistant` by an earlier version is renamed to `CLAUDE.md.previous`.
+The bundled instructions teach Claude the HA API, config patterns, and safety rules (validate config before restart, prefer reloads, and so on). They live in `/data/home/.claude/CLAUDE.md`, which Claude reads in every working directory. At each start the app rewrites its own block of that file (marked by the `BEGIN`/`END` comment lines), so edit `custom_instructions` rather than the block; text you add outside the block, including what Claude saves with `/memory`, is kept. A copy left in `/homeassistant` by an earlier version is renamed to `CLAUDE.md.previous`.
 
 MCP servers, skills, and plugins work exactly as in the desktop CLI: `.mcp.json` in `/homeassistant`, skills under `/data/home/.claude/skills/`, `claude plugin install <name>`.
 
@@ -123,7 +144,7 @@ It watches for:
 still-open door won't re-notify every cycle — the active anomalies are remembered
 in `/data/alerts-state.json` and dropped when they clear, so the same entity can
 alert again the next time the problem reappears. Turning `proactive_alerts` off clears this
-memory when the add-on next starts, so anything still wrong when you switch alerts
+memory when the app next starts, so anything still wrong when you switch alerts
 back on is notified again.
 
 **Quiet hours** (`alert_quiet_hours`, e.g. `22:00-07:00`, empty = off): during
@@ -138,7 +159,7 @@ notification bell. Activity is logged to `/data/alerts.log`.
 
 ### Adding, changing, or removing an alert
 
-Every alert is just an option you set in the add-on's **Configuration** tab — no
+Every alert is just an option you set in the app's **Configuration** tab — no
 automations and no code. Because the whole feature is deterministic (fixed bash +
 jq rules, no model), it costs **nothing in plan usage** and has **no
 prompt-injection surface**. First turn the feature on with `proactive_alerts:
@@ -172,7 +193,7 @@ Any listed entity that reports `unavailable` or `unknown` — or, for a
 camera) — avoid a person's phone tracker, or you'll get an *Offline* alert every
 time they leave home. **To remove** a watched device, delete its line, or set
 `alert_offline: false` to switch the whole check off. Changes take effect after
-you save the options and restart the add-on — the alerts loop reads its options
+you save the options and restart the app — the alerts loop reads its options
 when it starts.
 
 **Scoping the temperature check.** The temperature alert checks every
@@ -195,7 +216,7 @@ to keep the legacy behaviour of checking **all** temperature sensors.
 
 A separate Home Assistant integration, **Claude** (`claude_ha`), lets you talk to
 Claude from **Assist** (text and voice) and from a `claude.ask` service in
-automations — without opening the console. It talks to this add-on over a
+automations — without opening the console. It talks to this app over a
 dedicated, locked-down HTTP endpoint called the **Prompt API**.
 
 The Prompt API is designed for running Claude on **untrusted input** (whatever a
@@ -205,7 +226,7 @@ deliberately much more restricted than the interactive console:
 - **Separate internal port (8126), never published to the host.** It is reachable
   only from Home Assistant's internal network; requests from anywhere else are
   refused.
-- **Bearer token on every request** (constant-time checked). The add-on generates
+- **Bearer token on every request** (constant-time checked). The app generates
   the token and shares it with the integration automatically through Supervisor
   discovery — you configure nothing.
 - **Each prompt runs a fresh, stateless, read-only Claude** with deny-by-default
@@ -244,7 +265,7 @@ Since Home Assistant 2026.10 the Model Context Protocol Server has a
 Model Context Protocol Server → Configure). It is **on** when the integration is
 added on 2026.10 or later, and stays **off** for an integration added before.
 While it is on, Home Assistant answers `401` to a non-administrator's token, so
-Prompt-API sessions get no live context: the add-on log shows `relay upstream:
+Prompt-API sessions get no live context: the app log shows `relay upstream:
 Home Assistant refused the add-on's Home Assistant token (401) … for POST
 /api/mcp` and the audit log marks each session `mcp=FAILED`. Choose one:
 
@@ -252,14 +273,14 @@ Home Assistant refused the add-on's Home Assistant token (401) … for POST
   off — then any Home Assistant user's token can use the endpoint; or
 - leave the option on and set `prompt_ha_token` to an administrator's token.
 
-### What the add-on reports about itself (`/api/status`)
+### What the app reports about itself (`/api/status`)
 
-Besides readiness and the add-on's own `version`, `/api/status` names the agent
+Besides readiness and the app's own `version`, `/api/status` names the agent
 behind the Prompt API, so the integration can adapt to it:
 
 | field | meaning |
 |---|---|
-| `engine` | the agent's stable name; `claude` for this add-on |
+| `engine` | the agent's stable name; `claude` for this app |
 | `engine_version` | the agent's version, as `claude --version` reports it; empty until it has been read |
 | `claude_version` | the same value, kept for integrations that predate `engine_version` |
 | `request_fields` | the request fields `POST /api/prompt` accepts; a field not listed is refused |
@@ -267,11 +288,11 @@ behind the Prompt API, so the integration can adapt to it:
 | `memory_max_bytes` | the largest total size of the remembered facts a request may send in `memory` |
 | `auth` | the sign-in's own state — `ok`, `expired` or `unknown` — and since when; kept across restarts and computed without running the agent |
 
-Remembered facts are kept by the integration, not by the add-on: a request may
+Remembered facts are kept by the integration, not by the app: a request may
 send them in `memory`, and they reach the agent as data, never as instructions.
 When a message asks to remember or forget something, the answer carries
 `memory_change` for the integration to apply after the user confirms it. The
-add-on stores no copy of the facts, and its audit log records only how many
+app stores no copy of the facts, and its audit log records only how many
 were sent.
 
 A reply the agent itself refuses because the sign-in is no longer accepted ends
@@ -282,7 +303,7 @@ degraded read with reason `ha-token-refused`: the text names the two causes — 
 revoked token, or a non-administrator's token while the MCP Server requires an
 administrator — and the fix for each.
 
-A confirmed action runs without a model: the add-on calls the Home Assistant
+A confirmed action runs without a model: the app calls the Home Assistant
 action for each target itself and answers with `actions`, one entry per target
 with `ok` and, when it failed, `error` as Home Assistant reported it. Every
 action is attempted; the answer is `200` only when all of them were carried out,
@@ -316,20 +337,20 @@ answered from the web. A web answer is a separate kind of run:
   part of a search query. Keep that in mind before enabling it.
 - **Pages are fetched from your network.** A listed site whose name resolves to a
   home-network address is fetched from inside your network, because the page is
-  opened on the add-on host. List only sites you trust.
+  opened on the app host. List only sites you trust.
 
 ### Chat reliability (`chat_health`)
 
 `/api/status` publishes a rolling window over the last 50 companion-chat runs,
 which the integration turns into a *chat health* sensor. The window is durable —
-it survives an add-on restart, so an update does not reset it to a flattering
+it survives an app restart, so an update does not reset it to a flattering
 blank — and it is trimmed by **count**, never by age.
 
 That last point is deliberate, and it is why the fields below exist. On an install
 where Assist is used a few times a day, "the last 50 runs" spans weeks. So the
-add-on reports **what happened, in what order, and when**, and leaves the question
+app reports **what happened, in what order, and when**, and leaves the question
 of *what counts as healthy* to the consumer, which is where the threshold can be
-changed without an add-on release.
+changed without an app release.
 
 | field | meaning |
 |---|---|
@@ -344,9 +365,9 @@ changed without an add-on release.
 | `window_dated` | how many of `recent` those two bounds were measured from |
 
 Every `*_ts` is **epoch milliseconds**, and **`null` means unknown** — never "now"
-and never `0`. A window seeded from a file written before add-on 1.49.0 has no
+and never `0`. A window seeded from a file written before app 1.49.0 has no
 times at all; those runs still count, they simply cannot say when they happened.
-A field that is **absent** rather than null means the add-on predates it.
+A field that is **absent** rather than null means the app predates it.
 
 **Read the span together with `window_dated`.** It says how many runs the bounds
 came from, and it is what makes them readable: `window_dated` equal to `recent`
@@ -359,7 +380,7 @@ successful runs, and a failure rate is `degraded / recent`.
 
 ### Account limits (`/api/account_limits`)
 
-`/api/usage` reports what **this add-on** spent. `/api/account_limits` reports
+`/api/usage` reports what **this app** spent. `/api/account_limits` reports
 something different: how much of **your account's** limits you have used — across
 every machine and every session, not just the ones that ran here. It is the same
 picture the CLI's `/usage` command shows, published so the integration can turn it
@@ -393,7 +414,7 @@ devices, so a drafted automation can only do ordinary household things. An edit
 preserves the parts you didn't ask to change; a delete always asks first and, when
 more than one automation matches, asks which — it never removes an ambiguous one.
 
-To use it, install the `claude_ha` integration (it will detect this add-on
+To use it, install the `claude_ha` integration (it will detect this app
 automatically) and, for live HA context, install Home Assistant's *Model Context
 Protocol Server* integration and set `prompt_ha_token`. To turn the endpoint off
 entirely, set `prompt_api` to false.
@@ -404,18 +425,18 @@ Everything that matters lives in `/data` and survives restarts and updates: logi
 
 ## Troubleshooting
 
-- **Blank screen** — check the add-on log; restart the add-on.
+- **Blank screen** — check the app log; restart the app.
 - **401 / frozen after long idle** — the ingress session expires after 15 minutes without traffic; the console reloads automatically, or refresh the page.
 - **Copy does not reach the clipboard** — rare now (selecting text copies in the pointer gesture, which works over plain HTTP too). If a browser blocks the clipboard even inside a gesture, the text is still saved to the 📥 tray — one tap to copy — and serving HA over HTTPS avoids it entirely.
 - **TLS on Home Assistant itself** — if you set `ssl_certificate` in the `http:` integration, or moved
-  Core off port 8123, the add-on follows automatically: it asks the Supervisor where Core listens
-  instead of assuming `http://homeassistant:8123`. Nothing to configure. Inside the add-on,
+  Core off port 8123, the app follows automatically: it asks the Supervisor where Core listens
+  instead of assuming `http://homeassistant:8123`. Nothing to configure. Inside the app,
   `$HA_URL` always holds the right address — prefer it over a hardcoded one in scripts.
-- **`bypass_permissions` refuses to start** — the add-on sets `IS_SANDBOX=1` automatically; if a CLI update ever breaks this, run `claude install <previous-version> --force` in a shell tab and report an issue.
+- **`bypass_permissions` refuses to start** — the app sets `IS_SANDBOX=1` automatically; if a CLI update ever breaks this, run `claude install <previous-version> --force` in a shell tab and report an issue.
 
 ## Works with
 
-- [**claude-ha**](https://github.com/LayerTM/claude-ha) — the companion integration: chat with Claude from Assist and automations through this add-on (HACS default repository).
+- [**claude-ha**](https://github.com/LayerTM/claude-ha) — the companion integration: chat with Claude from Assist and automations through this app (HACS default repository).
 - [**CodexInHA**](https://github.com/LayerTM/CodexInHA) — the same console and Assist chat for OpenAI's coding agent.
 
 ## Support
