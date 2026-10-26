@@ -69,13 +69,6 @@ Authenticate by running `claude` in the console and following the login URL
 - Home Assistant OS or Supervised (`amd64` or `aarch64`)
 - A Claude subscription (Pro/Max/Team) or an Anthropic API key
 
-## Security and privacy
-
-The app can read and change your Home Assistant configuration, including
-`secrets.yaml`, and what Claude reads in a session is sent to Anthropic. See
-[Security and privacy](claude-code/DOCS.md#security-and-privacy) before you
-install it.
-
 ## Documentation
 
 Full documentation lives in the app's **Documentation** tab, or in

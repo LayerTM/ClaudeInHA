@@ -11,27 +11,6 @@ Runs the full [Claude Code CLI](https://code.claude.com/docs) inside Home Assist
    **Show in sidebar** off for every app it installs — turn it on there if
    you want a **Claude Code** entry in the sidebar.
 
-## Security and privacy
-
-Claude Code is a coding agent with a shell, running inside the app container. Install it only if you are comfortable with what that means.
-
-**What the app can reach.** The folders the app mounts:
-
-| Folder | Access |
-|---|---|
-| Home Assistant configuration (`/homeassistant`) | read and write — this includes `secrets.yaml` and the `.storage` folder |
-| App configuration and `/share` | read and write |
-| `/media` | read and write |
-| `/ssl` and the backups folder | read only |
-
-Besides the folders, the app holds a Supervisor token with the *manager* role and access to the Home Assistant Core API. That is how Claude takes backups and manages other apps; it does not depend on the `ha_token` option.
-
-**What leaves your home.** Whatever Claude reads or runs during a session — file contents (a `secrets.yaml` it opens included), command output, entity states — becomes part of the conversation and is sent to Anthropic. There is no relay or proxy server of this project in between.
-
-**Permission prompts.** With `bypass_permissions` off (the default) Claude asks before it runs a shell command (apart from a built-in set of read-only ones) and before it edits or writes a file. Reading files is not prompted for the folder Claude starts in, `/homeassistant`, so `secrets.yaml` can be read without a question. With `bypass_permissions` on, Claude asks about nothing. Chats started from Assist or automations through the companion integration do not prompt at all: they run with a narrow, fixed set of allowed tools and everything else is refused.
-
-**The `ha_token` option** is optional. It gives Claude the Home Assistant API with the rights of the user the token belongs to. Reading and editing dashboards through `hass-mcp` needs an administrator: Home Assistant refuses to save or delete a dashboard configuration for any other user. If you do not need that, create a dedicated non-administrator user and use its token.
-
 ## Authentication (pick one)
 
 | Method | How |
