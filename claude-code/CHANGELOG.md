@@ -12,8 +12,9 @@
   Claude Code checks each tool call first so it gets a clear reason instead of an error. The
   documentation's new "Security and privacy" section lists what is protected and what is not. On a
   host without AppArmor only the tool-call check is on, and the start-up log says so. Turn the
-  option off to give Claude the files; when the app starts with it off after it was on, Home
-  Assistant shows "Secrets protection was turned off".
+  option off to give Claude the files. Whenever the app starts with less protection than before
+  (the option turned off, or the kernel half lost), Home Assistant shows a notification with the
+  reason.
 
 ### Changed
 - The `ha-debug` skill lists integrations through the Home Assistant API instead of reading

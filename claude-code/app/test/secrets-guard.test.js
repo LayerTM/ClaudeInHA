@@ -244,7 +244,6 @@ test('turning the protection off is made visible', () => {
   // The last level is kept where the guarded mode cannot write it.
   assert.match(guard, /readonly STATE=\/data\/secrets-guard-state/);
   assert.match(guard, /readonly LEVEL_FILE=\/run\/secrets-guard-level/);
-  assert.match(guard, /"\$\{previous\}" = kernel \] \|\| \[ "\$\{previous\}" = cli-only \][\s\S]*?PROTECT_SECRETS_TURNED_OFF=1/);
   const child = fs.readFileSync(APPARMOR, 'utf8').slice(fs.readFileSync(APPARMOR, 'utf8').indexOf('profile guarded'));
   assert.ok(child.includes('deny /data/{options.json,secrets-guard-state} wl,'));
   assert.ok(child.includes('deny /run/secrets-guard-level wl,'));
@@ -258,9 +257,6 @@ test('turning the protection off is made visible', () => {
   assert.match(fs.readFileSync(path.join(ROOTFS, 'usr', 'local', 'lib', 'engine-hooks.sh'), 'utf8'), /^\s*\/usr\/local\/bin\/secrets-guard-notice$/m);
   assert.ok(child.includes('deny /usr/local/bin/{secrets-guard*,ha-notify,addon-run} wl,'));
   assert.ok(child.includes('deny /usr/local/lib/*.sh wl,'), 'the start-up shell libraries');
-  // With nothing to say it says nothing.
-  const quiet = spawnSync('bash', [notice], { encoding: 'utf8', env: { ...process.env, PROTECT_SECRETS_TURNED_OFF: '' } });
-  assert.strictEqual(quiet.status, 0);
 });
 
 test('Docker\'s health check runs nothing found through PATH', () => {
@@ -322,9 +318,116 @@ test('the guarded mode cannot rewrite what decides its next start', () => {
   // No AppArmor on the host: the hook alone, said loudly — an update must not
   // leave such an app dead. An AppArmor host without the guarded mode: refuse.
   // "No AppArmor" is the kernel's answer, never a label that failed to read.
-  assert.match(guard, /read -r kernel <\/sys\/module\/apparmor\/parameters\/enabled[\s\S]*?!= "Y"[\s\S]*?PROTECT_SECRETS_LEVEL=cli-only[\s\S]*?return 0/);
-  assert.match(guard, /read -r label <\/proc\/self\/attr\/current 2>\/dev\/null \|\| refuse /);
-  assert.match(guard, /"" \| unconfined\) refuse /);
-  assert.match(guard, /refuse "the running AppArmor profile/);
   for (const level of ['kernel', 'cli-only', 'off']) assert.ok(guard.includes(`PROTECT_SECRETS_LEVEL=${level}`));
+});
+
+// secrets-guard itself, run against stand-in files for everything it reads:
+// what each host gets. Any label but the app's own runs cli-only (a Docker
+// host's default profile included); only the app's own profile without its
+// guarded mode stops the service.
+function runGuard({ apparmor = 'Y', label = 'local_claude-code (enforce)', hostname = 'local-claude-code', options = '{"protect_secrets": true}', state = '', execWritable = true }) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-run-'));
+  try {
+    const f = (name, text) => { const p = path.join(dir, name); if (text !== null) fs.writeFileSync(p, text); return p; };
+    const files = {
+      '/sys/module/apparmor/parameters/enabled': f('enabled', apparmor === null ? null : `${apparmor}\n`),
+      '/proc/self/attr/current': f('current', label === null ? null : `${label}\n`),
+      '/proc/self/attr/apparmor/exec': path.join(dir, 'exec'),
+      '/proc/self/attr/exec': path.join(dir, 'exec-legacy'),
+      '/data/options.json': f('options.json', options),
+      '/run/secrets-guard-level': path.join(dir, 'level'),
+      '/data/secrets-guard-state': f('state', state === null ? null : state),
+    };
+    if (execWritable) f('exec', '');
+    else fs.mkdirSync(path.join(dir, 'exec'));  // a write to it fails, as for a profile without a guarded mode
+    let script = fs.readFileSync(GUARD, 'utf8').replace(/^#!.*\n/, '');
+    for (const [real, stand] of Object.entries(files)) script = script.split(real).join(stand);
+    const p = f('guard.sh', script);
+    const r = spawnSync('bash', [p, 'bash', '-c', 'echo "LEVEL=$PROTECT_SECRETS_LEVEL DROP=${PROTECT_SECRETS_DROPPED:-}|${PROTECT_SECRETS_DROP_REASON:-}"'],
+      { encoding: 'utf8', env: { ...process.env, HOSTNAME: hostname } });
+    const read = (n) => { try { return fs.readFileSync(path.join(dir, n), 'utf8'); } catch { return null; } };
+    return { status: r.status, out: r.stdout, err: r.stderr, level: read('level'), state: read('state'), exec: read('exec') };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+const MODERN_BASH = Number(spawnSync('bash', ['-c', 'echo ${BASH_VERSINFO[0]}'], { encoding: 'utf8' }).stdout.trim()) >= 4;
+
+test('secrets-guard: the app\'s own profile enters the guarded mode', () => {
+  // A repository install: slug <hash>_<app>, container <hash>-<app>.
+  const repo = runGuard({ label: 'a0d7b954_claude-code (enforce)', hostname: 'a0d7b954-claude-code' });
+  assert.strictEqual(repo.exec, 'exec a0d7b954_claude-code//guarded');
+  assert.strictEqual(repo.level, 'kernel\n');
+  const r = runGuard({});
+  assert.strictEqual(r.status, 0, r.err);
+  assert.strictEqual(r.exec, 'exec local_claude-code//guarded');
+  assert.strictEqual(r.level, 'kernel\n');
+  assert.match(r.out, /LEVEL=kernel DROP=\|$/m);
+});
+
+test('secrets-guard: a foreign label or no AppArmor runs cli-only, never a dead app', () => {
+  for (const host of [{ label: 'docker-default (enforce)' }, { label: 'lxc-container-default (enforce)' }, { label: 'unconfined' },
+    { label: null }, { apparmor: 'N' }, { apparmor: null },
+    // another app's profile is not this app's own
+    { label: 'local_claude-code (enforce)', hostname: 'a0d7b954-claude-code' }]) {
+    const r = runGuard(host);
+    assert.strictEqual(r.status, 0, `${JSON.stringify(host)}: ${r.err}`);
+    assert.strictEqual(r.level, 'cli-only\n', JSON.stringify(host));
+    assert.match(r.out, /LEVEL=cli-only/, JSON.stringify(host));
+    if (MODERN_BASH) assert.match(r.out, /WARNING: Secrets guard: .*\(protect_secrets_level: cli-only\)/, JSON.stringify(host));
+  }
+});
+
+test('secrets-guard: the app\'s own profile without its guarded mode stops the service', () => {
+  const r = runGuard({ execWritable: false });
+  assert.strictEqual(r.status, 1);
+  assert.notStrictEqual(r.level, 'kernel\n');
+  if (MODERN_BASH) assert.match(r.out, /FATAL: Secrets guard: the app's AppArmor profile \(local_claude-code\) has no guarded mode/);
+});
+
+test('secrets-guard: a drop in level is announced once, with its reason; equal or higher is silent', () => {
+  const KERNEL = {};
+  const CLI = { label: 'docker-default (enforce)' };
+  const OFF = { options: '{"protect_secrets": false}' };
+  const drops = [
+    [KERNEL, 'kernel', CLI, /DROP=kernel cli-only\|the app does not run under its own AppArmor profile \(docker-default\)/],
+    [KERNEL, 'kernel', OFF, /DROP=kernel off\|the protect_secrets option is off/],
+    [CLI, 'cli-only', OFF, /DROP=cli-only off\|the protect_secrets option is off/],
+  ];
+  for (const [, before, now, expected] of drops) {
+    const r = runGuard({ ...now, state: `${before}\n` });
+    assert.strictEqual(r.status, 0, r.err);
+    assert.match(r.out, expected, `${before} -> ${JSON.stringify(now)}`);
+    // The stored level follows, so the next start at the same level is silent.
+    assert.strictEqual(r.state, r.level);
+    assert.match(runGuard({ ...now, state: r.state }).out, /DROP=\|$/m, 'announced once');
+  }
+  const silent = [['kernel', KERNEL], ['cli-only', CLI], ['off', OFF], ['cli-only', KERNEL], ['off', KERNEL], ['off', CLI], ['', KERNEL], ['', OFF]];
+  for (const [before, now] of silent) {
+    assert.match(runGuard({ ...now, state: `${before}\n` }).out, /DROP=\|$/m, `${before} -> ${JSON.stringify(now)}`);
+  }
+  assert.strictEqual(runGuard(OFF).exec, '', 'no guarded mode when off');
+  // An unreadable options file is not "off".
+  assert.match(runGuard({ options: null }).out, /LEVEL=kernel/);
+});
+
+test('secrets-guard-notice: the text names the drop and its reason', () => {
+  const notice = path.join(ROOTFS, 'usr', 'local', 'bin', 'secrets-guard-notice');
+  const text = fs.readFileSync(notice, 'utf8');
+  assert.match(text, /\[ -n "\$\{PROTECT_SECRETS_DROPPED:-\}" \] \|\| exit 0/);
+  assert.match(text, /title="Secrets protection was turned off"/);
+  assert.match(text, /title="Secrets protection was weakened"/);
+  assert.match(text, /\$\{reason\}/);
+  const quiet = spawnSync('bash', [notice], { encoding: 'utf8', env: { ...process.env, PROTECT_SECRETS_DROPPED: '' } });
+  assert.strictEqual(quiet.status, 0);
+});
+
+test('the app does not use the host network (secrets-guard tells its own profile by the hostname)', () => {
+  // secrets-guard recognises the app's own AppArmor profile because the
+  // Supervisor names the container after the slug (local_claude-code -> local-claude-code).
+  // With host_network the container takes the Home Assistant host's name, every
+  // start would run cli-only, and the protection would be quietly weaker.
+  const config = fs.readFileSync(path.join(ADDON, 'config.yaml'), 'utf8');
+  assert.doesNotMatch(config, /^host_network\s*:/m,
+    'config.yaml sets host_network: secrets-guard would no longer recognise the app\'s own AppArmor profile');
 });

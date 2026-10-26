@@ -440,10 +440,11 @@ names one of these files is refused with a reason instead of an error. Claude ca
 without seeing it: write `!secret name` in the configuration and add the value to `secrets.yaml`
 yourself (see below). The app's log says at start-up which protection is on.
 
-On a host that runs apps without AppArmor (Home Assistant OS always has it), the kernel half is not
-available: only Claude Code's check of each tool call is on, and the start-up log warns about it. If
-AppArmor is on but the app runs without its own profile (a damaged install), the app does not start
-while the option is on; reinstalling it, or turning the option off, starts it again. That check
+On a host that runs apps without AppArmor (Home Assistant OS always has it), or when the app does not
+run under its own AppArmor profile, the kernel half is not available: only Claude Code's check of each
+tool call is on, and the start-up log warns about it. If the app runs under its own profile but that
+profile lacks the protection (a damaged install), the app does not start while the option is on;
+reinstalling it, or turning the option off, starts it again. That check
 reads what a call names, so a command that reaches a protected file without naming it (a search
 over the whole folder, a script) is not stopped there.
 
@@ -470,9 +471,10 @@ possible way:
   out for download; a backup contains these files.
 - **The next start.** Claude can change the app's options through the Supervisor, including turning
   `protect_secrets` off, and the change applies when the app restarts. That cannot be prevented
-  without taking the Supervisor away from it, so it is made visible: when the app starts with the
-  option off after a start with it on, Home Assistant shows the notification "Secrets protection was
-  turned off" and the app's log says so. Claude cannot change the files that do this from inside the
+  without taking the Supervisor away from it, so it is made visible: whenever the app starts with
+  less protection than at its previous start — the option turned off, or the kernel half lost —
+  Home Assistant shows a notification ("Secrets protection was turned off" or "… was weakened",
+  with the reason) and the app's log says so. Claude cannot change the files that do this from inside the
   app; as root it could still replace system programs the app runs at start-up, which would take a
   deliberate effort, not an accident. It cannot change them, or the
   files that set up the protection, from inside the app — but anything else it changes in the app

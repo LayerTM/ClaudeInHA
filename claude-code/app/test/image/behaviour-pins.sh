@@ -321,6 +321,28 @@ eq "image CLI unreadable: the persistent CLI is kept" "$(persistent_version)" 9.
 mkfake /root/.local/bin/claude "${IMG}"
 
 # --- 6. provisioning, run on its own ---------------------------------------------
+echo "# secrets-guard: protect_secrets on (the default), on the host this runs on"
+# A plain docker run is never under the app's own AppArmor profile: on an
+# AppArmor host it gets the runtime's (docker-default), elsewhere none. Both
+# must start the app with only the command check, and say so.
+reset
+options '{}'
+kernel="" label=""
+read -r kernel </sys/module/apparmor/parameters/enabled 2>/dev/null || true
+read -r label </proc/self/attr/current 2>/dev/null || true
+env -i PATH="${BASE_PATH}" timeout 20 /usr/local/bin/secrets-guard /usr/bin/env > "${P}/guard.out" 2>&1
+status=$?
+if [ "${kernel}" = Y ]; then host="AppArmor host, label ${label% (*}"; else host="host without AppArmor"; fi
+eq "${host}: the service starts" "${status}" 0
+yes_ "${host}: only the command check is on" grep -qx 'PROTECT_SECRETS_LEVEL=cli-only' "${P}/guard.out"
+yes_ "${host}: the log says so" grep -qE 'WARNING.*cli-only' "${P}/guard.out"
+eq "${host}: the level is recorded for the hook" "$(cat /run/secrets-guard-level 2>/dev/null)" cli-only
+options '{"protect_secrets":false}'
+env -i PATH="${BASE_PATH}" timeout 20 /usr/local/bin/secrets-guard /usr/bin/env > "${P}/guard.out" 2>&1
+eq "turned off after a start with it on: the service starts" "$?" 0
+yes_ "the drop from cli-only to off is announced" grep -qx 'PROTECT_SECRETS_DROPPED=cli-only off' "${P}/guard.out"
+eq "off is recorded for the hook" "$(cat /run/secrets-guard-level 2>/dev/null)" off
+
 echo "# provision-extras"
 provision() {
     env -i PATH="${BASE_PATH}" HOME=/root HA_TOKEN="${HA_TOKEN_IN:-}" HA_URL=http://homeassistant:8123 \
