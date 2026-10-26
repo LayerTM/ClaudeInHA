@@ -92,15 +92,13 @@ function toolName(basename) {
 }
 
 // Passed on from the add-on's environment when set: the CLI's credentials, the
-// proxy settings, the identity variables some credential stores need
-// (e.g. macOS keychain in dev), and the secrets guard's level, which its hook
-// reads (absent means on).
+// proxy settings, and the identity variables some credential stores need
+// (e.g. macOS keychain in dev).
 const PASSTHROUGH_ENV = [
   'ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN',
   'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY',
   'http_proxy', 'https_proxy', 'no_proxy',
   'USER', 'LOGNAME',
-  'PROTECT_SECRETS_LEVEL',
 ];
 
 // The run's settings JSON: the core's (audit hook) plus the web guard's hooks.

@@ -9,7 +9,8 @@
 #   docker run --rm -v "$PWD/claude-code/app/test/image:/pins-src:ro" \
 #     --entrypoint bash <image> /pins-src/behaviour-pins.sh
 #
-# The Claude CLI is replaced by a recording fake (nothing reaches the network),
+# The Claude CLI is replaced by a recording fake after section 0, which runs
+# the real one against a local fake of the API (nothing reaches the network),
 # and the add-on options are served to bashio from its own cache directory,
 # which is where bashio looks before it asks the Supervisor.
 set -u
@@ -28,6 +29,39 @@ BASE_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 IMG=5.0.0
 rm -rf "${P}"
 mkdir -p "${P}"
+
+# --- 0. the real CLI under a prompt API command line ------------------------------
+# A prompt API run reads no settings files (--setting-sources ''), so the secrets
+# guard's hook reaches it only through the managed settings. With only the
+# command check on, the hook is the one layer: a Read of secrets.yaml that the
+# run's own allowlist permits must still be refused, by the hook. The model is
+# a local fake; the command line and the CLI are the app's own, and the run
+# starts in the folder that holds the file, as a real run does with its snapshot.
+mkdir -p /homeassistant
+echo 'pin_secret: not-a-secret' > /homeassistant/secrets.yaml
+echo cli-only > /run/secrets-guard-level
+node /pins-src/fake-messages-api.js 18555 "${P}/api.log" Read '{"file_path":"/homeassistant/secrets.yaml"}' &
+api=$!
+sleep 1
+(
+    cd /homeassistant && node -e '
+const { spawnSync } = require("node:child_process");
+const { launch } = require("/opt/agent-console/adapter/runner.js");
+const spec = { haAllowed: [], haDisallowed: [], vision: true, imagePath: "/homeassistant/secrets.yaml",
+  read: true, schema: "{\"type\":\"object\"}", systemPrompt: "pin", maxTurns: 3 };
+const { args, env } = launch(spec, { env: {} });
+const r = spawnSync("/root/.local/bin/claude", [...args, "describe the snapshot"], { encoding: "utf8", timeout: 60000,
+  env: { ...process.env, ...env, ANTHROPIC_API_KEY: "pin", ANTHROPIC_BASE_URL: "http://127.0.0.1:18555",
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" } });
+process.stdout.write(r.stdout || "");
+' > "${P}/prompt-run.jsonl" 2> "${P}/prompt-run.err"
+)
+kill "${api}" 2>/dev/null
+wait "${api}" 2>/dev/null
+yes_ "the read reached the CLI as a tool call" grep -q '"tool_result"' "${P}/api.log"
+yes_ "a prompt API run loads the managed hook and it refuses the read" grep -q 'secrets-guard-hook.*Blocked: /homeassistant/secrets.yaml' "${P}/api.log"
+no_ "the file's content never reached the model" grep -q 'not-a-secret' "${P}/api.log"
+rm -f /homeassistant/secrets.yaml /run/secrets-guard-level
 
 # --- fakes -------------------------------------------------------------------
 # mkfake <path> <version> [broken]: a `claude` that logs every call (arguments

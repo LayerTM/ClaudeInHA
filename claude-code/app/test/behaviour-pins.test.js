@@ -113,7 +113,6 @@ test('the CLI gets exactly the allowlisted environment, and no credential of Hom
     no_proxy: 'localhost',
     USER: 'root',
     LOGNAME: 'root',
-    PROTECT_SECRETS_LEVEL: 'kernel',
   });
 });
 
