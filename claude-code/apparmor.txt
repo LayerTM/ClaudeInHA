@@ -70,7 +70,8 @@ profile claude-code flags=(attach_disconnected,mediate_deleted) {
     # service, its finish script, Docker's health check — and decides whether
     # the service enters it. Static programs named by their real paths, and
     # the directories on those paths cannot be swapped.
-    deny /data/options.json wl,
+    deny /data/{options.json,secrets-guard-state} wl,
+    deny /run/secrets-guard-level wl,
     deny /init wl,
     deny /command{,/**} wl,
     deny /package{,/**} wl,
@@ -79,17 +80,22 @@ profile claude-code flags=(attach_disconnected,mediate_deleted) {
     deny /run/s6-rc*{,/**} wl,
     deny /run/service{,/**} wl,
     deny /usr/bin/bash-static wl,
-    deny /usr/local/bin/secrets-guard* wl,
-    deny /{bin,data,etc,run,usr,usr/bin,usr/local,usr/local/bin}{,/} wl,
+    deny /usr/local/bin/{secrets-guard*,ha-notify,addon-run} wl,
+    deny /usr/local/lib/*.sh wl,
+    deny /{bin,data,etc,run,usr,usr/bin,usr/local,usr/local/bin,usr/local/lib}{,/} wl,
     # What a static glibc program can still load at run time.
     deny /etc/{nsswitch.conf,ld.so.preload,ld.so.conf} wl,
     deny /etc/ld.so.conf.d/** wl,
     deny /usr/lib{,64}/**ld-linux*.so* wl,
     deny /usr/lib/*/{libc,libnss_*}.so* wl,
     deny /usr/lib/*/gconv/** wl,
-    # Layer 1's own files.
+    # The command check's own files.
     deny /usr/share/agent-core{,/**} wl,
     deny /etc/claude-code{,/**} wl,
+
+    # The folders that hold protected files cannot be renamed away from
+    # their paths (the folder itself only: files inside stay writable).
+    deny /{homeassistant,homeassistant/.storage,homeassistant/.cloud,ssl,backup}{,/} wl,
 
     # BEGIN protected paths
     deny /homeassistant/secrets.yaml rwklmx,

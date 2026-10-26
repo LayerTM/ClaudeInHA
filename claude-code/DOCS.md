@@ -469,7 +469,12 @@ possible way:
 - **Backups through the Supervisor.** The app may create backups, and the Supervisor API would hand one
   out for download; a backup contains these files.
 - **The next start.** Claude can change the app's options through the Supervisor, including turning
-  `protect_secrets` off, and the change applies when the app restarts. It cannot change them, or the
+  `protect_secrets` off, and the change applies when the app restarts. That cannot be prevented
+  without taking the Supervisor away from it, so it is made visible: when the app starts with the
+  option off after a start with it on, Home Assistant shows the notification "Secrets protection was
+  turned off" and the app's log says so. Claude cannot change the files that do this from inside the
+  app; as root it could still replace system programs the app runs at start-up, which would take a
+  deliberate effort, not an accident. It cannot change them, or the
   files that set up the protection, from inside the app — but anything else it changes in the app
   (an `init_commands` entry, a program it installs) runs at the next start like everything else, with
   the protection applied as the options say. What decides the protection at start-up (the
@@ -478,6 +483,9 @@ possible way:
   value would make Home Assistant reveal it.
 - **The app's own credentials.** The Supervisor token, `ha_token` and the Claude sign-in are what the
   app works with, so they are in its environment and its own files, not behind the protection.
+- **Moved folders.** The protected paths are names. The folders that hold them (the configuration
+  folder, its `.storage` and `.cloud`, `/ssl`, `/backup`) cannot be renamed, but another folder that
+  holds a `secrets.yaml` (ESPHome's) could be renamed on purpose to reach the file under a new name.
 - **Other places.** A credential copied into another file (a script, an automation, a note) is not
   protected.
 

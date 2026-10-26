@@ -40,12 +40,18 @@ function apparmorRules(entry) {
   return [`deny ${entry.path} rwklmx,`];
 }
 
-function hook(event, list = LIST, level = 'cli-only') {
+// The level comes from the file secrets-guard writes (argument 2 here, a
+// fixed path in the app), never from the environment the agent could set.
+const LEVEL_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-level-'));
+function hook(event, list = LIST, level = 'cli-only', env = {}) {
   const input = typeof event === 'string' ? event : JSON.stringify(event);
-  const env = { ...process.env, PROTECT_SECRETS_LEVEL: level };
-  const r = spawnSync('python3', ['-I', HOOK, list], { input, encoding: 'utf8', env });
+  const levelFile = path.join(LEVEL_DIR, 'level');
+  if (level === null) fs.rmSync(levelFile, { force: true });
+  else fs.writeFileSync(levelFile, `${level}\n`);
+  const r = spawnSync('python3', ['-I', HOOK, list, levelFile], { input, encoding: 'utf8', env: { ...process.env, ...env } });
   return { status: r.status, stderr: r.stderr, stdout: r.stdout };
 }
+test.after(() => fs.rmSync(LEVEL_DIR, { recursive: true, force: true }));
 
 function bash(command, cwd = '/homeassistant') {
   return { cwd, tool_name: 'Bash', tool_input: { command } };
@@ -209,6 +215,54 @@ test('with protect_secrets off the hook lets everything through', () => {
   for (const event of AIMED) assert.strictEqual(hook(event, LIST, 'off').status, 0);
 });
 
+test('the level is the recorded one: not the environment, and cli-only when unknown', () => {
+  const read = bash('cat secrets.yaml');
+  assert.strictEqual(hook(read, LIST, 'kernel', { PROTECT_SECRETS_LEVEL: 'off' }).stdout === '', false, 'env must not silence it');
+  assert.strictEqual(hook(read, LIST, 'cli-only', { PROTECT_SECRETS_LEVEL: 'off' }).status, 2, 'env must not turn it off');
+  assert.strictEqual(hook(read, LIST, null).status, 2, 'no recorded level: cli-only');
+  assert.strictEqual(hook(read, LIST, 'garbage').status, 2, 'unknown level: cli-only');
+  const managed = JSON.parse(fs.readFileSync(MANAGED, 'utf8'));
+  assert.strictEqual(managed.hooks.PreToolUse[0].hooks[0].command, '/usr/local/bin/secrets-guard-hook', 'the app runs it with the default level file');
+  assert.match(fs.readFileSync(HOOK, 'utf8'), /^#!\/usr\/bin\/python3 -I\n/, 'no interpreter found through PATH');
+});
+
+test('a symlink to a protected file is that file', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-link-'));
+  try {
+    fs.writeFileSync(path.join(root, 'secrets.yaml'), 'x');
+    fs.symlinkSync(path.join(root, 'secrets.yaml'), path.join(root, 'innocent.txt'));
+    const list = path.join(root, 'list.txt');
+    fs.writeFileSync(list, `${fs.realpathSync(root)}/secrets.yaml\n`);
+    assert.strictEqual(hook(bash('cat innocent.txt', root), list).status, 2);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('turning the protection off is made visible', () => {
+  const guard = fs.readFileSync(GUARD, 'utf8');
+  // The last level is kept where the guarded mode cannot write it.
+  assert.match(guard, /readonly STATE=\/data\/secrets-guard-state/);
+  assert.match(guard, /readonly LEVEL_FILE=\/run\/secrets-guard-level/);
+  assert.match(guard, /"\$\{previous\}" = kernel \] \|\| \[ "\$\{previous\}" = cli-only \][\s\S]*?PROTECT_SECRETS_TURNED_OFF=1/);
+  const child = fs.readFileSync(APPARMOR, 'utf8').slice(fs.readFileSync(APPARMOR, 'utf8').indexOf('profile guarded'));
+  assert.ok(child.includes('deny /data/{options.json,secrets-guard-state} wl,'));
+  assert.ok(child.includes('deny /run/secrets-guard-level wl,'));
+  const notice = path.join(ROOTFS, 'usr', 'local', 'bin', 'secrets-guard-notice');
+  assert.ok(fs.statSync(notice).mode & 0o111);
+  // Nothing that could silence it is found through PATH.
+  const noticeText = fs.readFileSync(notice, 'utf8');
+  assert.match(noticeText, /^#!\/bin\/bash\n/);
+  assert.match(noticeText, /^PATH=\/usr\/sbin:\/usr\/bin:\/sbin:\/bin$/m);
+  assert.match(noticeText, /\/usr\/bin\/env -i PATH="\$\{PATH\}" SUPERVISOR_TOKEN="\$\{SUPERVISOR_TOKEN:-\}" \\\n\s*\/usr\/local\/bin\/ha-notify "\$\{message\}" "\$\{title\}"/);
+  assert.match(fs.readFileSync(path.join(ROOTFS, 'usr', 'local', 'lib', 'engine-hooks.sh'), 'utf8'), /^\s*\/usr\/local\/bin\/secrets-guard-notice$/m);
+  assert.ok(child.includes('deny /usr/local/bin/{secrets-guard*,ha-notify,addon-run} wl,'));
+  assert.ok(child.includes('deny /usr/local/lib/*.sh wl,'), 'the start-up shell libraries');
+  // With nothing to say it says nothing.
+  const quiet = spawnSync('bash', [notice], { encoding: 'utf8', env: { ...process.env, PROTECT_SECRETS_TURNED_OFF: '' } });
+  assert.strictEqual(quiet.status, 0);
+});
+
 test('Docker\'s health check runs nothing found through PATH', () => {
   const docker = fs.readFileSync(path.join(ADDON, 'Dockerfile'), 'utf8');
   const check = docker.match(/^HEALTHCHECK[^\n]*\\\n\s*CMD (\[.*\])$/m);
@@ -250,10 +304,13 @@ test('TLS keys are protected, certificates are not', () => {
 test('the guarded mode cannot rewrite what decides its next start', () => {
   const text = fs.readFileSync(APPARMOR, 'utf8');
   const child = text.slice(text.indexOf('profile guarded'));
-  for (const p of ['/data/options.json', '/etc/s6-overlay{,/**}', '/run/service{,/**}',
+  // Folder nodes only: a rule over a folder's contents would stop the agent
+  // from writing ordinary files there (a dashboard in .storage).
+  assert.doesNotMatch(child, /deny \/homeassistant\/\.storage\/\*\*/);
+  for (const p of ['/etc/s6-overlay{,/**}', '/run/service{,/**}',
     '/usr/share/agent-core{,/**}', '/etc/claude-code{,/**}', '/usr/bin/bash-static', '/command{,/**}', '/package{,/**}',
-    '/usr/local/bin/secrets-guard*',
-    '/{bin,data,etc,run,usr,usr/bin,usr/local,usr/local/bin}{,/}', '/usr/lib/*/{libc,libnss_*}.so*']) {
+    '/usr/local/bin/{secrets-guard*,ha-notify,addon-run}', '/usr/local/lib/*.sh', '/{homeassistant,homeassistant/.storage,homeassistant/.cloud,ssl,backup}{,/}',
+    '/{bin,data,etc,run,usr,usr/bin,usr/local,usr/local/bin,usr/local/lib}{,/}', '/usr/lib/*/{libc,libnss_*}.so*']) {
     assert.ok(child.includes(`deny ${p} wl,`), `${p} is writable from the guarded mode`);
   }
   const guard = fs.readFileSync(GUARD, 'utf8');
