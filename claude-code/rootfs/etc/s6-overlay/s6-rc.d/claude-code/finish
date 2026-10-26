@@ -1,11 +1,14 @@
-#!/usr/bin/env bashio
+#!/usr/bin/bash-static
 # ==============================================================================
-# claude-code finish: halt add-on on unexpected exit
+# claude-code finish: halt the add-on on an unexpected exit
+# s6 runs this outside the guarded mode (see secrets-guard), so it runs on a
+# static shell, with builtins and programs named by their paths only: nothing
+# it runs may be a file or library the agent can change.
 # ==============================================================================
 declare EXIT_CODE=${1}
 
 if [[ "${EXIT_CODE}" -ne 0 ]] && [[ "${EXIT_CODE}" -ne 256 ]]; then
-    bashio::log.error "Service exited unexpectedly (code: ${EXIT_CODE}) — stopping add-on"
+    printf '[%(%H:%M:%S)T] ERROR: Service exited unexpectedly (code: %s) — stopping add-on\n' -1 "${EXIT_CODE}"
     echo "${EXIT_CODE}" > /run/s6-linux-init-container-results/exitcode
     exec /run/s6/basedir/bin/halt
 fi

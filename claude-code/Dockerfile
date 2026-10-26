@@ -16,10 +16,15 @@ ENV LANG=C.UTF-8
 # - build-essential python3: node-pty native build + npm packages with gyp deps
 # - tmux: session persistence across browser disconnects
 # - ripgrep: Claude Code search (USE_BUILTIN_RIPGREP=0)
+# - bash-static: runs what s6 starts before protect_secrets confines the
+#   service (secrets-guard, the finish script, the health check). A static
+#   shell loads no shared library, so nothing the agent could change takes part
+#   in that decision
 # - remaining: general CLI tooling for Claude and MCP servers
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
+        bash-static \
         build-essential \
         ca-certificates \
         curl \
@@ -122,14 +127,14 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # documented home, it belongs here: it would let a bump verify that a new version
 # is authentic, where a recorded checksum can only hold it to what was seen.
 # upstream: claude-code CLAUDE_DOWNLOAD_BASE latest
-ARG CLAUDE_CODE_VERSION=2.1.309
+ARG CLAUDE_CODE_VERSION=2.1.310
 # From <version>/manifest.json: .platforms["linux-x64"].checksum and
 # .platforms["linux-arm64"].checksum. A version bump moves these two with it;
 # forgetting stops the build at the checksum rather than at a user's next start.
 # upstream: claude-code-sha256 linux-x64
-ARG CLAUDE_CODE_SHA256_AMD64=4d704a8aecbe038affa3000f498ae17c1b4f753add8facb8764120affc99b658
+ARG CLAUDE_CODE_SHA256_AMD64=b73676430af12f97316a798b8371f81d640f90a58bdcb8f3ce56a835bb47df56
 # upstream: claude-code-sha256 linux-arm64
-ARG CLAUDE_CODE_SHA256_ARM64=9796dd26899337f687739a0b39a7353b639f062a3436a7b941fcf19a1b757a9b
+ARG CLAUDE_CODE_SHA256_ARM64=9c64d9a7442436b65fcd7cc02c1aa0051bb5a7041e7788576ed3b5f29c447d54
 ARG CLAUDE_DOWNLOAD_BASE=https://downloads.claude.ai/claude-code-releases
 # Every fallible step carries its own message. In a single `A && B && C || D`
 # chain the `||` binds to the WHOLE chain, so the first failure jumps straight to
@@ -209,7 +214,7 @@ RUN arch="$(dpkg --print-architecture)" \
 # upstream: pypi homeassistant-cli
 ARG HASS_CLI_VERSION=1.0.0
 # upstream: pypi hass-mcp
-ARG HASS_MCP_VERSION=0.6.0
+ARG HASS_MCP_VERSION=0.6.1
 # upstream: pypi Pillow
 ARG PILLOW_VERSION=13.0.0
 RUN pip install --no-cache-dir --break-system-packages \
@@ -278,6 +283,9 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/claude-code/run \
              /usr/local/bin/start-claude \
              /usr/local/bin/start-remote \
              /usr/local/bin/update-claude \
+             /usr/local/bin/secrets-guard \
+             /usr/local/bin/secrets-guard-hook \
+             /usr/local/bin/secrets-guard-notice \
              /usr/local/bin/provision-extras \
              /usr/local/bin/cc-monitor \
              /usr/local/bin/cc-digest \
@@ -297,10 +305,11 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/claude-code/run \
 # Surface console health to the Supervisor. Hits the loopback health endpoint
 # (allowed by the console's IP guard); marks the add-on unhealthy if the Node
 # console stops responding. Generous start period covers first-run home setup.
-# Exec form: no shell needed, and Docker already treats every non-zero probe
-# exit (curl's 7 refused / 22 HTTP error / 28 timeout) as unhealthy.
+# Docker runs this outside the service's guarded mode (protect_secrets), so it
+# runs the static shell by its path — no program found through PATH, no shared
+# library — and speaks HTTP itself.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-    CMD ["curl", "-fsS", "http://127.0.0.1:8099/api/health"]
+    CMD ["/usr/bin/bash-static", "-c", "exec 3<>/dev/tcp/127.0.0.1/8099 && printf 'GET /api/health HTTP/1.0\\r\\nHost: 127.0.0.1\\r\\n\\r\\n' >&3 && read -r -t 4 status <&3 && [[ $status =~ ^HTTP/1\\.[01]\\ 2[0-9][0-9] ]]"]
 
 LABEL \
     io.hass.name="Claude Code" \

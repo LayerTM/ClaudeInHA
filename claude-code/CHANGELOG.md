@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.62.0] — 2026-10-26
+
+### Added
+- New option `protect_secrets`, on by default: Claude can no longer read or change the files where
+  Home Assistant keeps credentials — `secrets.yaml`, `.storage/auth`,
+  `.storage/auth_provider.homeassistant`, `.storage/core.config_entries`,
+  `.storage/application_credentials`, `.cloud/`, the TLS private keys in `/ssl` — nor open the
+  archives in `/backup`. The app now ships its own AppArmor profile: the console, every tab, the
+  Prompt API and everything Claude runs are confined so that the kernel refuses these files, and
+  Claude Code checks each tool call first so it gets a clear reason instead of an error. The
+  documentation's new "Security and privacy" section lists what is protected and what is not. On a
+  host without AppArmor only the tool-call check is on, and the start-up log says so. Turn the
+  option off to give Claude the files. Whenever the app starts with less protection than before
+  (the option turned off, or the kernel half lost), Home Assistant shows a notification with the
+  reason.
+
+### Changed
+- The `ha-debug` skill lists integrations through the Home Assistant API instead of reading
+  `.storage/core.config_entries`.
+- The container's health check runs on a static shell.
+- Claude CLI 2.1.309 → 2.1.310.
+- hass-mcp 0.6.0 → 0.6.1.
+
 ## [1.61.0] — 2026-10-23
 
 ### Added

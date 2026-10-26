@@ -35,6 +35,15 @@ configuration:
       Corresponds to the --dangerously-skip-permissions flag.
       The add-on automatically sets IS_SANDBOX=1 so this flag works even
       though the container runs as root.
+  protect_secrets:
+    name: Protect Secrets
+    description: >-
+      Keeps Claude from reading or changing the files where Home Assistant
+      stores credentials: secrets.yaml, users' tokens and passwords, the
+      integrations' keys and the Home Assistant Cloud sign-in. On by default.
+      It protects against the agent opening them, not against everything an
+      agent with your configuration could do — see "Security and privacy" in
+      the documentation.
   auto_update:
     name: Auto-Update Claude Code
     description: >-

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/bin/secrets-guard-hook",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

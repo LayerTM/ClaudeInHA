@@ -1,9 +1,13 @@
-#!/command/with-contenv bash
+#!/command/with-contenv /usr/bin/bash-static
 # shellcheck shell=bash
 # ==============================================================================
 # claude-code: single longrun service
 # The start script comes from ha-agent-core; the Claude-specific steps it runs
 # are in /usr/local/lib/engine-hooks.sh. with-contenv hands it the container's
-# environment (SUPERVISOR_TOKEN and the rest).
+# environment (SUPERVISOR_TOKEN and the rest). secrets-guard applies the
+# protect_secrets option to the whole service before the start script runs.
+# Until then only static programs named by their paths run: nothing found
+# through PATH (the agent can write to the CLI's directory, which comes first)
+# and no shared library (the agent is root and can replace one).
 # ==============================================================================
-exec /usr/local/bin/addon-run
+exec /usr/local/bin/secrets-guard /usr/local/bin/addon-run

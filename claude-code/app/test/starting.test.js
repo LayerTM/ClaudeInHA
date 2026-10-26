@@ -127,9 +127,9 @@ test('the source guard is the same one the console uses', () => {
   assert.equal(sourceAllowed({ remoteAddress: '192.0.2.9' }, true), true, 'dev mode');
 });
 
-test('the service hands over to the start script with the container environment', () => {
+test('the service hands over to the start script with the container environment, through the secrets guard', () => {
   const code = fs.readFileSync(SERVICE_SCRIPT, 'utf8').split('\n').filter((l) => l && !l.startsWith('# '));
-  assert.deepEqual(code, ['#!/command/with-contenv bash', 'exec /usr/local/bin/addon-run']);
+  assert.deepEqual(code, ['#!/command/with-contenv /usr/bin/bash-static', 'exec /usr/local/bin/secrets-guard /usr/local/bin/addon-run']);
 });
 
 test('the run script holds the port for the whole of initialization', () => {

@@ -1,0 +1,35 @@
+# Home Assistant files that hold credentials. With protect_secrets on, the
+# agent can neither read nor change them.
+#
+# One absolute path per line. `*` matches any characters within one name and
+# `**` any characters across names, as in AppArmor, which enforces this list;
+# so `/a/**/b` needs at least one directory between `a` and `b`, and the
+# top-level file has its own line.
+# `#` starts a comment.
+
+# Values referenced by `!secret` in the configuration, wherever a
+# secrets.yaml lives under the configuration folder (ESPHome keeps its own).
+/homeassistant/secrets.yaml
+/homeassistant/**/secrets.yaml
+
+# Users' refresh tokens, long-lived access tokens and signing keys.
+/homeassistant/.storage/auth
+# Password hashes of the Home Assistant users.
+/homeassistant/.storage/auth_provider.homeassistant
+# Every integration's credentials: API keys, tokens, passwords.
+/homeassistant/.storage/core.config_entries
+# OAuth client IDs and client secrets.
+/homeassistant/.storage/application_credentials
+# Home Assistant Cloud sign-in.
+/homeassistant/.cloud/**
+
+# TLS private keys. Certificates stay readable (expiry checks, HTTPS
+# debugging); only the keys are protected.
+/ssl/*.key
+/ssl/**/*.key
+/ssl/privkey*.pem
+/ssl/**/privkey*.pem
+
+# Backup archives carry a copy of all of the above. Backups are still made,
+# listed and restored through the Supervisor (`ha backups ...`).
+/backup/**
