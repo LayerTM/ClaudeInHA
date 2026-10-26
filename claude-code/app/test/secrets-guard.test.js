@@ -325,7 +325,11 @@ test('the guarded mode cannot rewrite what decides its next start', () => {
 // what each host gets. Any label but the app's own runs cli-only (a Docker
 // host's default profile included); only the app's own profile without its
 // guarded mode stops the service.
-function runGuard({ apparmor = 'Y', label = 'local_claude-code (enforce)', hostname = 'local-claude-code', options = '{"protect_secrets": true}', state = '', execWritable = true }) {
+// Every run also proves the script quiet: a file it cannot open is an answer,
+// never the shell's own error line in the app's log (bash applies redirections
+// left to right, so `<file 2>/dev/null` reports the failed open).
+const SHELL_FILE_ERROR = /: (No such file or directory|Permission denied|Is a directory|Not a directory)$/m;
+function runGuard({ apparmor = 'Y', label = 'local_claude-code (enforce)', hostname = 'local-claude-code', options = '{"protect_secrets": true}', state = '', execWritable = true, levelWritable = true, stateWritable = true }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-run-'));
   try {
     const f = (name, text) => { const p = path.join(dir, name); if (text !== null) fs.writeFileSync(p, text); return p; };
@@ -336,16 +340,20 @@ function runGuard({ apparmor = 'Y', label = 'local_claude-code (enforce)', hostn
       '/proc/self/attr/exec': path.join(dir, 'exec-legacy'),
       '/data/options.json': f('options.json', options),
       '/run/secrets-guard-level': path.join(dir, 'level'),
-      '/data/secrets-guard-state': f('state', state === null ? null : state),
+      '/data/secrets-guard-state': f('state', state === null || !stateWritable ? null : state),
     };
+    // A directory in a file's place: every write to it fails.
     if (execWritable) f('exec', '');
-    else fs.mkdirSync(path.join(dir, 'exec'));  // a write to it fails, as for a profile without a guarded mode
+    else fs.mkdirSync(path.join(dir, 'exec'));  // as for a profile without a guarded mode
+    if (!levelWritable) fs.mkdirSync(path.join(dir, 'level'));
+    if (!stateWritable) fs.mkdirSync(path.join(dir, 'state'));
     let script = fs.readFileSync(GUARD, 'utf8').replace(/^#!.*\n/, '');
     for (const [real, stand] of Object.entries(files)) script = script.split(real).join(stand);
     const p = f('guard.sh', script);
     const r = spawnSync('bash', [p, 'bash', '-c', 'echo "LEVEL=$PROTECT_SECRETS_LEVEL DROP=${PROTECT_SECRETS_DROPPED:-}|${PROTECT_SECRETS_DROP_REASON:-}"'],
       { encoding: 'utf8', env: { ...process.env, HOSTNAME: hostname } });
     const read = (n) => { try { return fs.readFileSync(path.join(dir, n), 'utf8'); } catch { return null; } };
+    assert.doesNotMatch(r.stderr, SHELL_FILE_ERROR, `the shell reported a file it opened: ${JSON.stringify(arguments[0])}`);
     return { status: r.status, out: r.stdout, err: r.stderr, level: read('level'), state: read('state'), exec: read('exec') };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -409,6 +417,31 @@ test('secrets-guard: a drop in level is announced once, with its reason; equal o
   assert.strictEqual(runGuard(OFF).exec, '', 'no guarded mode when off');
   // An unreadable options file is not "off".
   assert.match(runGuard({ options: null }).out, /LEVEL=kernel/);
+});
+
+test('secrets-guard: a file it cannot open or write is never a shell error in the log', () => {
+  // runGuard asserts the quiet stderr; these are the hosts where a file is
+  // missing or refused. Only off starts without the level file; on refuses.
+  const OFF = { options: '{"protect_secrets": false}' };
+  for (const host of [{ state: null }, { state: null, ...OFF }, { options: null }, { apparmor: null }, { label: null },
+    { stateWritable: false }, { levelWritable: false, ...OFF }]) {
+    assert.strictEqual(runGuard(host).status, 0, JSON.stringify(host));
+  }
+  for (const host of [{ levelWritable: false }, { levelWritable: false, apparmor: 'N' }]) {
+    assert.strictEqual(runGuard(host).status, 1, JSON.stringify(host));
+  }
+  // The same order in every shell script that runs at the service's start: the
+  // guard family and the s6 service (the core's own scripts are the core's to check).
+  const BIN = path.dirname(GUARD);
+  const SERVICE = path.dirname(RUN);
+  const scripts = [...fs.readdirSync(BIN).filter((n) => n.startsWith('secrets-guard')).map((n) => path.join(BIN, n)),
+    ...fs.readdirSync(SERVICE).map((n) => path.join(SERVICE, n))]
+    .filter((p) => fs.statSync(p).isFile() && /^#!.*\b(ba)?sh(-static)?\b/.test(fs.readFileSync(p, 'utf8').split('\n', 1)[0]));
+  for (const p of [GUARD, RUN]) assert.ok(scripts.includes(p), `the scan reads ${path.basename(p)}`);
+  const late = scripts.flatMap((p) => fs.readFileSync(p, 'utf8').split('\n')
+    .map((l, i) => [`${path.relative(ROOTFS, p)}:${i + 1}`, l])
+    .filter(([, l]) => !l.trim().startsWith('#') && /(?<![0-9&])[<>]\s*"?[/$][^\s;|&)]*"?\)?\s+2>\s*\/dev\/null/.test(l)));
+  assert.deepStrictEqual(late, [], 'a file opened before stderr is silenced');
 });
 
 test('secrets-guard-notice: the text names the drop and its reason', () => {
