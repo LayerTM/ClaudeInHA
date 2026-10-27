@@ -275,3 +275,7 @@ engine_mcp_add() {
     shift
     claude mcp add "${name}" -s user "${env_args[@]}" -- "$@"
 }
+
+# engine_mcp_remove NAME -- drops the user-scope registration so the next
+# engine_mcp_add starts from nothing (a changed credential, a disabled server).
+engine_mcp_remove() { claude mcp remove -s user "$1"; }
