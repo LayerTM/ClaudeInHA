@@ -5,6 +5,7 @@
 ### Changed
 - The configuration folder is declared with the map type `app_config`; the Supervisor deprecated `addon_config`
   and logged a warning at every start. The folder is the same one, mounted at the same path.
+  Needs Supervisor 2026.07.1 or newer; an older Supervisor keeps the installed version until it is updated.
 - Built on ha-agent-core 0.11.2 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.11.2)):
   the `hass-mcp` registration follows the current Home Assistant URL and token at every start, so a
   changed token replaces it and a removed token unregisters it.
