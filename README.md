@@ -61,8 +61,9 @@ A Home Assistant app (formerly called an add-on) that runs Anthropic's [Claude C
    **Claude Code** entry in the sidebar.
 
 Authenticate by running `claude` in the console and following the login URL
-(subscription), or set an API key / OAuth token in the configuration. See the
-[documentation](claude-code/DOCS.md) for details.
+(subscription), or set an API key / OAuth token in the configuration. Both ways
+work in the app's own console, with nothing installed on your computer — the
+steps are in [Authentication](claude-code/DOCS.md#authentication-pick-one).
 
 ## Requirements
 
