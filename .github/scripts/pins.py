@@ -11,6 +11,11 @@ same marker works for a Dockerfile ARG and for an image tag in build.yaml.
 The files are discovered, not listed: every tracked file carrying a marker
 takes part.
 
+A tracked `core.lock.json` (the pinned ha-agent-core release) needs no marker
+either: it is a `core-lock` pin on the GitHub repository its own `url` names,
+compared with that repository's latest release. Bumping it replaces the file
+with the `core.lock.json` asset of that release.
+
 A tracked package.json with a package-lock.json beside it needs no markers:
 each of its `dependencies` is an `npm <package>` pin and must be an exact
 version. Bumping one also refreshes that lockfile (npm, scripts off), so the
@@ -20,6 +25,8 @@ Kinds:
   pypi <package>                    latest release on PyPI
   npm <package>                     the `latest` dist-tag on npm
   github-release <owner/repo>       the latest (non-prerelease) GitHub release
+  core-lock <owner/repo>            the latest GitHub release of the repository the
+                                    lock's url points at (found, not declared)
   nodejs lts-ready                  newest Node.js release on the newest major
                                     line that is either the one pinned now or
                                     has had an LTS release (a new odd/current
@@ -141,7 +148,7 @@ class Upstream:
         if kind == "npm" and len(args) == 1:
             url = f"https://registry.npmjs.org/{args[0]}/latest"
             return clean_version(self.text(url, "version"), url)
-        if kind == "github-release" and len(args) == 1:
+        if kind in ("github-release", "core-lock") and len(args) == 1:
             url = f"https://api.github.com/repos/{args[0]}/releases/latest"
             return clean_version(self.text(url, "tag_name"), url)
         if kind == "nodejs" and args == ["lts-ready"]:
@@ -212,6 +219,8 @@ class Pin:
     @property
     def name(self) -> str:
         # `ARG NAME=` -> NAME; `amd64: image:` -> amd64
+        if self.kind == "core-lock":
+            return self.args[0].split("/")[-1]
         tokens = self.head.split()
         if tokens[:1] == ["ARG"]:
             tokens = tokens[1:]
@@ -293,11 +302,45 @@ def npm_manifest_pins(file: pathlib.Path, root: pathlib.Path, text: str) -> list
     return found
 
 
+CORE_LOCK_URL = re.compile(r"^https://github\.com/(?P<repo>[^/]+/[^/]+)/releases/download/v(?P<version>[^/]+)/")
+
+
+def core_lock_pin(file: pathlib.Path, root: pathlib.Path, text: str) -> Pin:
+    """The one pin of a core.lock.json: its version, on the repository its url names."""
+    rel = file.relative_to(root)
+    try:
+        lock = json.loads(text)
+        version, url = lock["version"], lock["url"]
+    except (ValueError, KeyError, TypeError) as err:
+        raise PinError(f"{rel}: not a lock with a version and a url: {err}") from err
+    named = CORE_LOCK_URL.match(url) if isinstance(url, str) else None
+    if not named or named["version"] != version or not isinstance(version, str) or not VERSION.match(version):
+        raise PinError(f"{rel}: url {url!r} is not the GitHub release download of version {version!r}")
+    line_no = next((i + 1 for i, line in enumerate(text.splitlines()) if re.match(r'^\s*"version":', line)), 1)
+    return Pin(file, line_no, "core-lock", [named["repo"]], "", version, "")
+
+
+def core_lock_asset(pin: Pin, upstream: Upstream) -> str:
+    """The core.lock.json published with the release the pin is bumped to."""
+    url = f"https://github.com/{pin.args[0]}/releases/download/v{pin.target}/core.lock.json"
+    text = upstream.get(url).decode("utf-8", "replace")
+    try:
+        got = json.loads(text).get("version")
+    except (ValueError, AttributeError) as err:
+        raise PinError(f"{url} is not a lock: {err}") from err
+    if got != pin.target:
+        raise PinError(f"{url} locks version {got!r}, not {pin.target}")
+    return text if text.endswith("\n") else text + "\n"
+
+
 def discover(root: pathlib.Path) -> list[Pin]:
     pins: list[Pin] = []
     for file, text in tracked_texts(root):
         lines = text.splitlines()
         rel = file.relative_to(root)
+        if file.name == "core.lock.json":
+            pins.append(core_lock_pin(file, root, text))
+            continue
         if file.name == "package.json" and (file.parent / "package-lock.json").is_file():
             pins.extend(npm_manifest_pins(file, root, text))
             continue
@@ -374,6 +417,15 @@ def cmd_bump(root: pathlib.Path, upstream: Upstream, summary: pathlib.Path | Non
     resolve(pins, upstream)
     changes = []
     for pin in stale(pins):
+        if pin.kind == "core-lock":
+            pin.file.write_text(core_lock_asset(pin, upstream))
+            changes.append({
+                "name": pin.name, "file": str(pin.file.relative_to(root)), "kind": pin.kind,
+                "source": " ".join(pin.args), "from": pin.value, "to": pin.target,
+                "major": version_key(pin.target)[:2] != version_key(pin.value)[:2],
+            })
+            print(f"bumped   {label(pin, root)}: {pin.value} -> {pin.target}")
+            continue
         lines = pin.file.read_text().splitlines(keepends=True)
         line = lines[pin.line_no - 1]
         ending = line[len(line.rstrip("\r\n")):]
