@@ -3,6 +3,8 @@
 ## [1.62.1] — 2026-10-29
 
 ### Changed
+- The configuration folder is declared with the map type `app_config`; the Supervisor deprecated `addon_config`
+  and logged a warning at every start. The folder is the same one, mounted at the same path.
 - Built on ha-agent-core 0.11.2 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.11.2)):
   the `hass-mcp` registration follows the current Home Assistant URL and token at every start, so a
   changed token replaces it and a removed token unregisters it.

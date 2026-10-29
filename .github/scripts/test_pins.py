@@ -305,6 +305,49 @@ def failing_relock(directory: pathlib.Path, root: pathlib.Path) -> None:
 code, out = run(repo(files=LOCKED), answers(**{MCP: b'{"version": "0.0.82"}'}), "bump", relock=failing_relock)
 check("a lockfile that cannot be refreshed fails the bump", (code, "could not refresh" in out), (2, True))
 
+print("core.lock.json")
+CORE = "https://api.github.com/repos/Example/core/releases/latest"
+
+
+def lock(version: str, commit: str = "0" * 40) -> str:
+    return json.dumps({"lockVersion": 1, "version": version, "commit": commit,
+                       "url": f"https://github.com/Example/core/releases/download/v{version}/core-{version}.tar",
+                       "sha256": "e" * 64, "adapterApi": 5}, indent=2) + "\n"
+
+
+def asset(version: str) -> str:
+    return f"https://github.com/Example/core/releases/download/v{version}/core.lock.json"
+
+
+CORE_FILES = {"addon/core/core.lock.json": lock("0.3.0")}
+code, out = run(repo(files=CORE_FILES), answers(**{CORE: b'{"tag_name": "v0.3.0"}'}), "check")
+check("a current lock -> exit 0, the repository is read from its url",
+      (code, "core (addon/core/core.lock.json:3, core-lock Example/core)" in out), (0, True))
+code, out = run(repo(files=CORE_FILES), answers(**{CORE: b'{"tag_name": "v0.4.1"}'}), "check")
+check("a lock behind the latest release is reported", (code, "0.3.0 -> 0.4.1" in out), (1, True))
+code, _ = run(repo(files=CORE_FILES), answers(), "check")
+check("an unreadable core upstream fails closed", code, 2)
+for label, body in [
+    ("a url that is not a release download", lock("0.3.0").replace("github.com", "example.org")),
+    ("a url for another version", lock("0.3.0").replace("v0.3.0/", "v0.2.0/")),
+    ("a lock that is not JSON", "version: 0.3.0\n"),
+]:
+    code, _ = run(repo(files={"addon/core/core.lock.json": body}), answers(**{CORE: b'{"tag_name": "v0.3.0"}'}), "check")
+    check(f"{label} is refused", code, 2)
+
+root = repo(files=CORE_FILES)
+summary = root / "summary.json"
+code, out = run(root, answers(**{CORE: b'{"tag_name": "v0.4.1"}', asset("0.4.1"): lock("0.4.1", "1" * 40).encode()}),
+                "bump", "--summary", str(summary))
+check("bump replaces the lock with the release's own asset",
+      (code, (root / "addon/core/core.lock.json").read_text()), (0, lock("0.4.1", "1" * 40)))
+check("the summary names the move", [(c["name"], c["from"], c["to"]) for c in json.loads(summary.read_text())],
+      [("core", "0.3.0", "0.4.1")])
+code, _ = run(repo(files=CORE_FILES), answers(**{CORE: b'{"tag_name": "v0.4.1"}', asset("0.4.1"): lock("0.4.0").encode()}), "bump")
+check("an asset that locks another version fails the bump", code, 2)
+code, _ = run(repo(files=CORE_FILES), answers(**{CORE: b'{"tag_name": "v0.4.1"}'}), "bump")
+check("a release without the asset fails the bump", code, 2)
+
 print("this repository")
 found = pins.discover(REPO)
 check("every pin in the add-on declares an upstream (no unmarked pin)", len(found) > 0, True)
@@ -314,6 +357,8 @@ check("the Claude checksums have their version pin beside them",
       sum(1 for p in found if p.kind == "claude-code-sha256"), 2)
 check("the Node checksums have their version pin beside them",
       sum(1 for p in found if p.kind == "nodejs-sha256"), 2)
+check("the pinned ha-agent-core release is watched",
+      [p.args[0] for p in found if p.kind == "core-lock"], ["LayerTM/ha-agent-core"])
 
 if fails:
     print(f"{fails} failure(s)")
