@@ -15,8 +15,8 @@ Runs the full [Claude Code CLI](https://code.claude.com/docs) inside Home Assist
 
 | Method | How |
 |---|---|
-| **Subscription (recommended for interactive console use)** | Leave both fields empty, open the console, run `claude` and follow the login URL. The session survives restarts, but the login can lapse server-side after a period without use (the length is set by the server and not published) — Assist then fails to answer until someone logs in again. For an app left unattended, use the OAuth token below instead. |
-| **OAuth token (recommended for Assist/automation)** | On any machine run `claude setup-token`, paste the printed token into **OAuth Token**. No interactive login needed, and it's long-lived. One limit: this token type does not support Remote Control. |
+| **Subscription (recommended for interactive console use)** | Leave both fields empty, click **Open Web UI**, and in the **✳ Claude** tab follow the login URL. The session survives restarts, but the login can lapse server-side after a period without use (the length is set by the server and not published) — Assist then fails to answer until someone logs in again. For an app left unattended, use the OAuth token below instead. |
+| **OAuth token (recommended for Assist/automation)** | No Claude Code installation is needed — the app's own console has it. Click **Open Web UI**, press **+** to open a shell tab and run `claude setup-token`. Open the printed link, sign in with your Claude account and paste the code it shows back into the shell tab. Copy the token it then prints, open the app's **Configuration** tab, paste it into **OAuth Token**, click **Save** and restart the app. (On a computer that already has Claude Code you can run `claude setup-token` there instead.) No interactive login needed, and it's long-lived. One limit: this token type does not support Remote Control. |
 | **API key** | Paste a key from [console.anthropic.com](https://console.anthropic.com) into **API Key**. Pay-per-use. |
 
 ## The console
