@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.62.1] — 2026-10-29
+
+### Changed
+- Built on ha-agent-core 0.11.2 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.11.2)):
+  the `hass-mcp` registration follows the current Home Assistant URL and token at every start, so a
+  changed token replaces it and a removed token unregisters it.
+- Claude Code 2.1.310 → 2.1.312 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md))
+- Node.js 26.12.1 → 26.13.0, now Long Term Support ([release notes](https://github.com/nodejs/node/blob/main/doc/changelogs/CHANGELOG_V26.md#26.13.0))
+
 ## [1.62.0] — 2026-10-26
 
 ### Added
