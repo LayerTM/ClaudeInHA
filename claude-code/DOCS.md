@@ -135,7 +135,7 @@ leak and a watched device going offline — are **always** sent.
 All new anomalies from one cycle are batched into a single notification titled
 *Claude · Home alert*. As with the monitor and digest, set `HA_NOTIFY_SERVICE`
 in Environment Variables to push to your phone; otherwise it lands in the HA
-notification bell. Activity is written to the app log (lines starting with `[cc-alerts]`).
+notification bell. Alerts appear only as that notification; the app log shows a line starting with `[cc-alerts]` only for a setup problem, such as an empty offline-entity list.
 
 ### Adding, changing, or removing an alert
 
