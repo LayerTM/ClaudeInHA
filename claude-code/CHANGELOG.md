@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.62.2] — 2026-10-29
+
+### Fixed
+- Changing the personal skills repository (`skills_git`) now replaces the cached clone with a fresh clone of the
+  new repository; before, the previous repository kept being pulled and the new one was never used.
+  Built on ha-agent-core 0.11.3 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.11.3)).
+
 ## [1.62.1] — 2026-10-29
 
 ### Changed
