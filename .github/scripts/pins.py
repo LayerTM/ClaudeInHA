@@ -68,6 +68,8 @@ import urllib.request
 MARKER = re.compile(r"^\s*#\s*upstream:\s*(\S+)((?:\s+\S+)*)\s*$")
 PINNED = re.compile(r"^(?P<head>.*[=:])(?P<value>[^=:\s]+)(?P<tail>\s*)$")
 VERSION = re.compile(r"^\d+(?:\.\d+)*$")
+# a semver pre-release (v27.0.0-alpha.0.0.0): published in the Node.js index, never a pin target
+PRERELEASE = re.compile(r"^v?\d+\.\d+\.\d+-\S+$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 # checksum kind -> the version kind it belongs to
 CHECKSUM_OWNER = {"claude-code-sha256": "claude-code", "nodejs-sha256": "nodejs"}
@@ -194,6 +196,8 @@ class Upstream:
                 raise PinError(f"{url} lists a release that is not an object: {rel!r}")
             if not isinstance(rel.get("version"), str):
                 raise PinError(f"{url} lists a release whose version is not text: {rel!r}")
+            if PRERELEASE.match(rel["version"].strip()):
+                continue
             version = clean_version(rel["version"], url)
             major = version_key(version)[0]
             by_major.setdefault(major, []).append(version)
