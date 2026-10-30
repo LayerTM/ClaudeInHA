@@ -238,6 +238,14 @@ same = json.dumps([{"version": "v27.0.0", "lts": False}, {"version": "v26.9.0", 
 code, out = run(repo(), answers(**{"https://nodejs.org/dist/index.json": same}), "check")
 check("otherwise the newest release on the pinned major line", "26.8.1 -> 26.9.0" in out, True)
 
+pre = json.dumps([{"version": "v27.0.0-alpha.0.0.0", "lts": False}, {"version": "v27.0.0-rc.1", "lts": "Next"},
+                  {"version": "v26.9.0", "lts": False}]).encode()
+code, out = run(repo(), answers(**{"https://nodejs.org/dist/index.json": pre}), "check")
+check("a pre-release is skipped, even on a new major or marked LTS", (code, "26.8.1 -> 26.9.0" in out), (1, True))
+junk = json.dumps([{"version": "vnext", "lts": False}, {"version": "v26.9.0", "lts": False}]).encode()
+code, _ = run(repo(), answers(**{"https://nodejs.org/dist/index.json": junk}), "check")
+check("a Node.js version that is neither release nor pre-release still fails closed", code, 2)
+
 print("bump")
 root = repo()
 summary = root / "summary.json"
