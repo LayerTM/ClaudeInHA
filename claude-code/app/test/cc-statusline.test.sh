@@ -12,7 +12,6 @@
 # Requires: bash + jq. A missing dependency FAILS rather than skipping.
 #
 # Run:  bash claude-code/app/test/cc-statusline.test.sh
-#   or, from claude-code/app:  npm run test:statusline
 set -o pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
