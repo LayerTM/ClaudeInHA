@@ -15,6 +15,11 @@
   every start with only a warning. An empty file is now repaired at start. A file with other
   content is never overwritten, and every write replaces the file whole or not at all.
 
+### Changed
+- Claude Code 2.1.312 → 2.1.318 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md))
+- `@playwright/mcp` 0.0.83 → 0.0.84 ([release notes](https://github.com/microsoft/playwright-mcp/releases/tag/v0.0.84))
+- ccstatusline 2.2.32 → 2.2.33 ([release notes](https://github.com/sirmalloc/ccstatusline/releases/tag/v2.2.33))
+
 ## [1.62.2] — 2026-10-29
 
 ### Fixed
