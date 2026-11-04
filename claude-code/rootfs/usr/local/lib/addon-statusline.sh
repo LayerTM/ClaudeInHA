@@ -10,6 +10,9 @@
 # the commands earlier versions installed. Anything else is the user's and is
 # never touched.
 
+# shellcheck source=addon-settings-file.sh
+source "$(dirname "${BASH_SOURCE[0]}")/addon-settings-file.sh"
+
 CC_STATUSLINE_CMD=/usr/local/bin/cc-statusline-width
 
 # Earlier defaults, one per line: the 1.2.x cc-statusline script and the
@@ -37,9 +40,9 @@ CC_STATUSLINE_REFRESH=30
 # Prints exactly one of: seeded | migrated | unchanged | failed.
 statusline_seed_or_migrate() {
     local sf="${1:?settings file required}"
-    local state tmp
+    local state
 
-    [ -f "${sf}" ] || printf '{}\n' > "${sf}"
+    settings_file_ready "${sf}" || { printf 'failed\n'; return 1; }
 
     # Classify first, then write. A jq that could not run is `failed`, never
     # `unchanged`: an empty answer must not read as "nothing to do".
@@ -60,26 +63,20 @@ statusline_seed_or_migrate() {
 
     case "${state}" in
         absent | superseded)
-            tmp="$(mktemp)" || { printf 'failed\n'; return 1; }
-            if jq --arg cmd "${CC_STATUSLINE_CMD}" --argjson every "${CC_STATUSLINE_REFRESH}" \
-                  '.statusLine = {type: "command", command: $cmd, padding: 0, refreshInterval: $every}' \
-                  "${sf}" > "${tmp}" 2>/dev/null && mv "${tmp}" "${sf}"; then
+            if settings_file_edit "${sf}" --arg cmd "${CC_STATUSLINE_CMD}" --argjson every "${CC_STATUSLINE_REFRESH}" \
+                  '.statusLine = {type: "command", command: $cmd, padding: 0, refreshInterval: $every}'; then
                 if [ "${state}" = absent ]; then printf 'seeded\n'; else printf 'migrated\n'; fi
                 return 0
             fi
-            rm -f "${tmp}"
             printf 'failed\n'
             return 1 ;;
         no-interval)
             # Our wrapper, installed before the interval existed. Add only the
             # interval; padding and anything else in the object stay as they are.
-            tmp="$(mktemp)" || { printf 'failed\n'; return 1; }
-            if jq --argjson every "${CC_STATUSLINE_REFRESH}" '.statusLine.refreshInterval = $every' \
-                  "${sf}" > "${tmp}" 2>/dev/null && mv "${tmp}" "${sf}"; then
+            if settings_file_edit "${sf}" --argjson every "${CC_STATUSLINE_REFRESH}" '.statusLine.refreshInterval = $every'; then
                 printf 'migrated\n'
                 return 0
             fi
-            rm -f "${tmp}"
             printf 'failed\n'
             return 1 ;;
         current | foreign)
