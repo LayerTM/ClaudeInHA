@@ -107,7 +107,8 @@ engine_auth() {
         bashio::log.info "CLAUDE_CODE_OAUTH_TOKEN configured"
     fi
 
-    if ! bashio::var.has_value "${api_key}" && ! bashio::var.has_value "${oauth_token}"; then
+    if ! bashio::var.has_value "${api_key}" && ! bashio::var.has_value "${oauth_token}" \
+        && [ ! -e "${HOME}/.claude/.credentials.json" ]; then
         bashio::log.notice "No api_key or oauth_token set — log in from the Claude tab (run 'claude' and follow the URL) or use a token from 'claude setup-token'"
     fi
 }
