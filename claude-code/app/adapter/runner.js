@@ -160,6 +160,9 @@ function launch(spec, { env }) {
   }
 
   const extra = { IS_SANDBOX: '1', DISABLE_AUTOUPDATER: '1' };
+  // The CLI's own per-request limit for an HTTP tool server is 60 s, the same as Home
+  // Assistant's; without this the agent reads its own timeout, not the relay's answer.
+  if (spec.toolTimeoutSeconds) extra.MCP_TOOL_TIMEOUT = String(spec.toolTimeoutSeconds * 1000);
   for (const key of PASSTHROUGH_ENV) {
     if (env[key]) extra[key] = env[key];
   }

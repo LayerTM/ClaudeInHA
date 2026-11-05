@@ -167,7 +167,7 @@ test('/api/status answers with exactly the recorded set of fields', async () => 
       'alerts', 'audit_error', 'audit_recording', 'auth', 'body_max_bytes', 'budget', 'chat_health',
       'claude_version', 'core_commit', 'core_version', 'engine', 'engine_version', 'ha_mcp', 'ha_mcp_auth',
       'ha_mcp_connected', 'memory_max_bytes',
-      'model', 'prompt_max_bytes', 'prompt_timeout_ms', 'ready', 'request_fields', 'version', 'web',
+      'model', 'prompt_max_bytes', 'prompt_timeout_ms', 'protect_secrets_level', 'ready', 'request_fields', 'version', 'web',
     ]);
     assert.equal(body.web, null, 'the web is off unless the options turn it on');
     assert.deepEqual(Object.keys(body.budget).sort(), ['limit', 'spent']);
@@ -191,6 +191,7 @@ test('/api/status answers with exactly the recorded set of fields', async () => 
       audit_recording: true,
       audit_error: null,
       prompt_timeout_ms: runner.TIMEOUT_MS,
+      protect_secrets_level: null,
       budget: { limit: 0, spent: 0 },
       alerts: null,
     });
@@ -208,4 +209,14 @@ test('the adapter names the engine and reads the version from `claude --version`
   assert.equal(descriptor.parseVersion('2.1.274 (Claude Code)'), '2.1.274');
   assert.equal(descriptor.parseVersion('9.9.9'), '9.9.9');
   assert.equal(descriptor.parseVersion(''), null);
+});
+
+test('a run with Home Assistant tools gets the CLI tool timeout the core asks for, and one without gets none', () => {
+  const { launchSpec } = require('../server/prompt/run');
+  const { runner: adapterRunner } = require('../adapter');
+  const withTools = launchSpec({ mcpConfigPath: '/tmp/mcp.json', haTools: ['GetLiveContext'], intents: [] });
+  assert.ok(withTools.toolTimeoutSeconds > 60, 'the core asks for more than the 60 s the CLI defaults to');
+  assert.equal(adapterRunner.launch(withTools, { env: {} }).env.MCP_TOOL_TIMEOUT, String(withTools.toolTimeoutSeconds * 1000));
+  const without = launchSpec({ intents: [] });
+  assert.equal(adapterRunner.launch(without, { env: {} }).env.MCP_TOOL_TIMEOUT, undefined);
 });

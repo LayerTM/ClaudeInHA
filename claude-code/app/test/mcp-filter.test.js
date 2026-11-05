@@ -30,11 +30,11 @@ test('the methods a prompt run needs are forwarded', () => {
     [rpc('notifications/cancelled', undefined, { requestId: 3 }), []],
   ];
   for (const [m, calls] of cases) {
-    assert.deepEqual(judge(m, basenames), { forward: true, calls }, m.method);
+    assert.deepEqual(judge(m, basenames), { forward: true, batch: false, calls }, m.method);
   }
   assert.deepEqual(
     judge([rpc('tools/list', 1), rpc('notifications/initialized')], basenames),
-    { forward: true, calls: [] },
+    { forward: true, batch: true, calls: [] },
   );
 });
 
