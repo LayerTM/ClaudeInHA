@@ -104,6 +104,24 @@ done = run(COMPLETE.replace("    needs: [alpha, beta]\n", ""))
 check("exit code", done.returncode, 1)
 check("names both gates", "'alpha'" in done.stderr and "'beta'" in done.stderr, True)
 
+print("An image step with a network is refused")
+IMAGE_STEP = COMPLETE.replace(
+    '  beta:\n    runs-on: ubuntu-latest\n    steps: [{run: "true"}]\n',
+    "  beta:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n"
+    "          docker run --rm {flags}\\\n"
+    "            --entrypoint bash some-image /run-this.sh\n",
+)
+check("the fixture has the step", "docker run" in IMAGE_STEP, True)
+done = run(IMAGE_STEP.replace("{flags}", ""))
+check("exit code", done.returncode, 1)
+check("says what is wrong", "with a network" in done.stderr, True)
+done = run(IMAGE_STEP.replace("{flags}", "--network none "))
+check("none is accepted", done.returncode, 0)
+done = run(IMAGE_STEP.replace("{flags}", "\\\n            --network none "))
+check("none on a continuation line is accepted", done.returncode, 0)
+done = run(IMAGE_STEP.replace("{flags}", "--network host "))
+check("another network is refused", done.returncode, 1)
+
 print("A workflow with no release job is refused, not passed over")
 done = run(COMPLETE.replace("  release:\n", "  publish:\n"))
 check("exit code", done.returncode, 1)
