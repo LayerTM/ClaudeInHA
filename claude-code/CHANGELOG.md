@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.62.5] — 2026-11-05
+
+### Fixed
+- A Home Assistant tool that runs longer than 60 seconds, such as a script with a long delay, is
+  cut off by Home Assistant itself, wherever the script had got to. Claude used to read only
+  "The operation timed out." Now it is told the tool was cut off and may have stopped halfway,
+  and the audit marks the call as failed.
+- Stopping the add-on cancels a tool that is still running, the same way Home Assistant does
+  after 60 seconds: a script with several steps stops where it is, and a device whose last step
+  had not come stays as it is.
+- Correction to 1.62.4: a tool whose question had ended runs to its end only within Home
+  Assistant's own limit of 60 seconds for one call. Past that, Home Assistant cancels it. The
+  hour mentioned there is how long the add-on waits for a Home Assistant that never ends a
+  request, not how long a tool may run.
+- A very large answer from Home Assistant, from many devices that were each large, could run the
+  add-on out of memory; it now has its own memory budget. Asking Assist for a device on an
+  install too large for that now says Home Assistant's answer is too large, instead of asking
+  you to try again.
+- The console page reloads its stylesheets and scripts by itself, up to five times over about
+  30 seconds, when they do not arrive, and then says the console could not load.
+- The console's menus stay on the screen on a narrow window.
+  Built on ha-agent-core 0.12.0 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.12.0)).
+
 ## [1.62.4] — 2026-11-05
 
 ### Fixed
