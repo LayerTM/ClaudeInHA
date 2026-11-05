@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.62.3] — 2026-11-04
+
+### Fixed
+- On a Home Assistant with a large number of entities (a states list over 1 MiB), every confirmed
+  action through Assist failed with "I couldn't look the devices up". The states list is now read
+  as it arrives, and a large tool catalog, live context or tool answer no longer leaves the agent
+  without an answer. An answer from Home Assistant that stops halfway now fails at once instead
+  of leaving the request waiting.
+  Built on ha-agent-core 0.11.4 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.11.4)).
+- A power cut could leave Claude's `settings.json` empty. The status line, the console's safety
+  hooks (backup before a risky change, action log, notification when input is needed) and the
+  setting that lets the add-on count transcripts before Claude deletes them were then skipped at
+  every start with only a warning. An empty file is now repaired at start. A file with other
+  content is never overwritten, and every write replaces the file whole or not at all.
+
+### Changed
+- Claude Code 2.1.312 → 2.1.318 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md))
+- `@playwright/mcp` 0.0.83 → 0.0.84 ([release notes](https://github.com/microsoft/playwright-mcp/releases/tag/v0.0.84))
+- ccstatusline 2.2.32 → 2.2.33 ([release notes](https://github.com/sirmalloc/ccstatusline/releases/tag/v2.2.33))
+- Base image Debian base 9.5.1 → 9.5.2 ([release notes](https://github.com/hassio-addons/addon-debian-base/releases/tag/v9.5.2)): updated time-zone data
+
 ## [1.62.2] — 2026-10-29
 
 ### Fixed

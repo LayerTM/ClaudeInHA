@@ -26,6 +26,9 @@
 # Same rule the statusLine block above it follows for its own superseded
 # commands.
 
+# shellcheck source=addon-settings-file.sh
+source "$(dirname "${BASH_SOURCE[0]}")/addon-settings-file.sh"
+
 CC_HOOK_AUDIT_CMD=/usr/local/bin/cc-hook-audit
 CC_HOOK_BACKUP_CMD=/usr/local/bin/cc-hook-backup
 CC_HOOK_NOTIFY_CMD=/usr/local/bin/cc-hook-notify
@@ -77,16 +80,15 @@ hooks_audit_settings_json() {
 # Never removes or rewrites a hook the add-on did not install.
 hooks_seed_or_migrate() {
     local sf="${1:?settings file required}"
-    local tmp n
+    local n
 
-    [ -f "${sf}" ] || printf '{}\n' > "${sf}"
+    settings_file_ready "${sf}" || { printf 'failed\n'; return 1; }
 
     # No hooks at all — a fresh install. Seed the whole block.
     if [ "$(jq -r '(.hooks // {}) | length' "${sf}" 2>/dev/null)" = "0" ]; then
         local audit_entry
         audit_entry="$(hooks_audit_entry_json)" || { printf 'failed\n'; return 1; }
-        tmp="$(mktemp)" || { printf 'failed\n'; return 1; }
-        if jq --argjson audit_entry "${audit_entry}" \
+        if settings_file_edit "${sf}" --argjson audit_entry "${audit_entry}" \
               --arg backup "${CC_HOOK_BACKUP_MATCHER}" \
               --arg backup_cmd "${CC_HOOK_BACKUP_CMD}" \
               --arg notify_cmd "${CC_HOOK_NOTIFY_CMD}" '
@@ -95,11 +97,10 @@ hooks_seed_or_migrate() {
                     PostToolUse:        [$audit_entry],
                     PostToolUseFailure: [$audit_entry],
                     Notification:       [{hooks: [{type: "command", command: $notify_cmd}]}]
-                }' "${sf}" > "${tmp}" 2>/dev/null && mv "${tmp}" "${sf}"; then
+                }'; then
             printf 'seeded\n'
             return 0
         fi
-        rm -f "${tmp}"
         printf 'failed\n'
         return 1
     fi
@@ -135,8 +136,7 @@ hooks_seed_or_migrate() {
         0)  printf 'unchanged\n'; return 0 ;;
     esac
 
-    tmp="$(mktemp)" || { printf 'failed\n'; return 1; }
-    if jq --arg cur "${CC_HOOK_AUDIT_MATCHER}" \
+    if settings_file_edit "${sf}" --arg cur "${CC_HOOK_AUDIT_MATCHER}" \
           --arg old "${CC_HOOK_AUDIT_SUPERSEDED_MATCHERS}" \
           --arg cmd "${CC_HOOK_AUDIT_CMD}" '
             ($old | split("\n")) as $superseded
@@ -153,11 +153,10 @@ hooks_seed_or_migrate() {
                 (((.hooks.PostToolUse // []) | map(select((.hooks // []) | any(.command == $cmd))) | .[0].matcher)
                  // $cur) as $twin
                 | .hooks.PostToolUseFailure = ($ptf + [{matcher: $twin, hooks: [{type: "command", command: $cmd}]}])
-              end' "${sf}" > "${tmp}" 2>/dev/null && mv "${tmp}" "${sf}"; then
+              end'; then
         printf 'migrated\n'
         return 0
     fi
-    rm -f "${tmp}"
     printf 'failed\n'
     return 1
 }

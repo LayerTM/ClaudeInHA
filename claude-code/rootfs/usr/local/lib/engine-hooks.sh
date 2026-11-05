@@ -7,6 +7,8 @@
 # shellcheck shell=bash disable=SC2034
 
 # Shared helpers for the settings seeded into /data/home/.claude/settings.json.
+# shellcheck source=addon-settings-file.sh
+source /usr/local/lib/addon-settings-file.sh
 # shellcheck source=addon-hooks.sh
 source /usr/local/lib/addon-hooks.sh
 # shellcheck source=addon-statusline.sh
@@ -21,6 +23,7 @@ ENGINE_INSTRUCTIONS_FILE=CLAUDE.md
 ENGINE_USER_INSTRUCTIONS=/data/home/.claude/CLAUDE.md
 ENGINE_STATE_DIR=/data/home/.claude
 ENGINE_SKILLS_DIR=/data/home/.claude/skills
+ENGINE_SETTINGS_FILE="${ENGINE_SETTINGS_FILE:-/data/home/.claude/settings.json}"
 
 # --- Persistent HOME ---
 engine_prepare_home() {
@@ -146,8 +149,10 @@ engine_provision() {
             && bashio::log.info "Status line config seeded (ccstatusline)"
     fi
 
-    local settings_file=/data/home/.claude/settings.json
-    [ -f "${settings_file}" ] || echo '{}' > "${settings_file}"
+    local settings_file="${ENGINE_SETTINGS_FILE}"
+    # A zero-byte file (a power cut) is repaired here; a file with other content
+    # that is not JSON is left alone and every writer below reports `failed`.
+    settings_file_ready "${settings_file}" || true
     # Seeded when absent; our own earlier defaults are migrated to the width-aware
     # wrapper, and a wrapper installed before the refresh interval existed gets the
     # interval. A user's own command is left untouched — see addon-statusline.sh.
@@ -199,15 +204,11 @@ engine_prompt_settings() {
 # actually landing, so a failed write is never silent, and the value is read
 # back rather than assumed.
 engine_transcript_retention() {
-    local settings_file=/data/home/.claude/settings.json
-    local tmp
-    if tmp="$(mktemp)" \
-        && jq '.cleanupPeriodDays = 3650' "${settings_file}" > "${tmp}" 2>/dev/null \
-        && mv "${tmp}" "${settings_file}" \
+    local settings_file="${ENGINE_SETTINGS_FILE}"
+    if settings_file_edit "${settings_file}" '.cleanupPeriodDays = 3650' \
         && [ "$(jq -r '.cleanupPeriodDays // empty' "${settings_file}" 2>/dev/null)" = "3650" ]; then
         :
     else
-        rm -f "${tmp}"
         bashio::log.warning "Could not push Claude's own transcript sweep out of the way in ${settings_file} — it may delete transcripts before the core counts them"
     fi
     printf 'core\n'
