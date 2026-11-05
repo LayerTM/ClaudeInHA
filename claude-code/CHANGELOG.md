@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.62.4] — 2026-11-05
+
+### Fixed
+- When a question to Claude ended while a Home Assistant tool was still running, for example
+  a script with a delay, Home Assistant cancelled the tool wherever it had got to, and a
+  script with several steps could stop halfway and leave a device on. The tool now runs to
+  its end. A tool still running an hour after its question ended is given up on, and with 64
+  requests already waiting for Home Assistant, new ones are refused with an error that says
+  why. This affected 1.62.3.
+  Built on ha-agent-core 0.11.5 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.11.5)).
+- A background question that was stopped by its time limit, such as the health check or the
+  morning briefing, was logged with an empty reason. The log now says how long it ran, the
+  session, how many requests it made and the last error from the API.
+- The start log no longer asks you to log in when you are already signed in from the console.
+  The notice appears only when there is no login at all.
+
 ## [1.62.3] — 2026-11-04
 
 ### Fixed

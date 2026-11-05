@@ -59,31 +59,31 @@ jobs:
       # the shared core's assembled package.json to keep declaring them.
       - name: Run alerts loop tests (bash + jq)
         working-directory: ${{ runner.temp }}/addon/app
-        run: bash test/cc-alerts.test.sh
+        run: node test-support/hermetic-test.js bash test/cc-alerts.test.sh
 
       - name: Run config-list tests (bash + jq)
         working-directory: ${{ runner.temp }}/addon/app
-        run: bash test/config-list.test.sh
+        run: node test-support/hermetic-test.js bash test/config-list.test.sh
 
       - name: Run monitoring loop tests (bash)
         working-directory: ${{ runner.temp }}/addon/app
-        run: bash test/cc-monitor.test.sh
+        run: node test-support/hermetic-test.js bash test/cc-monitor.test.sh
 
       - name: Run morning briefing tests (bash + jq)
         working-directory: ${{ runner.temp }}/addon/app
-        run: bash test/cc-digest.test.sh
+        run: node test-support/hermetic-test.js bash test/cc-digest.test.sh
 
       - name: Run audit-log hook tests (bash + jq)
         working-directory: ${{ runner.temp }}/addon/app
-        run: bash test/cc-hook-audit.test.sh
+        run: node test-support/hermetic-test.js bash test/cc-hook-audit.test.sh
 
       - name: Run status line migration tests (bash + jq)
         working-directory: ${{ runner.temp }}/addon/app
-        run: bash test/cc-statusline.test.sh
+        run: node test-support/hermetic-test.js bash test/cc-statusline.test.sh
 
       - name: Run settings.json writer tests (bash + jq)
         working-directory: ${{ runner.temp }}/addon/app
-        run: bash test/settings-file.test.sh
+        run: node test-support/hermetic-test.js bash test/settings-file.test.sh
 
   lint-js:
     name: JS lint & types
