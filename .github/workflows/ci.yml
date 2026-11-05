@@ -173,7 +173,7 @@ jobs:
       - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
       - name: Test the script that checks the gate list
         run: python3 .github/scripts/test_ci_gates.py
-      - name: Every gate is a gate the release waits for
+      - name: Every gate is a gate the release waits for, and no image step has a network
         run: python3 .github/scripts/ci_gates.py
 
   # Where every upstream pin comes from is declared beside it (see pins.py).
@@ -358,9 +358,9 @@ jobs:
           # A build that succeeds and produces a binary that cannot execute on
           # this architecture is the exact failure a user would hit, so ask the
           # image, not the builder.
-          docker run --rm --platform '${{ steps.target.outputs.platform }}' \
+          docker run --rm --network none --platform '${{ steps.target.outputs.platform }}' \
             --entrypoint /root/.local/bin/claude 'addon-image:${{ matrix.arch }}' --version
-          docker run --rm --platform '${{ steps.target.outputs.platform }}' \
+          docker run --rm --network none --platform '${{ steps.target.outputs.platform }}' \
             --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
             -e "require('/opt/agent-console/node_modules/node-pty').spawn('/bin/true', [], {}).onExit(({ exitCode }) => { console.log('node-pty spawns, exit ' + exitCode); process.exit(exitCode); })"
       - name: The bundled CLI accepts every argument list the prompt runner builds
@@ -368,7 +368,7 @@ jobs:
           # The lists come from the core and the adapter inside the image, not
           # from a copy, so a CLI bump that drops or renames a flag fails here
           # instead of turning every chat request into an error.
-          docker run --rm --platform '${{ steps.target.outputs.platform }}' \
+          docker run --rm --network none --platform '${{ steps.target.outputs.platform }}' \
             --volume "${PWD}/.github/scripts:/ci:ro" \
             --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
             /ci/runner_args_smoke.js /root/.local/bin/claude /opt/agent-console
@@ -378,7 +378,7 @@ jobs:
           # provisioning and the morning digest, run inside the image against a
           # recording stand-in for the CLI. What they set up and call is pinned
           # so that moving this code elsewhere can be checked against it.
-          docker run --rm --platform '${{ steps.target.outputs.platform }}' \
+          docker run --rm --network none --platform '${{ steps.target.outputs.platform }}' \
             --volume "${PWD}/claude-code/app/test/image:/pins-src:ro" \
             --entrypoint bash 'addon-image:${{ matrix.arch }}' /pins-src/behaviour-pins.sh
 

@@ -6,7 +6,7 @@
 # agent-ask, and that a prompt API run leaves nothing agent-usage counts.
 #
 # Runs as root inside a throwaway container of the add-on image:
-#   docker run --rm -v "$PWD/claude-code/app/test/image:/pins-src:ro" \
+#   docker run --rm --network none -v "$PWD/claude-code/app/test/image:/pins-src:ro" \
 #     --entrypoint bash <image> /pins-src/behaviour-pins.sh
 #
 # The Claude CLI is replaced by a recording fake after section 0, which runs
