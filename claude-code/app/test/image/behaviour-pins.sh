@@ -98,6 +98,7 @@ case "\$*" in
             for a in "\$@"; do
                 case "\$a" in
                     --allowed-tools|--allowedTools|--disallowed-tools|--disallowedTools|--tools|--add-dir|--mcp-config|--betas|--file) in_list=1 ;;
+                    --session-id) in_list=1 ;; # its one value is not a prompt
                     -*) in_list=0 ;;
                     *) [ "\$in_list" = 1 ] || positional=1 ;;
                 esac
@@ -634,8 +635,8 @@ ask_fakes
 out="$(printf 'PINS-QUESTION' | env -i PATH=/usr/bin:/bin HOME=/root /usr/local/bin/agent-ask)"
 eq "agent-ask: exit 0 with an answer" "$?" 0
 eq "agent-ask: the answer is Claude's" "${out}" "Good morning from the pins"
-eq "agent-ask: Claude is called with exactly -p and an empty tool list" \
-    "$(jq -c . "${P}/claude-args.jsonl")" '["-p","--allowed-tools",""]'
+eq "agent-ask: Claude is called with exactly -p, an empty tool list and its session id" \
+    "$(jq -c '.[4] |= test("^[0-9a-f-]{36}$")' "${P}/claude-args.jsonl")" '["-p","--allowed-tools","","--session-id",true]'
 eq "agent-ask: the question goes in on stdin" "$(cat "${P}/claude-stdin.txt")" PINS-QUESTION
 eq "agent-ask: it runs the persistent CLI" "$(cut -d'|' -f1 "${P}/claude.log")" /data/home/.local/bin/claude
 reset
@@ -652,8 +653,8 @@ eq "digest: states are fetched from the Supervisor, no credential in argv" "$(he
     "-K - -sS http://supervisor/core/api/states "
 eq "digest: the Supervisor bearer travels on stdin, not argv" "$(cat "${P}/curl-stdin.log")" \
     'header = "Authorization: Bearer EXAMPLE-sup"'
-eq "digest: Claude is called with exactly -p and an empty tool list" \
-    "$(jq -c . "${P}/claude-args.jsonl")" '["-p","--allowed-tools",""]'
+eq "digest: Claude is called with exactly -p, an empty tool list and its session id" \
+    "$(jq -c '.[4] |= test("^[0-9a-f-]{36}$")' "${P}/claude-args.jsonl")" '["-p","--allowed-tools","","--session-id",true]'
 yes_ "digest: the prompt goes in on stdin and carries the snapshot as data" \
     bash -c 'grep -q "====HOME SNAPSHOT====" /pins/claude-stdin.txt && grep -q "Pins Weather" /pins/claude-stdin.txt'
 yes_ "digest: Claude's environment was recorded" test -s "${P}/claude-env.log"
@@ -672,8 +673,8 @@ reset
 ask_fakes
 touch "${P}/log-env"
 run_monitor
-eq "monitor: Claude is called with exactly -p and an empty tool list" \
-    "$(jq -c . "${P}/claude-args.jsonl")" '["-p","--allowed-tools",""]'
+eq "monitor: Claude is called with exactly -p, an empty tool list and its session id" \
+    "$(jq -c '.[4] |= test("^[0-9a-f-]{36}$")' "${P}/claude-args.jsonl")" '["-p","--allowed-tools","","--session-id",true]'
 yes_ "monitor: the prompt goes in on stdin and carries the log as data" grep -q PINS-LOG-MARK "${P}/claude-stdin.txt"
 yes_ "monitor: Claude's environment was recorded" test -s "${P}/claude-env.log"
 no_ "monitor: no Supervisor or HA credential in Claude's environment" grep -qE '(^|,)(SUPERVISOR_TOKEN|SUPERVISOR_API_TOKEN|HA_TOKEN|HASS_TOKEN)(,|$)' "${P}/claude-env.log"

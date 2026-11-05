@@ -3,4 +3,48 @@
 # briefing: the prompt on stdin, the answer on stdout. Claude runs with an empty
 # tool list and without the permission bypass; the caller removes the Home
 # Assistant credentials from the environment.
-exec /data/home/.local/bin/claude -p --allowed-tools ""
+#
+# Claude prints nothing while it waits on the API or retries, so a call stopped
+# by the caller's time limit would leave no trace. On any failure this names the
+# session and says what the call was doing, read from the session's transcript;
+# the callers log the tail of stderr.
+home="${AGENT_ASK_HOME:-/data/home}"
+session="${AGENT_ASK_SESSION_ID:-$(cat /proc/sys/kernel/random/uuid)}"
+started="$(date +%s)"
+
+report() {
+    elapsed=$(( $(date +%s) - started ))
+    # shellcheck disable=SC2012 # one file named by a uuid, or none
+    transcript="$(ls "${home}"/.claude/projects/*/"${session}.jsonl" 2>/dev/null | head -n 1)"
+    what="no transcript"
+    if [ -n "${transcript}" ]; then
+        what="$(jq -rs '
+            def text: if type == "string" then . else (.message? // "unknown") end;
+            [ .[] | select(.type == "system" and .subtype == "api_error") ] as $errors
+            | "\([ .[] | select(.type == "api-request") ] | length) API requests, "
+              + "\([ .[] | select(.type == "assistant") ] | length) answers, "
+              + "\($errors | length) API errors"
+              + (if ($errors | length) > 0 then ", last: \($errors[-1].error | text | .[0:80])" else "" end)
+        ' "${transcript}" 2>/dev/null)" || what=""
+        [ -n "${what}" ] || what="unreadable transcript"
+    fi
+    printf 'agent-ask: %s after %s s, session %s: %s\n' "$1" "${elapsed}" "${session}" "${what}" >&2
+}
+
+# A background job's stdin is /dev/null unless it is redirected from elsewhere,
+# and in dash `<&0` is not elsewhere: hand the prompt over on a separate descriptor.
+exec 3<&0
+"${home}/.local/bin/claude" -p --allowed-tools "" --session-id "${session}" <&3 3<&- &
+child=$!
+stopped=0
+trap 'stopped=1; kill -TERM "${child}" 2>/dev/null' TERM INT
+wait "${child}"
+rc=$?
+if [ "${stopped}" -eq 1 ]; then
+    # The first wait was interrupted by the signal; this one is for the exit.
+    wait "${child}"
+    report "stopped"
+elif [ "${rc}" -ne 0 ]; then
+    report "failed (exit ${rc})"
+fi
+exit "${rc}"
