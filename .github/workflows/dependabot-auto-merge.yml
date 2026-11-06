@@ -10,6 +10,13 @@ name: Dependabot auto-merge
 # enables auto-merge, which then waits for the branch-protection required
 # checks before merging.
 #
+# On pull_request the workflow definition comes from the pull request's merge
+# commit, so a Dependabot bump of this very file would run its new action pins
+# with the write token before anyone reviews them. The guard job therefore runs
+# first, with a run step only (no action), and holds such a pull request for
+# review: the auto-merge job starts only when this file is not among the
+# changed files.
+#
 # A merge made with the workflow token raises no push event, so once the pull
 # request has merged this job starts the main-measured workflow, which runs CI
 # for the head of main unless it already has a run. That workflow also has a
@@ -24,8 +31,36 @@ permissions:
   pull-requests: write
 
 jobs:
-  auto-merge:
+  guard:
     if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      proceed: ${{ steps.files.outputs.proceed }}
+    steps:
+      - name: Hold a change to this workflow for review
+        id: files
+        # Fail closed: a file list that cannot be read counts as a change to
+        # this workflow.
+        run: |
+          if files="$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')" \
+            && [ -n "$files" ] \
+            && ! printf '%s\n' "$files" | grep -qxF '.github/workflows/dependabot-auto-merge.yml'; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "proceed=false" >> "$GITHUB_OUTPUT"
+          gh label create "needs review" --repo "$REPO" --color d93f0b --force || true
+          gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "needs review" || true
+          echo "::notice::this pull request changes the auto-merge workflow, or its file list could not be read; it is held for review"
+        env:
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  auto-merge:
+    needs: guard
+    if: ${{ needs.guard.outputs.proceed == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
