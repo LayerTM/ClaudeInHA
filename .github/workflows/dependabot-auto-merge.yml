@@ -3,11 +3,12 @@ name: Dependabot auto-merge
 # Automatically merges Dependabot pull requests for non-major updates once all
 # required status checks pass. Major version bumps are left for manual review.
 #
-# Runs on the plain pull_request event. GitHub treats a Dependabot-triggered
-# pull_request run as a fork run: its GITHUB_TOKEN is read-only by default and
-# the permissions block below raises it. The job never checks out or executes
-# the PR's code — it only reads Dependabot's metadata and enables auto-merge,
-# which then waits for the branch-protection required checks before merging.
+# Runs on the plain pull_request event. For pull requests opened by Dependabot
+# the workflow token is read-only unless the workflow asks for more, so the
+# permissions block below is what lets the job enable auto-merge. The job never
+# checks out or executes the PR's code — it only reads Dependabot's metadata and
+# enables auto-merge, which then waits for the branch-protection required
+# checks before merging.
 #
 # A merge made with the workflow token raises no push event, so once the pull
 # request has merged this job starts the main-measured workflow, which runs CI
