@@ -50,8 +50,8 @@ jobs:
             exit 0
           fi
           echo "proceed=false" >> "$GITHUB_OUTPUT"
-          gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "needs review"
           echo "::notice::this pull request changes the auto-merge workflow, or its file list could not be read; it is held for review"
+          gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "needs review"
         env:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
