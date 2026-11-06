@@ -3,9 +3,12 @@ name: Dependabot auto-merge
 # Automatically merges Dependabot pull requests for non-major updates once all
 # required status checks pass. Major version bumps are left for manual review.
 #
-# Safe use of pull_request_target: this job never checks out or executes the
-# PR's code — it only reads Dependabot's metadata and enables auto-merge, which
-# then waits for the branch-protection required checks before merging.
+# Runs on the plain pull_request event. For pull requests opened by Dependabot
+# the workflow token is read-only unless the workflow asks for more, so the
+# permissions block below is what lets the job enable auto-merge. The job never
+# checks out or executes the PR's code — it only reads Dependabot's metadata and
+# enables auto-merge, which then waits for the branch-protection required
+# checks before merging.
 #
 # A merge made with the workflow token raises no push event, so once the pull
 # request has merged this job starts the main-measured workflow, which runs CI
@@ -13,7 +16,7 @@ name: Dependabot auto-merge
 # schedule, but GitHub does not guarantee scheduled runs, so this dispatch is
 # what measures a bot merge.
 
-on: pull_request_target
+on: pull_request
 
 permissions:
   actions: write
@@ -22,14 +25,13 @@ permissions:
 
 jobs:
   auto-merge:
-    if: ${{ github.actor == 'dependabot[bot]' }}
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Fetch Dependabot metadata
         id: metadata
-        # Pinned to an immutable commit SHA (this job runs with write scope in a
-        # pull_request_target context). The version comment lets Dependabot's
+        # Pinned to an immutable commit SHA (this job runs with write scope). The version comment lets Dependabot's
         # github-actions updater keep the pin current.
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
 
