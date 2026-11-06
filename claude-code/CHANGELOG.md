@@ -20,10 +20,9 @@
 - The console's menus stay on the screen on a narrow window.
 
 ### Known limit
-- Stopping the add-on cancels a tool that is still running, the same way Home Assistant does
-  after 60 seconds: a script with several steps stops where it is, and a device whose last step
-  had not come stays as it is. The add-on now closes its open requests to Home Assistant at once
-  when it stops.
+- A confirmed action or a console service call returns at once or completes in Home Assistant.
+  Stopping or restarting the add-on does not stop a script it started: the script runs on in
+  Home Assistant (measured on Home Assistant 2026.10.4).
 
 Built on ha-agent-core 0.12.0 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.12.0)).
 
