@@ -18,8 +18,6 @@
 - The console page reloads its stylesheets and scripts by itself, up to five times over about
   30 seconds, when they do not arrive, and then says the console could not load.
 - The console's menus stay on the screen on a narrow window.
-
-### Known limit
 - A confirmed action or a console service call returns at once or completes in Home Assistant.
   Stopping or restarting the add-on does not stop a script it started: the script runs on in
   Home Assistant (measured on Home Assistant 2026.10.4).
