@@ -27,7 +27,7 @@ commit="$(node -p 'require(process.argv[1]).commit' "${lock}")"
 mkdir -p "${dest}"
 
 if gh release view "v${version}" --repo LayerTM/ha-agent-core >/dev/null 2>&1; then
-  curl -fsSL --proto '=https' --retry 3 --retry-delay 2 -o "${dest}/core.tar" "${url}" >&2
+  curl -fsSL --proto '=https' --retry 3 --retry-all-errors --retry-delay 2 -o "${dest}/core.tar" "${url}" >&2
   echo release
   exit 0
 fi
