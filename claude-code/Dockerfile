@@ -63,7 +63,7 @@ RUN arch="$(dpkg --print-architecture)" \
          *) echo "Unsupported architecture: ${arch}"; exit 1 ;; \
        esac \
     && tarball="node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" \
-    && { curl -fsSL --proto '=https' --retry 3 --retry-delay 2 -o "/tmp/${tarball}" \
+    && { curl -fsSL --proto '=https' --retry 3 --retry-all-errors --retry-delay 2 -o "/tmp/${tarball}" \
            "https://nodejs.org/dist/v${NODE_VERSION}/${tarball}" \
          || { echo "Could not download ${tarball}"; exit 1; }; } \
     && { echo "${expected}  /tmp/${tarball}" | sha256sum -c --strict - \
@@ -80,7 +80,7 @@ RUN arch="$(dpkg --print-architecture)" \
 FROM base AS core-archive
 COPY core/core.lock.json core/verify-core.js /tmp/core/
 RUN url="$(node /tmp/core/verify-core.js url --lock /tmp/core/core.lock.json)" \
-    && { curl -fsSL --proto '=https' --retry 3 --retry-delay 2 -o /core.tar "${url}" \
+    && { curl -fsSL --proto '=https' --retry 3 --retry-all-errors --retry-delay 2 -o /core.tar "${url}" \
          || { echo "Could not download ha-agent-core from ${url}"; exit 1; }; }
 
 # The add-on's own files plus the core, merged only after the archive matches the
@@ -154,7 +154,7 @@ RUN arch="$(dpkg --print-architecture)" \
          *[!0-9a-f]*) echo "Recorded checksum for ${claude_platform} is not hex: '${expected}'"; exit 1 ;; \
        esac \
     && mkdir -p /root/.local/share/claude/versions /root/.local/bin \
-    && { curl -fsSL --retry 3 --retry-delay 2 -o "${claude_bin}" \
+    && { curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o "${claude_bin}" \
            "${CLAUDE_DOWNLOAD_BASE}/${CLAUDE_CODE_VERSION}/${claude_platform}/claude" \
          || { echo "Could not download Claude Code ${CLAUDE_CODE_VERSION} for ${claude_platform}"; exit 1; }; } \
     && { printf '%s  %s\n' "${expected}" "${claude_bin}" | sha256sum -c - \
@@ -202,8 +202,8 @@ RUN arch="$(dpkg --print-architecture)" \
          arm64) ha_asset=ha_aarch64; yq_asset=yq_linux_arm64 ;; \
          *) echo "Unsupported architecture: ${arch}" && exit 1 ;; \
        esac \
-    && curl -fsSL --retry 3 --retry-delay 2 "https://github.com/home-assistant/cli/releases/download/${HA_CLI_VERSION}/${ha_asset}" -o /usr/bin/ha \
-    && curl -fsSL --retry 3 --retry-delay 2 "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/${yq_asset}" -o /usr/local/bin/yq \
+    && curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 "https://github.com/home-assistant/cli/releases/download/${HA_CLI_VERSION}/${ha_asset}" -o /usr/bin/ha \
+    && curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/${yq_asset}" -o /usr/local/bin/yq \
     && chmod +x /usr/bin/ha /usr/local/bin/yq \
     && ha help >/dev/null && yq --version
 

@@ -15,12 +15,18 @@ open, not by leaving it off a list.
 
 Usage:
   ci_gates.py [workflow.yml]   -> silent and 0 when the list is complete
+
+It also holds one rule about downloads: curl's --retry covers only a timeout and
+HTTP 408/429/500/502/503/504, so a connection that dies mid-transfer (exit 56)
+is never retried by it. A curl that asks for --retry therefore also asks for
+--retry-all-errors, in every Dockerfile, shell script and workflow.
 """
 
 from __future__ import annotations
 
 import pathlib
 import re
+import subprocess
 import sys
 
 import yaml
@@ -29,6 +35,39 @@ DEFAULT = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/ci.ym
 RELEASE = "release"
 # One `docker run` command, with the lines it continues onto.
 DOCKER_RUN = re.compile(r"^[ \t]*docker run\b(?:.*\\\n)*.*", re.MULTILINE)
+
+
+# One curl invocation, ending at the next shell separator or the end of the
+# (continuation-joined) line.
+CURL = re.compile(r"\bcurl\b(?:(?!&&|\|\||[;|\n]).)*")
+RETRY = re.compile(r"(?<![\w-])--retry(?![\w-])")
+RETRY_ALL = re.compile(r"(?<![\w-])--retry-all-errors(?![\w-])")
+SCANNED = re.compile(r"(^|/)Dockerfile[^/]*$|\.(sh|ya?ml)$")
+
+
+def curl_retry_complaints(name: str, text: str) -> list[str]:
+    """Each curl in `text` that sets --retry without --retry-all-errors."""
+    joined = re.sub(r"\\\n", " ", text)
+    return [
+        f"{name}: curl has --retry but not --retry-all-errors: {m.group(0).strip()[:90]}"
+        for m in CURL.finditer(joined)
+        if RETRY.search(m.group(0)) and not RETRY_ALL.search(m.group(0))
+    ]
+
+
+def check_curl_retries(root: pathlib.Path) -> list[str]:
+    """Scan every tracked Dockerfile, shell script and workflow under `root`."""
+    listed = subprocess.run(
+        ["git", "-C", str(root), "ls-files"], capture_output=True, text=True
+    )
+    if listed.returncode != 0:
+        return [f"cannot list the files of {root}: {listed.stderr.strip()}"]
+    complaints = []
+    for rel in listed.stdout.splitlines():
+        if SCANNED.search(rel) and (root / rel).is_file():
+            text = (root / rel).read_text(encoding="utf-8", errors="replace")
+            complaints += curl_retry_complaints(rel, text)
+    return complaints
 
 
 def check(path: pathlib.Path) -> list[str]:
@@ -70,7 +109,7 @@ def check(path: pathlib.Path) -> list[str]:
 
 def main() -> None:
     path = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT
-    complaints = check(path)
+    complaints = check(path) + check_curl_retries(DEFAULT.parents[2])
     if complaints:
         for line in complaints:
             print(line, file=sys.stderr)

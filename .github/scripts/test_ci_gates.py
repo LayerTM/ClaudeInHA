@@ -137,6 +137,19 @@ done = run("just a string\n")
 check("exit code", done.returncode, 1)
 check("says it has no jobs", "no jobs mapping" in done.stderr, True)
 
+print("A curl that retries must retry every error, not only the transient HTTP ones")
+sys.path.insert(0, str(SCRIPT.parent))
+from ci_gates import curl_retry_complaints  # noqa: E402
+
+BAD = "curl -fsSL --retry 3 --retry-delay 2 -o /f https://x/y"
+check("--retry alone is refused", len(curl_retry_complaints("f", BAD)), 1)
+check("--retry-all-errors is accepted", curl_retry_complaints("f", BAD.replace("--retry 3", "--retry 3 --retry-all-errors")), [])
+check("no --retry is not this rule", curl_retry_complaints("f", "curl -fsSL -o /f https://x/y"), [])
+check("--retry-delay alone is not --retry", curl_retry_complaints("f", "curl -fsSL --retry-delay 2 https://x/y"), [])
+check("a continuation line is one command", len(curl_retry_complaints("f", "RUN curl -fsSL --retry 3 \\\n    -o /f https://x/y")), 1)
+check("a flag on a continuation line counts", curl_retry_complaints("f", "RUN curl -fsSL --retry 3 \\\n    --retry-all-errors -o /f https://x/y"), [])
+check("each curl in a && chain is judged alone", len(curl_retry_complaints("f", "curl --retry 3 --retry-all-errors a && curl --retry 3 b")), 1)
+
 print("This repository's own workflow")
 done = subprocess.run(
     [sys.executable, str(SCRIPT), str(WORKFLOW)], capture_output=True, text=True
