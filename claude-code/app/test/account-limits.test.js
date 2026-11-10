@@ -109,6 +109,33 @@ test('api key only: an empty list with the mode, and upstream is never asked', a
   } finally { srv.close(); }
 });
 
+test('api key beside a login: the key is what the CLI uses, so the mode is api_key', async () => {
+  // Measured on CLI 2.1.322: with ANTHROPIC_API_KEY set the CLI reports
+  // apiKeySource ANTHROPIC_API_KEY and bills the key, whether a /login
+  // credential file or CLAUDE_CODE_OAUTH_TOKEN is also present. The limits of
+  // the subscription would then describe an account the requests do not use.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'limits-key-and-login-'));
+  fs.mkdirSync(path.join(home, '.claude'));
+  fs.writeFileSync(path.join(home, '.claude', '.credentials.json'),
+    JSON.stringify({ claudeAiOauth: { accessToken: 'stored-login-access-token' } }));
+  for (const extra of [{ homeDir: home }, { homeDir: home, oauthToken: 'oauth-token-from-the-option' }]) {
+    const { app, calls } = build({
+      apiKey: 'sk-ant-api03-EXAMPLE0000000000',
+      ...extra,
+      upstream: () => { throw new Error('upstream must not be called when the CLI uses the API key'); },
+    });
+    const srv = await serve(app);
+    try {
+      const { status, body } = await srv.get();
+      assert.equal(status, 200);
+      assert.equal(body.mode, 'api_key', `mode with ${Object.keys(extra).join('+')}`);
+      assert.deepEqual(body.limits, []);
+      assert.equal(calls.length, 0);
+    } finally { srv.close(); }
+  }
+  fs.rmSync(home, { recursive: true, force: true });
+});
+
 test('subscription: the account\'s limits, mapped to the contract', async () => {
   const { app, calls } = build({
     oauthToken: 'oauth-access-token-from-the-option',

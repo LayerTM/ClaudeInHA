@@ -150,6 +150,8 @@ function launch(spec, { env }) {
   const settings = mergeSettings(spec.settings, web && web.guard);
   if (settings) args.push('--settings', settings);
   if (spec.model) args.push('--model', spec.model);
+  // A warm session reads its turns from stdin, one JSON line each.
+  if (spec.session) args.push('--input-format', 'stream-json');
   // Fine-grained partial-message events only when a streaming consumer is
   // attached; without this flag stream-json emits whole messages only.
   if (spec.stream) args.push('--include-partial-messages');
@@ -278,6 +280,31 @@ function createDecoder() {
   };
 }
 
+// A turn whose text starts with "/" is run by the CLI as one of its own commands
+// (`/model`, `/cost`, `/clear`, a skill), in `-p` and in stream-json alike, and a
+// command run inside a warm session outlives the reset (`/model` keeps its model).
+// Only a "/" at the very first position is parsed: one leading space makes it an
+// ordinary question. `--disable-slash-commands` is not the fix: it still treats the
+// text as a command (and refuses it), and it removes the `/clear` a session needs.
+const userText = (text) => (text.startsWith('/') ? ` ${text}` : text);
+
+// Warm sessions: the CLI's own `/clear` resets the conversation and answers with a
+// `conversation_reset` event, then a 0-turn result, which is when the reset is done.
+// `clearLine` is the only line that may carry a command: the core passes a turn's
+// text through `userText` before `userLine`, as it does for a fresh run's stdin.
+const userMessage = (content) => JSON.stringify({ type: 'user', message: { role: 'user', content } });
+const SESSION = {
+  clearLine: () => userMessage('/clear'),
+  userLine: (text) => userMessage(text),
+  createResetReader() {
+    let reset = false;
+    return (line) => {
+      if (line && line.type === 'conversation_reset') reset = true;
+      return reset && line && line.type === 'result';
+    };
+  },
+};
+
 module.exports = {
-  launch, createDecoder, toolName, toolBasename, runTokens, WEB_CAPABILITY,
+  launch, createDecoder, toolName, toolBasename, runTokens, WEB_CAPABILITY, SESSION, userText,
 };

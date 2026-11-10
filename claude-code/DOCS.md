@@ -85,6 +85,7 @@ reconciled on every start. Entries you remove from `plugins` or `marketplaces` a
 | `monitoring_interval_hours` | Opt-in proactive monitoring: every N hours Claude reviews the error log and config and notifies you only if it finds something (0 = off). |
 | `proactive_alerts` + `alert_*` | Opt-in **deterministic** anomaly alerts (no Claude, no plan usage): notify on a water leak, door/window open at night, low battery, temperature out of band, high CO2, humidity out of band, or a watched device/internet gateway going offline. See *Proactive alerts* below. |
 | `prompt_api` | Serve the secure Prompt API for the companion **Claude** (`claude_ha`) integration (on by default). See *The companion integration* below. |
+| `prompt_keep_warm` | Off by default. Keeps up to two Claude processes running between Assist questions, so an answer does not wait for Claude to start. See *A warm session for Assist* below. |
 | `api_token` | Optional fixed bearer token for the Prompt API. Leave empty — the app generates one and hands it to the integration via discovery. |
 | `prompt_ha_token` | Optional HA token used only by Prompt-API sessions to read state through the MCP Server integration. Best practice: a dedicated non-admin user's token — which works only while the MCP Server's *Require an administrator account* option is off (see *The Home Assistant token for live context* below). Falls back to `ha_token`. |
 
@@ -318,6 +319,28 @@ answered from the web. A web answer is a separate kind of run:
 - **Pages are fetched from your network.** A listed site whose name resolves to a
   home-network address is fetched from inside your network, because the page is
   opened on the app host. List only sites you trust.
+
+### A warm session for Assist (`prompt_keep_warm`)
+
+Off by default. Every Assist question normally starts a new Claude process, and
+waiting for it to start is part of every answer. With `prompt_keep_warm` on, the
+app keeps the process running after a question and answers the next question
+from the same integration with it, so that question skips the start-up. How much
+sooner the answer comes depends on your hardware.
+
+- The conversation is cleared after every question, and again when a process
+  starts. A kept process takes the next question only after Claude has confirmed
+  the clear, so a question never sees an earlier question or its answer.
+- Questions are answered this way, including a request whose answer is a
+  proposed action; the action itself is carried out by the app, not by Claude.
+  Camera questions, web answers and automation editing always start a fresh
+  process.
+- Between questions a kept process cannot call any Home Assistant tool.
+- A process is replaced after 20 questions, after 10 minutes without one, when
+  its input has grown well past its first question, and after any error, time-out
+  or cancelled request.
+- At most two processes are kept. With both running they used between about
+  180 and 230 MB of memory in all in our measurements.
 
 ### Chat reliability (`chat_health`)
 

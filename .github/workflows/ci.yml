@@ -372,6 +372,18 @@ jobs:
             --volume "${PWD}/.github/scripts:/ci:ro" \
             --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
             /ci/runner_args_smoke.js /root/.local/bin/claude /opt/agent-console
+      - name: The bundled CLI still clears a warm session before its next question
+        run: |
+          # prompt_keep_warm answers a question from a process that answered the
+          # previous one, trusting the CLI to clear the conversation in between.
+          # The core's check drives that clear on the CLI in this image, three
+          # times, through the adapter in this image; a CLI that stops confirming
+          # it fails the build instead of letting one answer reach the next.
+          # The CLI is named by path: the adapter's own path is the copy kept
+          # under /data on a device, which a fresh image does not have.
+          docker run --rm --network none --platform '${{ steps.target.outputs.platform }}' \
+            --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
+            /opt/agent-console/server/prompt/session-check.js --bin /root/.local/bin/claude
       - name: Start-up, launch, update and digest behave as recorded
         run: |
           # The service script, the Claude tab launcher, both update paths,
