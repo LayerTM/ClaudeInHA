@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.62.7] — 2026-11-10
+## [1.63.0] — 2026-11-10
 
 ### Fixed
 - A program that runs the `test` command by name gets the system one again. The bundled hass-mcp
