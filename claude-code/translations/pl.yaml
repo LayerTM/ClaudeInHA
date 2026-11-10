@@ -299,6 +299,14 @@ configuration:
       claude-sonnet-4-6) dla błyskawicznych, tanich odpowiedzi w Assist, podczas
       gdy konsola zachowuje własny model. Zostaw puste, aby użyć „Nadpisania
       modelu” powyżej lub domyślnego modelu Claude.
+  prompt_keep_warm:
+    name: Utrzymuj gotową sesję dla Assist
+    description: >-
+      Odpowiada na pytania Assist z procesu Claude, który już działa, więc
+      odpowiedź nie czeka na uruchomienie Claude; o ile szybciej, zależy od
+      sprzętu. Rozmowa jest czyszczona po każdym pytaniu. Pytania o kamerę,
+      odpowiedzi z sieci i edycja automatyzacji zawsze uruchamiają nowy proces.
+      Utrzymywane są najwyżej dwa procesy, łącznie około 180–230 MB pamięci.
   chat_model_voice:
     name: Model głosowy (integracja claude_ha)
     description: >-

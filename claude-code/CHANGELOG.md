@@ -2,11 +2,28 @@
 
 ## [1.63.0] — 2026-11-10
 
+### Added
+- `prompt_keep_warm` (off by default): Assist questions can be answered from a Claude process
+  that is already running, so a question skips Claude's start-up; how much sooner the answer
+  comes depends on your hardware. The conversation is cleared after every question; camera
+  questions, web answers and automation editing still start a fresh process. At most two
+  processes are kept, about 180 to 230 MB of memory in all. See the Documentation tab.
+
+### Changed
+- Every Assist answer arrives sooner: it is returned as soon as Claude reports its result, no
+  longer after the Claude process has finished shutting down.
+
 ### Fixed
+- With an Anthropic API key set beside a console login, the account limits now report the API
+  key, which is what Claude uses then; they used to show the subscription's limits.
+- An Assist question that starts with "/" is answered as a question. It used to run as one of
+  Claude's own commands, which could, for example, switch the model for later questions.
 - A program that runs the `test` command by name gets the system one again. The bundled hass-mcp
   package installed a development launcher under that name ahead of it on the path; the launcher
   is no longer installed, and every image is now checked for a bundled command that hides a system
   command.
+
+Built on ha-agent-core 0.13.1 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.13.1)).
 
 ## [1.62.6] — 2026-11-10
 

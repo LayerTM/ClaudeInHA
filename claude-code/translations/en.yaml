@@ -292,6 +292,14 @@ configuration:
       (e.g. claude-sonnet-4-6) for snappy, low-cost Assist replies while the
       console keeps its own model. Leave empty to use the Model Override above,
       or the Claude default.
+  prompt_keep_warm:
+    name: Keep a warm session for Assist
+    description: >-
+      Answers Assist questions from a Claude process that is already running, so
+      a question skips Claude's start-up; how much sooner the answer comes depends
+      on your hardware. The conversation is cleared after every question. Camera
+      questions, web answers and automation editing always start a fresh process.
+      At most two processes are kept, about 180 to 230 MB of memory in all.
   chat_model_voice:
     name: Voice Chat Model (claude_ha integration)
     description: >-

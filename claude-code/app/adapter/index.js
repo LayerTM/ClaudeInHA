@@ -67,13 +67,17 @@ module.exports = {
     toolName: runner.toolName,
     toolBasename: runner.toolBasename,
     webCapability: runner.WEB_CAPABILITY,
+    session: runner.SESSION,
+    userText: runner.userText,
   },
   prompt: {
     // Only a subscription has account limits. An API key is billed per request,
-    // so it reports its mode with no limits.
+    // so it reports its mode with no limits. The CLI uses an API key before a
+    // pasted OAuth token or a stored login, so the mode follows the same order.
     limitsSource({ apiKey, oauthToken, homeDir }) {
+      if (apiKey) return { mode: 'api_key', key: 'api_key' };
       const accessToken = oauthAccessToken({ oauthToken, homeDir });
-      if (!accessToken) return apiKey ? { mode: 'api_key', key: 'api_key' } : null;
+      if (!accessToken) return null;
       return {
         mode: 'subscription',
         key: accessToken,
