@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.62.6] — 2026-11-10
+
+### Fixed
+- Devices in an area that are off or unavailable are no longer refused as "matches more than one
+  device". Asking for a light in an area now finds it whether it is on or off.
+- When Claude cannot act on a request, the reason is now said in full after what it had already
+  said; it is no longer cut short.
+- A long secret in an answer no longer starts to appear on the screen before it is hidden.
+
+Built on ha-agent-core 0.12.1 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.12.1)).
+
+### Changed
+- Claude Code 2.1.318 → 2.1.321 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md))
+- `@playwright/mcp` 0.0.84 → 0.0.85 ([release notes](https://github.com/microsoft/playwright-mcp/releases/tag/v0.0.85))
+- ccstatusline 2.2.33 → 2.2.34 ([release notes](https://github.com/sirmalloc/ccstatusline/releases/tag/v2.2.34))
+- yq 4.54.1 → 4.54.3 ([release notes](https://github.com/mikefarah/yq/releases/tag/v4.54.3))
+
 ## [1.62.5] — 2026-11-05
 
 ### Fixed
