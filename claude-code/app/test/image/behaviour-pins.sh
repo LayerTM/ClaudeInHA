@@ -30,6 +30,20 @@ IMG=5.0.0
 rm -rf "${P}"
 mkdir -p "${P}"
 
+# --- the image as built: nothing bundled shadows a system command ---------------
+# /usr/local/bin comes first on PATH, so a bundled tool's stray entry point
+# with the name of a system command (a Python package's `test` launcher, say)
+# would replace that command for every program that runs it by name.
+shadowed=""
+for f in /usr/local/bin/* /usr/local/sbin/*; do
+    [ -e "${f}" ] || continue
+    for d in /usr/sbin /usr/bin /sbin /bin; do
+        if [ -e "${d}/${f##*/}" ]; then shadowed="${shadowed} ${f} (${d}/${f##*/})"; break; fi
+    done
+done
+eq "nothing in /usr/local shadows a system command" "${shadowed}" ""
+eq "test run by name on PATH is the system's" "$(PATH="${BASE_PATH}" env test 1 -eq 1 2>&1; echo "exit $?")" "exit 0"
+
 # --- 0. the real CLI under a prompt API command line ------------------------------
 # A prompt API run reads no settings files (--setting-sources ''), so the secrets
 # guard's hook reaches it only through the managed settings. With only the
