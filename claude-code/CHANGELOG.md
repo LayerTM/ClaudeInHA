@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.62.7] — 2026-11-10
+
+### Fixed
+- A program that runs the `test` command by name gets the system one again. The bundled hass-mcp
+  package installed a development launcher under that name ahead of it on the path; the launcher
+  is no longer installed, and every image is now checked for a bundled command that hides a system
+  command.
+
 ## [1.62.6] — 2026-11-10
 
 ### Fixed

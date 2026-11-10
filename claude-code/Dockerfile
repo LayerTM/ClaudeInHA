@@ -211,6 +211,11 @@ RUN arch="$(dpkg --print-architecture)" \
 # the HA Token is set): entity/service queries against the Core API.
 # Pillow: Python imaging for ad-hoc crops/resizes of dashboard screenshots
 # (ImageMagick's `magick` covers the CLI side).
+# hass-mcp's wheel also declares a `test = pytest:main` console script (a
+# development entry point, pytest is not a dependency). Installed into
+# /usr/local/bin, it would replace the system `test` for anything that runs
+# it by name, so it is removed here; the build fails if a file of that name
+# is ever something else.
 # upstream: pypi homeassistant-cli
 ARG HASS_CLI_VERSION=1.0.0
 # upstream: pypi hass-mcp
@@ -220,7 +225,10 @@ ARG PILLOW_VERSION=13.0.0
 RUN pip install --no-cache-dir --break-system-packages \
         "homeassistant-cli==${HASS_CLI_VERSION}" \
         "hass-mcp==${HASS_MCP_VERSION}" \
-        "Pillow==${PILLOW_VERSION}"
+        "Pillow==${PILLOW_VERSION}" \
+    && if [ -e /usr/local/bin/test ]; then \
+         grep -qx 'from pytest import main' /usr/local/bin/test && rm /usr/local/bin/test; \
+       fi
 
 # Force HTTPS for GitHub clones (plugin marketplaces) — the container has no SSH key.
 RUN git config --system url."https://github.com/".insteadOf "git@github.com:"
