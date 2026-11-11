@@ -51,11 +51,11 @@ RUN apt-get update \
 # unpacked, so a download that differs from what was seen at the bump — however
 # it came to differ — stops the build instead of being installed.
 # upstream: nodejs lts-ready
-ARG NODE_VERSION=26.13.0
+ARG NODE_VERSION=26.13.1
 # upstream: nodejs-sha256 linux-x64
-ARG NODE_SHA256_AMD64=d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997
+ARG NODE_SHA256_AMD64=5c063e46bab0fbc1c17cc445d7ff129cbdcd0471be6ed83b6ab864f8143bc864
 # upstream: nodejs-sha256 linux-arm64
-ARG NODE_SHA256_ARM64=406fe3fbde1c054adff8b297c16fdb5af6659db327c1ac8acd46b56ef1af9a92
+ARG NODE_SHA256_ARM64=89e1853138db51e8b82d3e98ba9c0d3f2956a28e5e55ea1b7e12d25aae92d5dd
 RUN arch="$(dpkg --print-architecture)" \
     && case "${arch}" in \
          amd64) node_arch="x64";   expected="${NODE_SHA256_AMD64}" ;; \

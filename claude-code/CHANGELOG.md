@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.63.1] — 2026-11-11
+
+### Security
+- Node.js 26.13.0 → 26.13.1, a security release fixing vulnerabilities in its HTTP/2, TLS and
+  HTTP handling
+  ([release notes](https://github.com/nodejs/node/blob/main/doc/changelogs/CHANGELOG_V26.md#26.13.1)).
+
 ## [1.63.0] — 2026-11-10
 
 ### Added
