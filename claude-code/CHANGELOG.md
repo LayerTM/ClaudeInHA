@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.63.3] — 2026-11-13
+
+### Changed
+- Claude Code 2.1.322 → 2.1.323 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md))
+- The agent's instructions say that from Supervisor 2026.12 tools needing raw sockets (nmap,
+  tcpdump) do not work, and point to curl and the Home Assistant API.
+
+Built on ha-agent-core 0.14.0 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.14.0)).
+
 ## [1.63.2] — 2026-11-12
 
 ### Changed
