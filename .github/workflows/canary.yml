@@ -16,8 +16,11 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       canary: true
-    # A called workflow may not ask for more than its caller grants, and ci.yml's
-    # release job asks for contents: write. That job runs only for a push to
-    # main, so it is skipped here.
+    # A called workflow may not ask for more than its caller grants. ci.yml's
+    # release job asks for contents: write and is skipped here; its pins-bump
+    # job also asks for actions and pull-requests: write, and opens the bump
+    # pull request when this run finds a pin behind on main.
     permissions:
+      actions: write
       contents: write
+      pull-requests: write

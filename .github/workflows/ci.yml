@@ -181,13 +181,22 @@ jobs:
   # commit carries a version that has no release yet — i.e. on the pull request
   # that bumps the version and on any run that would cut it. A release therefore
   # never ships a pin that is behind, and an upstream that cannot be read fails it.
+  #
+  # A pin behind its upstream fails a pull request. On main it does not fail the
+  # commit, which passed before the upstream published: the run records drift,
+  # the release waits for it, and pins-bump opens the pull request that moves
+  # the pins (pins_drift.py). An upstream that cannot be read fails everywhere.
   pins:
     name: Upstream pins
     runs-on: ubuntu-latest
+    outputs:
+      drift: ${{ steps.check.outputs.drift }}
     steps:
       - uses: actions/checkout@v7
       - name: Test the script that reads the pins
         run: python3 .github/scripts/test_pins.py
+      - name: Test the script that decides what a pin behind its upstream means
+        run: python3 .github/scripts/test_pins_drift.py
       - name: Test the script that resolves the release version and its notes
         run: python3 .github/scripts/test_release_notes.py
       - name: Does this commit carry an unreleased version
@@ -216,10 +225,56 @@ jobs:
               ;;
           esac
       - name: Every pin matches its upstream
+        id: check
         if: steps.release.outputs.unreleased == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 .github/scripts/pins.py check
+        run: |
+          # Drift is what the check printed as "behind", not its exit status
+          # alone: a crash exits 1 too.
+          set -o pipefail
+          status=0
+          python3 .github/scripts/pins.py check | tee "${RUNNER_TEMP}/pins-check.txt" || status=$?
+          python3 .github/scripts/pins_drift.py verdict "${status}" "${RUNNER_TEMP}/pins-check.txt"
+
+  # The pull request for drift that main recorded: one branch, pins/bump, kept
+  # at exactly what `pins.py bump` writes on top of main, and CI started on it
+  # (a pull request opened with the workflow token raises no event of its own).
+  # Its content is this repository's own script run on main's own tree. It runs
+  # on every run so that the release can wait for it; only drift gives it work.
+  pins-bump:
+    name: Upstream pins bump
+    needs: pins
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    # No concurrency group: a queued run would be cancelled, not green. Two runs
+    # of main writing the branch at once are settled by the push itself (a
+    # lease on what was read, read again when it moved), and a run of an older
+    # main never rewinds a branch built on a newer one.
+    steps:
+      - name: Nothing to move
+        if: needs.pins.outputs.drift != 'true'
+        run: echo "No pin is behind on this run."
+      - uses: actions/checkout@v7
+        if: needs.pins.outputs.drift == 'true'
+        with:
+          # Which commits on the branch are not main's is a question about
+          # history; a shallow clone would count main's own as a person's.
+          fetch-depth: 0
+      # pins.py bump refreshes package-lock.json files with npm.
+      - uses: actions/setup-node@v7
+        if: needs.pins.outputs.drift == 'true'
+        with:
+          node-version: "26"
+      - name: Open or update the bump pull request
+        if: needs.pins.outputs.drift == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/pins_drift.py open-pr
 
   # The architectures come from the add-on's own files rather than being listed
   # here, so adding one cannot leave it unbuilt — and the script refuses to answer
@@ -413,6 +468,7 @@ jobs:
       - hygiene
       - workflow-gates
       - pins
+      - pins-bump
       - arches
       - core-release
       - image
@@ -420,7 +476,8 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/main' &&
       inputs.cut_release == true &&
-      !inputs.canary
+      !inputs.canary &&
+      needs.pins.outputs.drift != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
