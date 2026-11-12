@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.63.2] — 2026-11-12
+
+### Changed
+- When Claude refuses the credential a prompt run signed in with, the run's result now says which
+  one it was: the token or API key set in the add-on options (`durable`), or the sign-in made in
+  the console (`login`). The option wins over a console login whenever it is set, so the advice
+  after a refusal can point at the credential that was actually used.
+
 ## [1.63.1] — 2026-11-11
 
 ### Security
