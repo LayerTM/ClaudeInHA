@@ -8,6 +8,8 @@
   the console (`login`). The option wins over a console login whenever it is set, so the advice
   after a refusal can point at the credential that was actually used.
 
+Built on ha-agent-core 0.14.0 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.14.0)).
+
 ## [1.63.1] — 2026-11-11
 
 ### Security
