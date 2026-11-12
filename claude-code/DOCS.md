@@ -339,8 +339,8 @@ sooner the answer comes depends on your hardware.
 - A process is replaced after 20 questions, after 10 minutes without one, when
   its input has grown well past its first question, and after any error, time-out
   or cancelled request.
-- At most two processes are kept. With both running they used between about
-  180 and 230 MB of memory in all in our measurements.
+- At most two processes are kept. Each one takes about 150 MB of memory
+  (measured as PSS on aarch64: 146 and 152 MB), so two take about 300 MB.
 
 ### Chat reliability (`chat_health`)
 
