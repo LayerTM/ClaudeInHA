@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.63.3] — 2026-11-13
+
+### Changed
+- Claude Code 2.1.322 → 2.1.323 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md))
+
+Built on ha-agent-core 0.14.0 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.14.0)).
+
 ## [1.63.2] — 2026-11-12
 
 ### Changed
