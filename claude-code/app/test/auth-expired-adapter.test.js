@@ -190,3 +190,41 @@ test('credentialsExpiry is null when the file has no usable timestamps', () => {
     assert.equal(adapter.prompt.credentialsExpiry({ env: {}, home }), null);
   });
 });
+
+// Which credential the refused run used. The spec is the identity `launch` and
+// `createDecoder` share in the core, so the same object goes to both here. The
+// CLI uses an environment credential even when a console login exists (CLI
+// 2.1.322), so the environment alone decides the value.
+const { launch } = require('../adapter/runner');
+const { launchSpec } = require('../server/prompt/run');
+
+const REFUSED = [
+  { type: 'assistant', message: { content: [{ type: 'text', text: 'Failed to authenticate.' }] }, error: 'authentication_failed' },
+  { type: 'result', subtype: 'success', is_error: true, result: 'Failed to authenticate.', num_turns: 1 },
+];
+
+function refusedWith(env) {
+  const spec = launchSpec({ intents: [] });
+  launch(spec, { env });
+  const decode = createDecoder(spec);
+  return REFUSED.flatMap((ev) => decode(ev)).filter((e) => e.type === 'result')[0];
+}
+
+test('a refused run with the add-on token or key in its environment names the durable credential', () => {
+  assert.equal(refusedWith({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-fake' }).credential, 'durable');
+  assert.equal(refusedWith({ ANTHROPIC_API_KEY: 'sk-ant-api03-fake' }).credential, 'durable');
+});
+
+test('a refused run with no credential in its environment names the console login', () => {
+  const result = refusedWith({});
+  assert.equal(result.authExpired, true);
+  assert.equal(result.credential, 'login');
+});
+
+test('a result that is not an auth failure carries no credential', () => {
+  const spec = launchSpec({ intents: [] });
+  launch(spec, { env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-fake' } });
+  const decode = createDecoder(spec);
+  const result = decode({ type: 'result', subtype: 'error', is_error: true, result: 'boom', num_turns: 1 })[0];
+  assert.equal(result.credential, undefined);
+});

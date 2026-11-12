@@ -101,6 +101,15 @@ const PASSTHROUGH_ENV = [
   'USER', 'LOGNAME',
 ];
 
+// What the CLI signs a run in with. A credential in the run's environment (the
+// add-on's `oauth_token` / `api_key` options) is used even when a console login
+// exists: the request carries the environment token, not the login's access
+// token (CLI 2.1.322). So `durable` means one of these was passed on and `login` means none was.
+const DURABLE_ENV = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'];
+// Recorded by `launch` per run spec, read by `createDecoder` for the same spec
+// (the core hands both the one object), so no new parameter crosses the core.
+const credentialOf = new WeakMap();
+
 // The run's settings JSON: the core's (audit hook) plus the web guard's hooks.
 function mergeSettings(given, guard) {
   if (!guard) return given;
@@ -168,6 +177,7 @@ function launch(spec, { env }) {
   for (const key of PASSTHROUGH_ENV) {
     if (env[key]) extra[key] = env[key];
   }
+  credentialOf.set(spec, DURABLE_ENV.some((key) => extra[key]) ? 'durable' : 'login');
   return { args, env: extra };
 }
 
@@ -218,7 +228,7 @@ function contentBlocks(message) {
 const AUTH_EXPIRED_TEXT = /^Failed to authenticate/;
 
 // One run's stream-json events -> the core's neutral events.
-function createDecoder() {
+function createDecoder(spec) {
   let initModel = '';
   let authExpired = false;
   return (ev) => {
@@ -273,6 +283,9 @@ function createDecoder() {
       };
       if (result.isError && (authExpired || (typeof ev.result === 'string' && AUTH_EXPIRED_TEXT.test(ev.result)))) {
         result.authExpired = true;
+        // Which credential was refused, so the advice can name the right one.
+        const credential = spec && credentialOf.get(spec);
+        if (credential) result.credential = credential;
       }
       out.push(result);
     }
