@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The release job waits for every gate in the CI workflow, and no step runs an
-image with a network.
+image with a network — in the workflow or in the scripts under .github/scripts.
 
 `needs` is a hand-written list, and a hand-written list of gates goes stale the
 first time a gate is added without touching it — quietly, in the direction that
@@ -70,6 +70,28 @@ def check_curl_retries(root: pathlib.Path) -> list[str]:
     return complaints
 
 
+def network_complaints(name: str, text: str) -> list[str]:
+    """Each `docker run` in `text` that does not run the image without a network."""
+    return [
+        f"{name}: a step runs an image with a network: {command.strip().splitlines()[0]}"
+        for command in DOCKER_RUN.findall(text)
+        if "--network none" not in command
+    ]
+
+
+def check_script_networks(root: pathlib.Path) -> list[str]:
+    """The image steps CI runs from its scripts, held to the workflow's rule."""
+    listed = subprocess.run(
+        ["git", "-C", str(root), "ls-files", ".github/scripts/*.sh"], capture_output=True, text=True
+    )
+    if listed.returncode != 0:
+        return [f"cannot list the scripts of {root}: {listed.stderr.strip()}"]
+    complaints = []
+    for rel in listed.stdout.splitlines():
+        complaints += network_complaints(rel, (root / rel).read_text(encoding="utf-8", errors="replace"))
+    return complaints
+
+
 def check(path: pathlib.Path) -> list[str]:
     """Complaints about this workflow's gate list; empty means it is whole."""
     try:
@@ -94,9 +116,7 @@ def check(path: pathlib.Path) -> list[str]:
     # The service script talks to `homeassistant` on purpose, and that name can
     # resolve to a real home where this runs; a token check from a test would be a
     # failed login there.
-    for command in DOCKER_RUN.findall(path.read_text(encoding="utf-8")):
-        if "--network none" not in command:
-            complaints.append(f"a step runs an image with a network: {command.strip().splitlines()[0]}")
+    complaints += network_complaints(path.name, path.read_text(encoding="utf-8"))
     for job in sorted(gates - waits_for):
         complaints.append(
             f"job '{job}' is a gate the '{RELEASE}' job does not wait for — "
@@ -109,7 +129,8 @@ def check(path: pathlib.Path) -> list[str]:
 
 def main() -> None:
     path = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT
-    complaints = check(path) + check_curl_retries(DEFAULT.parents[2])
+    root = DEFAULT.parents[2]
+    complaints = check(path) + check_curl_retries(root) + check_script_networks(root)
     if complaints:
         for line in complaints:
             print(line, file=sys.stderr)
