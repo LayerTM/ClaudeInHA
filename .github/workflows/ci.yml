@@ -394,96 +394,209 @@ jobs:
         run: |
           python3 .github/scripts/pins.py bump
           git diff --stat
-      - name: Resolve the platform and base image for ${{ matrix.arch }}
-        id: target
-        run: |
-          case "${{ matrix.arch }}" in
-            amd64)   platform=linux/amd64 ;;
-            aarch64) platform=linux/arm64 ;;
-            *)
-              echo "No Docker platform is mapped for '${{ matrix.arch }}'."
-              echo "It is declared in the add-on but this job does not know how"
-              echo "to build it — add the mapping here rather than dropping it."
-              exit 1
-              ;;
-          esac
-          echo "platform=${platform}" >> "$GITHUB_OUTPUT"
-          echo "from=$(python3 .github/scripts/addon_arches.py --build-from '${{ matrix.arch }}')" >> "$GITHUB_OUTPUT"
-      - name: Refuse to pass by emulating the target
-        run: |
-          # Building arm64 under QEMU would still go green while taking half an
-          # hour and exercising a different code path than users get. If the
-          # native runner is unavailable this must fail loudly, not quietly
-          # emulate: the point of the job is to build what ships.
-          want='${{ steps.target.outputs.platform }}'
-          have="linux/$(dpkg --print-architecture)"
-          if [ "${want}" != "${have}" ]; then
-            echo "This runner is ${have} but the job must build ${want}."
-            echo "Give this architecture a runner that matches it."
-            exit 1
-          fi
-      - name: Fetch the pinned core
-        id: core
+      - name: Build the add-on image (no push)
         env:
           GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/addon_image.sh build '${{ matrix.arch }}' 'addon-image:${{ matrix.arch }}'
+      - name: Check the image runs what it ships
+        run: .github/scripts/addon_image.sh check '${{ matrix.arch }}' 'addon-image:${{ matrix.arch }}'
+
+  # The image a release ships. A release pull request from this repository
+  # publishes a candidate built from its tree, `<image>:<version>-rc.<tree>`,
+  # through the same script and checks as the image job above; that candidate
+  # is what is tried before the release, and the merge promotes it unchanged.
+  # Every other run skips these steps, so the release can still need the job.
+  # A candidate that exists is never rebuilt: a re-run would replace the image
+  # that was tried with one that was not.
+  candidate:
+    name: Release candidate image (${{ matrix.arch }})
+    needs: arches
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(needs.arches.outputs.list) }}
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - name: Does this run publish a candidate
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          TITLE: ${{ github.event.pull_request.title }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CANARY: ${{ inputs.canary && 'true' || 'false' }}
         run: |
-          source="$(.github/scripts/core_archive.sh "${RUNNER_TEMP}/core")"
-          echo "source=${source}" >> "$GITHUB_OUTPUT"
-      - name: Build the add-on image (no push)
-        run: |
-          # Once the pinned core is released the image fetches it itself, as it
-          # does on a user's device; before that, the packed archive stands in
-          # for the download and is still checked against the lock.
-          archive=()
-          if [ '${{ steps.core.outputs.source }}' = packed ]; then
-            archive=(--build-context "core-archive=${RUNNER_TEMP}/core")
+          if [ "${EVENT}" = pull_request ]; then
+            if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+              git fetch --no-tags --depth=1 origin "${BASE_SHA}"
+            fi
+            export BASE_CONFIG="${RUNNER_TEMP}/base-config.yaml"
+            if ! git show "${BASE_SHA}:claude-code/config.yaml" > "${BASE_CONFIG}"; then rm -f "${BASE_CONFIG}"; fi
           fi
-          docker build --pull \
-            "${archive[@]}" \
-            --platform '${{ steps.target.outputs.platform }}' \
-            --build-arg BUILD_FROM='${{ steps.target.outputs.from }}' \
-            --tag 'addon-image:${{ matrix.arch }}' \
-            claude-code
-      - name: Check the image runs what it shipped
+          python3 .github/scripts/addon_image.py plan | tee -a "$GITHUB_OUTPUT"
+      - name: Log in to the registry
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: printf '%s' "${TOKEN}" | docker login ghcr.io -u "${ACTOR}" --password-stdin
+      - name: Is this tree's candidate already published
+        id: have
+        if: steps.plan.outputs.publish == 'true'
         run: |
-          # A build that succeeds and produces a binary that cannot execute on
-          # this architecture is the exact failure a user would hit, so ask the
-          # image, not the builder.
-          docker run --rm --network none --platform '${{ steps.target.outputs.platform }}' \
-            --entrypoint /root/.local/bin/claude 'addon-image:${{ matrix.arch }}' --version
-          docker run --rm --network none --platform '${{ steps.target.outputs.platform }}' \
-            --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
-            -e "require('/opt/agent-console/node_modules/node-pty').spawn('/bin/true', [], {}).onExit(({ exitCode }) => { console.log('node-pty spawns, exit ' + exitCode); process.exit(exitCode); })"
-      - name: The bundled CLI accepts every argument list the prompt runner builds
+          ref="$(python3 .github/scripts/addon_image.py candidate)"
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+          if docker buildx imagetools inspect "${ref}" > /dev/null 2>&1; then
+            echo "${ref} exists; it is the candidate that was tried and is not rebuilt."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v7
+        if: steps.have.outputs.exists == 'false'
+        with:
+          node-version: "26"
+      - name: Build the candidate
+        if: steps.have.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/addon_image.sh build '${{ matrix.arch }}' '${{ steps.have.outputs.ref }}-${{ matrix.arch }}'
+      - name: Check the candidate runs what it ships
+        if: steps.have.outputs.exists == 'false'
+        run: .github/scripts/addon_image.sh check '${{ matrix.arch }}' '${{ steps.have.outputs.ref }}-${{ matrix.arch }}'
+      - name: Push the checked image
+        if: steps.have.outputs.exists == 'false'
+        run: docker push '${{ steps.have.outputs.ref }}-${{ matrix.arch }}'
+
+  # One multi-arch manifest per candidate: the Supervisor pulls the generic name
+  # and the registry hands each device its own architecture.
+  candidate-manifest:
+    name: Release candidate manifest
+    needs: [arches, candidate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - name: Does this run publish a candidate
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          TITLE: ${{ github.event.pull_request.title }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CANARY: ${{ inputs.canary && 'true' || 'false' }}
         run: |
-          # The lists come from the core and the adapter inside the image, not
-          # from a copy, so a CLI bump that drops or renames a flag fails here
-          # instead of turning every chat request into an error.
-          docker run --rm --network none --platform '${{ steps.target.outputs.platform }}' \
-            --volume "${PWD}/.github/scripts:/ci:ro" \
-            --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
-            /ci/runner_args_smoke.js /root/.local/bin/claude /opt/agent-console
-      - name: The bundled CLI still clears a warm session before its next question
+          if [ "${EVENT}" = pull_request ]; then
+            if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+              git fetch --no-tags --depth=1 origin "${BASE_SHA}"
+            fi
+            export BASE_CONFIG="${RUNNER_TEMP}/base-config.yaml"
+            if ! git show "${BASE_SHA}:claude-code/config.yaml" > "${BASE_CONFIG}"; then rm -f "${BASE_CONFIG}"; fi
+          fi
+          python3 .github/scripts/addon_image.py plan | tee -a "$GITHUB_OUTPUT"
+      - name: Join the architectures into one manifest
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+          ARCHES: ${{ needs.arches.outputs.list }}
         run: |
-          # prompt_keep_warm answers a question from a process that answered the
-          # previous one, trusting the CLI to clear the conversation in between.
-          # The core's check drives that clear on the CLI in this image, three
-          # times, through the adapter in this image; a CLI that stops confirming
-          # it fails the build instead of letting one answer reach the next.
-          # The CLI is named by path: the adapter's own path is the copy kept
-          # under /data on a device, which a fresh image does not have.
-          docker run --rm --network none --platform '${{ steps.target.outputs.platform }}' \
-            --entrypoint /usr/local/bin/node 'addon-image:${{ matrix.arch }}' \
-            /opt/agent-console/server/prompt/session-check.js --bin /root/.local/bin/claude
-      - name: Start-up, launch, update and digest behave as recorded
+          printf '%s' "${TOKEN}" | docker login ghcr.io -u "${ACTOR}" --password-stdin
+          ref="$(python3 .github/scripts/addon_image.py candidate)"
+          if docker buildx imagetools inspect "${ref}" > /dev/null 2>&1; then
+            echo "${ref} exists and is kept."
+          else
+            mapfile -t sources < <(python3 -c 'import json,os,sys; [print(sys.argv[1] + "-" + a) for a in json.loads(os.environ["ARCHES"])]' "${ref}")
+            docker buildx imagetools create --tag "${ref}" "${sources[@]}"
+          fi
+          docker buildx imagetools inspect "${ref}"
+
+  # The commit that offers a new version is the release pull request's merge.
+  # The candidate built from that tree becomes `<image>:<version>` by copying
+  # its manifest — nothing is rebuilt, so the digest released is the digest
+  # that was tried. A version already published is never moved.
+  promote:
+    name: Promote the release candidate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - name: Publish the offered version from its candidate
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !inputs.canary
+        env:
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
         run: |
-          # The service script, the Claude tab launcher, both update paths,
-          # provisioning and the morning digest, run inside the image against a
-          # recording stand-in for the CLI. What they set up and call is pinned
-          # so that moving this code elsewhere can be checked against it.
-          docker run --rm --network none --platform '${{ steps.target.outputs.platform }}' \
-            --volume "${PWD}/claude-code/app/test/image:/pins-src:ro" \
-            --entrypoint bash 'addon-image:${{ matrix.arch }}' /pins-src/behaviour-pins.sh
+          if ! python3 .github/scripts/addon_image.py name > /dev/null; then
+            echo "config.yaml names no image; nothing to promote."
+            exit 0
+          fi
+          released="$(python3 .github/scripts/addon_image.py released-ref)"
+          printf '%s' "${TOKEN}" | docker login ghcr.io -u "${ACTOR}" --password-stdin
+          if docker buildx imagetools inspect "${released}" > /dev/null 2>&1; then
+            echo "${released} is already published; a published version never moves."
+            exit 0
+          fi
+          candidate="$(python3 .github/scripts/addon_image.py candidate)"
+          digest="$(docker buildx imagetools inspect "${candidate}" --format '{{json .Manifest}}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["digest"])')"
+          image="${released%:*}"
+          docker buildx imagetools create --tag "${released}" "${image}@${digest}"
+          now="$(docker buildx imagetools inspect "${released}" --format '{{json .Manifest}}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["digest"])')"
+          if [ "${now}" != "${digest}" ]; then
+            echo "${released} is ${now}, not the candidate ${digest}."
+            exit 1
+          fi
+          echo "${released} = ${candidate} = ${digest}"
+
+  # What main's config.yaml offers is what every install is offered, so the
+  # image for that version must be pullable by a device that has no
+  # credentials. A pull request that would offer a version with no public
+  # image fails here instead of failing every update after it merges.
+  offered-image:
+    name: Offered version has a public image
+    needs: promote
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - name: Test the script that reads and publishes the image
+        run: python3 .github/scripts/test_addon_image.py
+      - name: Does this pull request offer a new version
+        id: plan
+        if: github.event_name == 'pull_request'
+        env:
+          EVENT: ${{ github.event_name }}
+          TITLE: ${{ github.event.pull_request.title }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "${BASE_SHA}"
+          fi
+          export BASE_CONFIG="${RUNNER_TEMP}/base-config.yaml"
+          if ! git show "${BASE_SHA}:claude-code/config.yaml" > "${BASE_CONFIG}"; then rm -f "${BASE_CONFIG}"; fi
+          python3 .github/scripts/addon_image.py plan | tee -a "$GITHUB_OUTPUT"
+      - name: The offered version can be pulled without credentials
+        # A release pull request's own version is published by its merge (see
+        # promote); its candidate is checked by candidate-manifest.
+        if: steps.plan.outputs.publish != 'true'
+        run: python3 .github/scripts/addon_image.py offered
 
   # Keeps GitHub Releases in lock-step with the add-on version, but no longer
   # from the push that lands a bump: release-cadence.yml dispatches this
@@ -508,6 +621,10 @@ jobs:
       - arches
       - core-release
       - image
+      - candidate
+      - candidate-manifest
+      - promote
+      - offered-image
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/main' &&
