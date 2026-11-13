@@ -282,8 +282,15 @@ class Registry:
         return text, json.loads(body)
 
 
-def registry_auth(env: dict) -> tuple[str, str] | None:
-    if env.get("ACTOR") and env.get("TOKEN"):
+def own_namespace(repository: str) -> str:
+    """The only place this repository's credentials are sent: its owner's GHCR namespace."""
+    return f"ghcr.io/{repository.split('/')[0].lower()}/"
+
+
+def registry_auth(env: dict, image: str) -> tuple[str, str] | None:
+    """ACTOR/TOKEN for `image` only when it is in this repository's own namespace."""
+    repository = env.get("GITHUB_REPOSITORY", "")
+    if env.get("ACTOR") and env.get("TOKEN") and repository and image.startswith(own_namespace(repository)):
         return env["ACTOR"], env["TOKEN"]
     return None
 
@@ -377,6 +384,8 @@ def prove(version: str, tree: str, digest: str, repository: str, registry_for, g
     image = image_of(config)
     if image is None:
         raise Refused(f"tree {tree} names no image")
+    if not image.startswith(own_namespace(repository)):
+        raise Refused(f"tree {tree} names {image}, outside {own_namespace(repository)}")
     arches = [str(a) for a in config.get("arch") or []]
     if not arches or any(a not in PLATFORMS for a in arches):
         raise Refused(f"tree {tree} declares architectures {arches}; platforms are known for {sorted(PLATFORMS)}")
@@ -481,7 +490,7 @@ def main(argv: list[str]) -> int:
     version = str(config.get("version"))
 
     def registry_for(name: str) -> Registry:
-        return Registry(name, registry_auth(env))
+        return Registry(name, registry_auth(env, name))
 
     if command == "name":
         if image is None:
