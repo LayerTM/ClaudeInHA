@@ -140,7 +140,8 @@ def body(changes: list[dict]) -> str:
         "Checksums that belong to a version move with it. The change is exactly what "
         "`python3 .github/scripts/pins.py bump` writes on top of main.",
         "",
-        "Before merging: add the changelog entry these updates need under the unreleased version.",
+        "Before merging: add the changelog entry these updates need under `## Unreleased`; "
+        "the version itself moves only in the release pull request.",
     ]) + "\n"
 
 
