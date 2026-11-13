@@ -89,9 +89,14 @@ by `python .github/scripts/secret_scan.py .` must be clean. CI also runs the
 app linter and hadolint on `claude-code/config.yaml` and
 `claude-code/Dockerfile`.
 
-A change in behaviour bumps the version in `claude-code/config.yaml`, adds an
-entry to `claude-code/CHANGELOG.md`, and updates `claude-code/DOCS.md` and this
-README where they describe it. Changes to the HTTP API are additive; a change
+A change in behaviour adds its entry under `## Unreleased`, the first section
+of `claude-code/CHANGELOG.md`, and updates `claude-code/DOCS.md` and this
+README where they describe it. It leaves the version in
+`claude-code/config.yaml` alone: the add-on store builds from `main`, so a
+version merged there is offered to every user at once. The version moves only
+in the pull request that releases it, titled `Release X.Y.Z`, which renames
+`## Unreleased` to that version; CI fails any other pull request that moves
+it. Changes to the HTTP API are additive; a change
 to the wire format is agreed with the Home Assistant integration first.
 
 ## License
