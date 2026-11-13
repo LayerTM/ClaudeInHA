@@ -14,16 +14,8 @@ command="${1:?build|check}"
 arch="${2:?arch}"
 tag="${3:?tag}"
 
-case "${arch}" in
-  amd64)   platform=linux/amd64 ;;
-  aarch64) platform=linux/arm64 ;;
-  *)
-    echo "No Docker platform is mapped for '${arch}'."
-    echo "It is declared in the add-on but this script does not know how"
-    echo "to build it — add the mapping here rather than dropping it."
-    exit 1
-    ;;
-esac
+# One mapping from architecture to platform, shared with the candidate checks.
+platform="$(python3 .github/scripts/addon_image.py platform "${arch}")"
 
 build() {
   # Building arm64 under QEMU would still go green while taking half an hour
