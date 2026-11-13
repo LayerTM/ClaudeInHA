@@ -135,6 +135,7 @@ class World:
         self.token_status = 200
         self.writes: list[list] = []
         self.gh_calls: list[list] = []
+        self.urls: list[str] = []
         self.attested: dict[str, tuple[str, str, str]] = {}   # digest -> (commit, signer digest, repo URI)
         self.commit_tree = {COMMIT: TREE, OTHER_COMMIT: OTHER_TREE}
         self.tree_config = {"version": tree_version, "image": IMAGE, "arch": ["aarch64", "amd64"]}
@@ -156,6 +157,7 @@ class World:
         self.tags[f"{version}-rc.{TREE}"] = self.index
 
     def get(self, url, headers, method="GET"):
+        self.urls.append(url)
         if "/token?" in url:
             return self.token_status, {}, json.dumps({"token": "t"}).encode()
         reference = url.rsplit("/", 1)[1]
@@ -276,10 +278,21 @@ refuses("an input tree that is not the full id", w, tree=TREE[:12])
 w = World()
 refuses("a digest that is not a sha256", w, digest="latest")
 w = World()
+w.tree_config["image"] = "evil.example/o/addon"
+refuses("a tree whose image is outside this repository's namespace", w)
+check("and nothing was asked of any registry", w.urls, [])
+w = World()
 check("not from main", (promote(w, env={**MAIN, "GITHUB_REF": "refs/heads/x"}), w.writes, w.gh_calls), (1, [], []))
 w = World()
 w.objects[w.index] = w.objects[w.index] + b" "
 refuses("content that does not match its digest", w)
+
+print("Credentials go only to this repository's own namespace")
+creds = {"ACTOR": "a", "TOKEN": "t", "GITHUB_REPOSITORY": "Owner/r"}
+check("its own image", addon_image.registry_auth(creds, "ghcr.io/owner/addon"), ("a", "t"))
+check("another owner's image", addon_image.registry_auth(creds, "ghcr.io/other/addon"), None)
+check("another registry", addon_image.registry_auth(creds, "evil.example/owner/addon"), None)
+check("a look-alike host", addon_image.registry_auth(creds, "ghcr.io.evil.example/owner/addon"), None)
 
 print("Writes go only to the role's own tags")
 
