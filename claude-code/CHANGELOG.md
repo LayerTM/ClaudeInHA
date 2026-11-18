@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Changed
-- Claude Code 2.1.323 → 2.1.326 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md))
+- Claude Code 2.1.323 → 2.1.327 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md))
 - Home Assistant CLI (`ha`) 5.7.0 → 6.0.0 ([release notes](https://github.com/home-assistant/cli/releases/tag/6.0.0))
 
 ## [1.63.3] — 2026-11-13
