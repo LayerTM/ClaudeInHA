@@ -53,5 +53,5 @@ jobs:
           ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          printf '%s' "${TOKEN}" | docker login ghcr.io -u "${ACTOR}" --password-stdin
+          python3 .github/scripts/addon_image.py login
           python3 .github/scripts/addon_image.py promote "${VERSION}" "${TREE}" "${DIGEST}"

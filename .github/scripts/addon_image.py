@@ -59,6 +59,9 @@ Commands:
                             candidate manifest; print `created=` and `digest=`
   promote <version> <tree> <digest>
                             publish `<image>:<version>` from a proven candidate
+  login                     `docker login` for the image's registry with env
+                            ACTOR/TOKEN, only into this repository's own
+                            namespace; any other registry gets none (exit 0)
   release-pr                `<image>:<version>` is pullable anonymously and is
                             this tree's proven candidate (the merge gate asks
                             this, through release-gate)
@@ -77,6 +80,11 @@ Commands:
   offered                   exit 0 when the version config.yaml offers is
                             pullable, or when no image is configured; 1 when
                             it is not; 2 when the registry could not be asked
+
+Env IMAGE_REGISTRY (host[:port]) replaces the registry host of config.yaml's
+image wherever this script names it; unset, nothing changes. A registry says
+where its tokens come from (GET /v2/), and is spoken to over https except
+localhost and 127.0.0.1.
 
 Registry reads use the credentials in env ACTOR/TOKEN when both are set, and an
 anonymous token otherwise. Attestations are read with `gh` (env GH_TOKEN); the
@@ -124,11 +132,14 @@ PLATFORMS = {"amd64": "linux/amd64", "aarch64": "linux/arm64"}
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 TREE_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+REGISTRY_RE = re.compile(r"^[a-z0-9.-]+(?::[0-9]+)?$")
+# A registry that is spoken to over plain HTTP, as Docker itself does for its own insecure-registry default.
+PLAIN_HTTP_HOSTS = {"localhost", "127.0.0.1"}
 CANDIDATE_TAG_RE = re.compile(
     r"^(?P<version>\d+\.\d+\.\d+)-rc\.(?P<tree>[0-9a-f]{40})(?:-(?P<arch>[a-z0-9]+))?$"
 )
-# registry/namespace/name:tag — the only form this add-on publishes.
-REF_RE = re.compile(r"^(?P<registry>[a-z0-9.-]+)/(?P<repo>[a-z0-9._/-]+):(?P<tag>[\w][\w.-]{0,127})$")
+# registry[:port]/namespace/name:tag — the only form this add-on publishes.
+REF_RE = re.compile(r"^(?P<registry>[a-z0-9.-]+(?::[0-9]+)?)/(?P<repo>[a-z0-9._/-]+):(?P<tag>[\w][\w.-]{0,127})$")
 
 # What may differ between two trees while a proof still carries over: everything
 # outside the add-on directory (CI, scripts, the repository's own docs), and the
@@ -240,19 +251,62 @@ def _run(argv: list) -> int:
     return subprocess.run(argv, check=False, stdout=sys.stderr).returncode
 
 
+def registry_scheme(registry: str) -> str:
+    return "http" if registry.partition(":")[0] in PLAIN_HTTP_HOSTS else "https"
+
+
+def redirect(image: str | None, env: dict) -> str | None:
+    """`image` with the registry host of env IMAGE_REGISTRY, when it is set; unset is the image as it is."""
+    host = env.get("IMAGE_REGISTRY", "").strip()
+    if not host or image is None:
+        return image
+    if not REGISTRY_RE.match(host):
+        raise SystemExit(f"IMAGE_REGISTRY must be a registry host[:port], not '{host}'")
+    return f"{host}/{image.partition('/')[2]}"
+
+
+def parse_challenge(header: str) -> dict | None:
+    """The parameters of a `Bearer realm="…",service="…"` challenge, or None for any other scheme."""
+    match = re.match(r"^\s*Bearer\s+(.*)$", header or "", re.IGNORECASE)
+    return dict(re.findall(r'(\w+)="([^"]*)"', match.group(1))) if match else None
+
+
+def auth_token(registry: str, repo: str, get: Get, creds: tuple[str, str] | None = None) -> tuple[int, str | None]:
+    """(200, token) or (200, None) when the registry wants none; otherwise (the refusing HTTP status, None).
+
+    The registry says where its tokens come from (GET /v2/, distribution spec); the realm must be the registry's own host."""
+    base = f"{registry_scheme(registry)}://{registry}"
+    status, headers, _ = get(f"{base}/v2/", {}, "GET")
+    if status == 200:
+        return 200, None
+    challenge = parse_challenge({k.lower(): v for k, v in headers.items()}.get("www-authenticate", ""))
+    if status != 401 or not challenge or not challenge.get("realm"):
+        return status, None
+    realm = urllib.parse.urlsplit(challenge["realm"])
+    if realm.netloc != registry or realm.scheme != registry_scheme(registry):
+        raise ValueError(f"{registry} sends tokens from {challenge['realm']}, which is not its own host")
+    service = challenge.get("service", registry)
+    scope = urllib.parse.quote(f"repository:{repo}:pull", safe="")
+    headers = {}
+    if creds:
+        headers["Authorization"] = "Basic " + base64.b64encode(f"{creds[0]}:{creds[1]}".encode()).decode()
+    status, _, body = get(f"{challenge['realm']}?service={urllib.parse.quote(service, safe='')}&scope={scope}", headers, "GET")
+    if status != 200:
+        return status, None
+    return 200, json.loads(body)["token"]
+
+
 def pullable(ref: str, get: Get = _get) -> tuple[int, str]:
     """(0, digest) pullable anonymously; (1, why) denied or missing; (2, why) unknown."""
     registry, repo, tag = split_ref(ref)
-    scope = urllib.parse.quote(f"repository:{repo}:pull", safe="")
     try:
-        status, _, body = get(f"https://{registry}/token?service={registry}&scope={scope}", {})
+        status, token = auth_token(registry, repo, get)
         if status in (401, 403):
             return 1, f"{registry}/{repo} refuses anonymous pulls (HTTP {status}): missing or not public"
         if status != 200:
             return 2, f"token request for {repo} answered HTTP {status}"
-        token = json.loads(body)["token"]
-        status, headers, _ = get(f"https://{registry}/v2/{repo}/manifests/{tag}",
-                                 {"Authorization": f"Bearer {token}", "Accept": ACCEPT}, "HEAD")
+        headers = {"Accept": ACCEPT, **({"Authorization": f"Bearer {token}"} if token else {})}
+        status, headers, _ = get(f"{registry_scheme(registry)}://{registry}/v2/{repo}/manifests/{tag}", headers, "HEAD")
     except (OSError, ValueError, KeyError) as error:
         return 2, f"could not ask {registry} about {ref}: {error}"
     if status in (401, 403, 404):
@@ -275,27 +329,22 @@ class Registry:
         self.get = get
         self._token: str | None = None
 
-    def _bearer(self) -> str:
+    def _bearer(self) -> str | None:
         if self._token is None:
-            scope = urllib.parse.quote(f"repository:{self.repo}:pull", safe="")
-            headers = {}
-            if self.auth:
-                pair = f"{self.auth[0]}:{self.auth[1]}".encode()
-                headers["Authorization"] = "Basic " + base64.b64encode(pair).decode()
-            status, _, body = self.get(
-                f"https://{self.registry}/token?service={self.registry}&scope={scope}", headers, "GET")
+            status, token = auth_token(self.registry, self.repo, self.get, self.auth)
             if status != 200:
                 raise Refused(f"{self.registry} refused a token for {self.repo} (HTTP {status})")
-            self._token = json.loads(body)["token"]
-        return self._token
+            self._token = token or ""
+        return self._token or None
 
     def _fetch(self, kind: str, reference: str) -> tuple[str, str, bytes]:
         """('present', digest, body) | ('absent', why, b'') | ('unknown', why, b'')."""
         where = f"{self.image}{'@' if reference.startswith('sha256:') else ':'}{reference}"
         try:
+            token = self._bearer()
             status, headers, body = self.get(
-                f"https://{self.registry}/v2/{self.repo}/{kind}/{reference}",
-                {"Authorization": f"Bearer {self._bearer()}", "Accept": ACCEPT}, "GET")
+                f"{registry_scheme(self.registry)}://{self.registry}/v2/{self.repo}/{kind}/{reference}",
+                {"Accept": ACCEPT, **({"Authorization": f"Bearer {token}"} if token else {})}, "GET")
         except (OSError, ValueError, KeyError, Refused) as error:
             return "unknown", f"could not ask about {where}: {error}", b""
         if status == 404:
@@ -654,6 +703,17 @@ def release_gate(base_tree: str, head_tree: str, env: dict, registry_for, gh: Gh
     return release_pr(image, version, head_tree, env, registry_for, gh, get)
 
 
+def login(image: str | None, env: dict, run=None) -> int:
+    """`docker login` for the registry of `image`, only into this repository's own namespace; any other gets none."""
+    auth = registry_auth(env, image) if image else None
+    if auth is None:
+        print(f"No login: {image or 'no image'} is not in this repository's own registry namespace.", file=sys.stderr)
+        return 0
+    registry = image.partition("/")[0]
+    run = run or (lambda argv, secret: subprocess.run(argv, input=secret, text=True, check=False).returncode)
+    return run(["docker", "login", registry, "-u", auth[0], "--password-stdin"], auth[1])
+
+
 def source_date_epoch(dockerfile: str) -> int:
     """The UTC time of the Dockerfile's one DEBIAN_SNAPSHOT, in seconds.
 
@@ -690,10 +750,11 @@ def main(argv: list[str]) -> int:
             return 1
         return 0
     config = load(CONFIG)
-    image = image_of(config)
+    image = redirect(image_of(config), env)
     version = str(config.get("version"))
 
     def registry_for(name: str) -> Registry:
+        name = redirect(name, env)
         return Registry(name, registry_auth(env, name))
 
     if command == "name":
@@ -709,6 +770,8 @@ def main(argv: list[str]) -> int:
         if publish:
             print(f"image={image}")
         return 0
+    if command == "login" and not rest:
+        return login(image, env)
     if command == "release-gate" and len(rest) in (2, 3) and (len(rest) == 2 or rest[0] == "--detect"):
         return release_gate(rest[-2], rest[-1], env, registry_for, detect=len(rest) == 3)
     if command == "promote" and len(rest) == 3:
