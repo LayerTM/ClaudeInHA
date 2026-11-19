@@ -452,7 +452,7 @@ jobs:
           TOKEN: ${{ github.token }}
           ACTOR: ${{ github.actor }}
         run: |
-          printf '%s' "${TOKEN}" | docker login ghcr.io -u "${ACTOR}" --password-stdin
+          python3 .github/scripts/addon_image.py login
           python3 .github/scripts/addon_image.py candidate-state '${{ matrix.arch }}' | tee -a "$GITHUB_OUTPUT"
           echo "ref=$(python3 .github/scripts/addon_image.py candidate)-${{ matrix.arch }}" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v7
@@ -515,7 +515,7 @@ jobs:
           ACTOR: ${{ github.actor }}
           ARCHES: ${{ needs.arches.outputs.list }}
         run: |
-          printf '%s' "${TOKEN}" | docker login ghcr.io -u "${ACTOR}" --password-stdin
+          python3 .github/scripts/addon_image.py login
           python3 .github/scripts/addon_image.py join-candidate "${ARCHES}" | tee -a "$GITHUB_OUTPUT"
       - name: Attest the manifest this run joined
         if: steps.join.outputs.created == 'true'
