@@ -123,6 +123,12 @@ def git(root: pathlib.Path, *args: str, check: bool = True) -> str:
 def describe(changes: list[dict]) -> list[str]:
     lines = []
     for change in changes:
+        if change.get("republished"):
+            # Nothing a reader would expect: the version stayed, the bytes behind it did not.
+            lines.append(f"- {change['name']}: {change['from'][:12]}… → {change['to'][:12]}… — **changed while "
+                         f"its version did not**: upstream re-published what the pin names; check why before "
+                         f"merging — `{change['file']}`, {change['kind']} {change['source']}")
+            continue
         if change["kind"].endswith("-sha256") or change["kind"] == "image-digest":
             continue
         major = " (new major version)" if change.get("major") else ""

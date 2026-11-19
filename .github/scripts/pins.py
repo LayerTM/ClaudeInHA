@@ -582,8 +582,12 @@ def cmd_check(root: pathlib.Path, upstream: Upstream) -> int:
     return 0
 
 
+# --no-build: resolving never runs an sdist's build backend, which would be upstream code
+# executing in the job that opens the bump pull request. The environment the tool
+# gets carries no GitHub credentials for the same reason.
+CREDENTIALS = ("GITHUB_TOKEN", "GH_TOKEN")
 PIP_COMPILE = ["pip", "compile", "requirements.in", "--universal", "--python-version", "3.13",
-               "--generate-hashes", "--no-header", "--upgrade", "--output-file", "requirements.lock"]
+               "--generate-hashes", "--no-header", "--upgrade", "--no-build", "--output-file", "requirements.lock"]
 
 
 def refresh_lockfile(directory: pathlib.Path, root: pathlib.Path) -> None:
@@ -591,7 +595,8 @@ def refresh_lockfile(directory: pathlib.Path, root: pathlib.Path) -> None:
         uv = shutil.which("uv")
         if not uv:
             raise PinError(f"{directory.relative_to(root)}: uv is needed to refresh requirements.lock")
-        run = subprocess.run([uv, *PIP_COMPILE], cwd=directory, capture_output=True, text=True, check=False)
+        env = {k: v for k, v in os.environ.items() if k not in CREDENTIALS}
+        run = subprocess.run([uv, *PIP_COMPILE], cwd=directory, capture_output=True, text=True, check=False, env=env)
         if run.returncode != 0:
             raise PinError(f"{directory.relative_to(root)}: uv could not refresh requirements.lock: {run.stderr.strip()}")
         print(f"locked   {(directory / 'requirements.lock').relative_to(root)}")
@@ -606,6 +611,17 @@ def refresh_lockfile(directory: pathlib.Path, root: pathlib.Path) -> None:
     if run.returncode != 0:
         raise PinError(f"{directory.relative_to(root)}: npm could not refresh package-lock.json: {run.stderr.strip()}")
     print(f"locked   {(directory / 'package-lock.json').relative_to(root)}")
+
+
+def version_moved(pin: Pin, pins: list[Pin]) -> bool | None:
+    """Did the version a checksum or digest belongs to move? None for a pin that is not one."""
+    if pin.kind == "image-digest":
+        owners = [p for p in pins if p.kind == "github-release" and p.args == [pin.args[0]] and pin.args[1] in p.head]
+    elif pin.is_checksum():
+        owners = [owner_pin(pin, pins)]
+    else:
+        return None
+    return any(o.target != o.value for o in owners)
 
 
 def cmd_bump(root: pathlib.Path, upstream: Upstream, summary: pathlib.Path | None,
@@ -632,6 +648,8 @@ def cmd_bump(root: pathlib.Path, upstream: Upstream, summary: pathlib.Path | Non
         changes.append({
             "name": pin.name, "file": str(pin.file.relative_to(root)), "kind": pin.kind,
             "source": " ".join(pin.args), "from": pin.value, "to": pin.target, "major": major,
+            # a checksum or digest that changed while its version did not: re-published upstream
+            "republished": version_moved(pin, pins) is False,
         })
         print(f"bumped   {label(pin, root)}: {pin.value} -> {pin.target}")
     for directory in sorted({p.file.parent for p in stale(pins) if p.file.name in ("package.json", "requirements.in")}):

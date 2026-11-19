@@ -428,6 +428,19 @@ check("bump writes the recorded checksum, each pin against its OWN repository's 
       (root / "addon/Dockerfile").read_text().count(AH), 1)
 code, _ = run(root, assets_table(), "check")
 check("after the bump everything matches", code, 0)
+root = repo(ASSET_DOCKERFILE)
+summary = root / "summary.json"
+run(root, assets_table(), "bump", "--summary", str(summary))
+moves = {c["name"]: c["republished"] for c in json.loads(summary.read_text())}
+check("a checksum that changed while its version did not is flagged as re-published (silently re-pinned bytes are the attack)",
+      moves, {"TOOL_SHA256_AMD64": True})
+root = repo(ASSET_DOCKERFILE)
+run(root, assets_table(**{"https://api.github.com/repos/owner/tool/releases/latest": b'{"tag_name": "v1.1.0"}',
+                          REL.format("owner/tool", "1.1.0"): b"",
+                          REL.format("owner/tool", "v1.1.0"): release(("tool_amd64", f"sha256:{AY}"))}),
+    "bump", "--summary", str(summary))
+check("the same change together with a new version is not",
+      {c["name"]: c["republished"] for c in json.loads(summary.read_text())}, {"TOOL_VERSION": False, "TOOL_SHA256_AMD64": False})
 for label, table in [
     ("a digest that is not sha256", assets_table(**{REL.format("owner/tool", "v1.0.0"): release(("tool_amd64", "md5:abc"))})),
     ("a release without a digest", assets_table(**{REL.format("owner/tool", "v1.0.0"): release(("tool_amd64", None))})),
