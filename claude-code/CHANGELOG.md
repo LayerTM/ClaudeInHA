@@ -1,15 +1,25 @@
 # Changelog
 
-## Unreleased
+## [1.63.4] — 2026-11-19
+
+### Security
+- The console's terminal socket library `ws` 8.22.1 → 8.23.0 ([advisory](https://github.com/websockets/ws/security/advisories/GHSA-37g9-w4hg-h9qr)): a peer that floods Ping frames while it stops reading could make the server buffer Pong replies until it ran out of memory. Only a client already let in through Home Assistant could send such a flood.
+
+### Added
+- On a touch screen, a one-finger vertical swipe over the console's terminal scrolls its history like the mouse wheel on a desktop; a tap still focuses the terminal, and the end of a swipe no longer copies a selection that is still on screen.
+- Hungarian for the texts the add-on writes itself (degrade, budget, refused-token and device-lookup notices).
 
 ### Changed
-- ha-agent-core 0.14.0 → 0.15.0 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.15.0)): `ws` 8.23.0 fixes a memory-exhaustion flaw in the console's terminal socket, one-finger swipe scrolls the console history on touch screens, Hungarian texts.
+- The add-on is installed from a prebuilt image published by this repository's CI instead of being built on each device, so installing and updating no longer compile anything on the Home Assistant host.
 - Claude Code 2.1.323 → 2.1.328 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md))
 - Home Assistant CLI (`ha`) 5.7.0 → 6.0.0 ([release notes](https://github.com/home-assistant/cli/releases/tag/6.0.0))
 - `@playwright/mcp` 0.0.85 → 0.0.86 ([release notes](https://github.com/microsoft/playwright-mcp/releases/tag/v0.0.86))
+- The dashboard screenshot helper uses `playwright-core` 1.65.1.
 
 ### Documentation
 - Permission prompts: on Amazon Bedrock, Google Cloud Agent Platform, Microsoft Foundry and Claude apps gateway, Claude Code starts a terminal session in auto mode; the docs explain how to get per-action prompts back with `extra_args`.
+
+Built on ha-agent-core 0.15.0 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.15.0)).
 
 ## [1.63.3] — 2026-11-13
 
