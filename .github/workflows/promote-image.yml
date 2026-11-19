@@ -1,0 +1,57 @@
+name: promote-image
+
+# Publishes `<image>:<version>` from the release candidate that was tried, before
+# the release pull request merges, so the version is never offered without its
+# image. It is run by hand from main with the three facts the candidate was
+# proven under, and it writes only after proving that digest again here: the
+# digest is the candidate this repository's CI built and attested from that
+# tree, for each platform the tree declares, labelled with that version. A
+# version that is already published is accepted only when it is that digest;
+# any other answer from the registry stops the run without a write.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish (the release pull request's config.yaml version)
+        required: true
+        type: string
+      tree:
+        description: Full 40-character tree id the candidate was built from
+        required: true
+        type: string
+      digest:
+        description: Candidate manifest digest that was tried (sha256:…)
+        required: true
+        type: string
+
+permissions: {}
+
+# One writer per version at a time: a second run waits and then finds the tag.
+concurrency:
+  group: promote-image-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote a proven release candidate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      attestations: read
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - name: Publish the version from its proven candidate
+        env:
+          VERSION: ${{ inputs.version }}
+          TREE: ${{ inputs.tree }}
+          DIGEST: ${{ inputs.digest }}
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "${TOKEN}" | docker login ghcr.io -u "${ACTOR}" --password-stdin
+          python3 .github/scripts/addon_image.py promote "${VERSION}" "${TREE}" "${DIGEST}"

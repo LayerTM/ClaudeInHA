@@ -164,5 +164,16 @@ release_if = re.search(r"^  release:\n(?:.*\n)*?    if: >-\n((?:      .*\n)+)", 
 check("release job has an if", release_if is not None, True)
 check("it excludes canary", release_if is not None and "!inputs.canary" in release_if.group(1), True)
 
+# The image checks live in a script both image jobs run; the rule follows them.
+print("An image step with a network is refused in a script too")
+sys.path.insert(0, str(SCRIPT.parent))
+import ci_gates  # noqa: E402
+
+check("a script's networked run is found",
+      len(ci_gates.network_complaints("x.sh", "docker run --rm --network host img true\n")), 1)
+check("a script's offline run passes",
+      ci_gates.network_complaints("x.sh", "docker run --rm \\\n  --network none img true\n"), [])
+check("the repository's scripts pass", ci_gates.check_script_networks(REPO), [])
+
 print(f"\n{'FAILED' if fails else 'ok'} — {fails} failing check(s)")
 sys.exit(1 if fails else 0)
