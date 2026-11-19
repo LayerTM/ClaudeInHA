@@ -1,5 +1,10 @@
 ARG BUILD_FROM
-FROM ${BUILD_FROM} AS base
+# The tag in build.yaml names the base image release; this is the digest of that
+# tag's multi-architecture index, so a rebuilt tag cannot change the image. It is
+# a pin of its own because build.yaml's build_from accepts a tag only.
+# upstream: image-digest hassio-addons/addon-debian-base ghcr.io/hassio-addons/debian-base
+ARG BUILD_FROM_SHA256=1faf86975f6215114064f597c1b8cc03f3793ff15f2bd1cad5989a675a541062
+FROM ${BUILD_FROM}@sha256:${BUILD_FROM_SHA256} AS base
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -206,16 +211,28 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 # --- Home Assistant CLIs (static, arch-aware) ---
 # upstream: github-release home-assistant/cli
 ARG HA_CLI_VERSION=6.0.0
+# upstream: github-asset-sha256 home-assistant/cli ha_amd64
+ARG HA_CLI_SHA256_AMD64=faab39046723cb68d43e9d5c8ac5a2cf105f3ecb3f5c8a01c0999c2699c56489
+# upstream: github-asset-sha256 home-assistant/cli ha_aarch64
+ARG HA_CLI_SHA256_ARM64=514cd052627358d673842e6132d4d0fc88f246c1af767a895c2b529a153c0c59
 # upstream: github-release mikefarah/yq
 ARG YQ_VERSION=4.54.3
+# upstream: github-asset-sha256 mikefarah/yq yq_linux_amd64
+ARG YQ_SHA256_AMD64=129534601871538efe0ba4c5e62a34fb1d5f469bcb975c4fddeb467d82974973
+# upstream: github-asset-sha256 mikefarah/yq yq_linux_arm64
+ARG YQ_SHA256_ARM64=89f69310b61b68d1245065a1241d1fc843f7a36cd6103ffd77ad987613bd1b67
 RUN arch="$(dpkg --print-architecture)" \
     && case "${arch}" in \
-         amd64) ha_asset=ha_amd64; yq_asset=yq_linux_amd64 ;; \
-         arm64) ha_asset=ha_aarch64; yq_asset=yq_linux_arm64 ;; \
+         amd64) ha_asset=ha_amd64;   ha_sha="${HA_CLI_SHA256_AMD64}"; yq_asset=yq_linux_amd64; yq_sha="${YQ_SHA256_AMD64}" ;; \
+         arm64) ha_asset=ha_aarch64; ha_sha="${HA_CLI_SHA256_ARM64}"; yq_asset=yq_linux_arm64; yq_sha="${YQ_SHA256_ARM64}" ;; \
          *) echo "Unsupported architecture: ${arch}" && exit 1 ;; \
        esac \
     && curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 "https://github.com/home-assistant/cli/releases/download/${HA_CLI_VERSION}/${ha_asset}" -o /usr/bin/ha \
     && curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/${yq_asset}" -o /usr/local/bin/yq \
+    && { printf '%s  %s\n' "${ha_sha}" /usr/bin/ha | sha256sum -c - \
+         || { echo "ha ${HA_CLI_VERSION} does not match the checksum recorded in this repository"; exit 1; }; } \
+    && { printf '%s  %s\n' "${yq_sha}" /usr/local/bin/yq | sha256sum -c - \
+         || { echo "yq ${YQ_VERSION} does not match the checksum recorded in this repository"; exit 1; }; } \
     && chmod +x /usr/bin/ha /usr/local/bin/yq \
     && ha help >/dev/null && yq --version
 
@@ -228,16 +245,10 @@ RUN arch="$(dpkg --print-architecture)" \
 # /usr/local/bin, it would replace the system `test` for anything that runs
 # it by name, so it is removed here; the build fails if a file of that name
 # is ever something else.
-# upstream: pypi homeassistant-cli
-ARG HASS_CLI_VERSION=1.0.0
-# upstream: pypi hass-mcp
-ARG HASS_MCP_VERSION=0.6.1
-# upstream: pypi Pillow
-ARG PILLOW_VERSION=13.0.0
-RUN pip install --no-cache-dir --break-system-packages \
-        "homeassistant-cli==${HASS_CLI_VERSION}" \
-        "hass-mcp==${HASS_MCP_VERSION}" \
-        "Pillow==${PILLOW_VERSION}" \
+# Versions live in py-tools/requirements.in and move with pins.py; the lock
+# beside it names every distribution, transitive ones included, by hash.
+RUN --mount=type=bind,source=py-tools/requirements.lock,target=/tmp/requirements.lock \
+    pip install --no-cache-dir --break-system-packages --require-hashes --no-deps -r /tmp/requirements.lock \
     && if [ -e /usr/local/bin/test ]; then \
          grep -qx 'from pytest import main' /usr/local/bin/test && rm /usr/local/bin/test; \
        fi

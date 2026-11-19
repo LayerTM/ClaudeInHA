@@ -41,7 +41,7 @@ if to and to != was:
     changes = [{"name": "TOOL_VERSION", "file": "pins.txt", "kind": "npm", "source": "tool",
                 "from": was, "to": to, "major": False},
                {"name": "TOOL_SHA256", "file": "pins.txt", "kind": "claude-code-sha256",
-                "source": "linux-x64", "from": "a", "to": "b", "major": False}]
+                "source": "linux-x64", "from": "a", "to": "b", "major": False, "republished": False}]
 pathlib.Path(sys.argv[sys.argv.index("--summary") + 1]).write_text(json.dumps(changes))
 """
 
@@ -370,7 +370,19 @@ def test_open_pr() -> None:
               f"{code} raced={raced} won={won[:8]}")
 
 
+def test_describe() -> None:
+    plain = {"name": "X_SHA256", "file": "f", "kind": "image-digest", "source": "o/r img", "from": "a" * 64, "to": "b" * 64,
+             "major": False, "republished": False}
+    check("a digest that moved with its version is not listed", pins_drift.describe([plain]) == [])
+    lines = pins_drift.describe([plain | {"republished": True}])
+    check("a digest that changed while its version did not is listed and says so",
+          len(lines) == 1 and "changed while its version did not" in lines[0] and "aaaaaaaaaaaa" in lines[0], str(lines))
+    check("a checksum re-published without a new version is listed too",
+          len(pins_drift.describe([plain | {"kind": "github-asset-sha256", "republished": True}])) == 1)
+
+
 def main() -> None:
+    test_describe()
     test_verdict()
     test_open_pr()
     if FAILURES:
