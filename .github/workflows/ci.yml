@@ -544,15 +544,21 @@ jobs:
 
   # What a merge offers is what every install is offered, so the image for
   # that version must be pullable by a device that has no credentials. On a
-  # release pull request the version is new: its image must already be
-  # published, and be the candidate this very tree built and proved (published
-  # by the promote-image workflow before the merge, then this job is re-run).
-  # Anywhere else, the version main offers must be pullable.
+  # release pull request the version is new and is published only after the
+  # candidate has been tried, which a pull request cannot wait for: this job is
+  # green once the candidate this very tree built is proven, and the merge
+  # itself is refused until the version is promoted (the merge gate asks
+  # `addon_image.py release-gate`). A pull request whose candidate did not
+  # build fails here. Anywhere else, the version main offers must be pullable,
+  # which also shows a release that landed without being promoted.
   offered-image:
     name: Offered version has a public image
+    needs: [candidate-manifest]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: read
       attestations: read
     steps:
       - uses: actions/checkout@v7
@@ -571,11 +577,20 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           CANARY: ${{ inputs.canary && 'true' || 'false' }}
         run: .github/scripts/addon_image_plan.sh | tee -a "$GITHUB_OUTPUT"
-      - name: The release's image is this tree's proven candidate
-        if: steps.plan.outputs.publish == 'true'
+      - name: The release's candidate was built
+        if: steps.plan.outputs.publish == 'true' && needs.candidate-manifest.result != 'success'
+        env:
+          RESULT: ${{ needs.candidate-manifest.result }}
+        run: |
+          echo "This release's candidate manifest ended '${RESULT}', so there is no candidate to promote." >&2
+          exit 1
+      - name: The release's candidate is proven for this tree
+        if: steps.plan.outputs.publish == 'true' && needs.candidate-manifest.result == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 .github/scripts/addon_image.py release-pr
+          ACTOR: ${{ github.actor }}
+          TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/addon_image.py release-candidate
       - name: The offered version can be pulled without credentials
         if: steps.plan.outputs.publish != 'true'
         run: python3 .github/scripts/addon_image.py offered

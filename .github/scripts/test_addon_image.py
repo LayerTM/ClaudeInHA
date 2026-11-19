@@ -140,6 +140,7 @@ class World:
         self.also: dict[str, list[tuple[str, str, str]]] = {}  # more attestations of the same digest
         self.files: dict[str, dict] = {}                      # tree -> {path: sha}; absent = cannot be listed
         self.truncated = False
+        self.base_version = "1.63.4"                          # what a tree whose claude-code/ is "addon-base" offers
         self.addon_dir: dict[str, str] = {}                   # tree -> object id of claude-code/
         self.commit_tree = {COMMIT: TREE, OTHER_COMMIT: OTHER_TREE}
         self.tree_config = {"version": tree_version, "image": IMAGE, "arch": ["aarch64", "amd64"]}
@@ -198,10 +199,11 @@ class World:
         if path in (f"repos/{REPO}/git/trees/{TREE}", f"repos/{REPO}/git/trees/{OTHER_TREE}"):
             tree = path.rsplit("/", 1)[1]
             return 0, json.dumps({"tree": [{"path": "claude-code", "type": "tree", "sha": self.addon_dir.get(tree, "addon")}]}), ""
-        if path == f"repos/{REPO}/git/trees/addon":
-            return 0, json.dumps({"tree": [{"path": "config.yaml", "type": "blob", "sha": "cfg"}]}), ""
-        if path == f"repos/{REPO}/git/blobs/cfg":
-            content = base64.b64encode(yaml.safe_dump(self.tree_config).encode()).decode()
+        if path in (f"repos/{REPO}/git/trees/addon", f"repos/{REPO}/git/trees/addon-base"):
+            return 0, json.dumps({"tree": [{"path": "config.yaml", "type": "blob", "sha": "cfg" + path[-5:]}]}), ""
+        if path in (f"repos/{REPO}/git/blobs/cfgaddon", f"repos/{REPO}/git/blobs/cfg-base"):
+            config = self.tree_config if path.endswith("addon") else {**self.tree_config, "version": self.base_version, "image": IMAGE}
+            content = base64.b64encode(yaml.safe_dump(config).encode()).decode()
             return 0, json.dumps({"content": content}), ""
         if path.startswith(f"repos/{REPO}/git/commits/"):
             commit = path.rsplit("/", 1)[1]
@@ -495,6 +497,70 @@ w = World()
 w.tags[VERSION] = w.index
 w.status[VERSION] = 503
 check("the registry cannot be asked", release_pr(w), 2)
+
+print("A release pull request is ready when its candidate is proven")
+
+
+def release_candidate(world, tree=TREE):
+    quiet = io.StringIO()
+    with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+        return addon_image.release_candidate(IMAGE, VERSION, tree, MAIN, world.registry_for, world.gh)
+
+
+w = World()
+check("a proven candidate is ready, with nothing promoted", release_candidate(w), 0)
+check("the version tag is not asked for", any(u.endswith(f"/manifests/{VERSION}") for u in w.urls), False)
+w = World()
+del w.tags[f"{VERSION}-rc.{TREE}"]
+check("a candidate that was not built", release_candidate(w), 1)
+w = World()
+w.tags[f"{VERSION}-rc.{TREE}"] = w.platform["amd64"]
+check("a candidate that is a single image", release_candidate(w), 1)
+w = World(labelled="1.0.0")
+check("a candidate labelled for another version", release_candidate(w), 1)
+w = World()
+w.attested.pop(w.platform["aarch64"])
+check("a platform image that is not attested", release_candidate(w), 1)
+w = World()
+w.status[f"{VERSION}-rc.{TREE}"] = 503
+check("the registry cannot be asked", release_candidate(w), 2)
+
+print("The merge gate lets a release land only once it is promoted")
+
+
+def release_gate(world, base=OTHER_TREE, head=TREE, detect=False):
+    quiet = io.StringIO()
+    with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+        return addon_image.release_gate(base, head, MAIN, world.registry_for, world.gh, world.get, detect)
+
+
+w = World()
+w.addon_dir[OTHER_TREE] = "addon-base"
+check("a release that is not promoted", release_gate(w), 1)
+w.tags[VERSION] = w.index
+check("a release promoted to the proven digest", release_gate(w), 0)
+w.tags[VERSION] = w.platform["amd64"]
+check("a release promoted to another digest", release_gate(w), 1)
+w.urls.clear()
+check("a release is detected without asking the registry", (release_gate(w, detect=True), w.urls), (3, []))
+w = World()
+check("a pull request that offers no new version", (release_gate(w), release_gate(w, detect=True)), (0, 0))
+w = World(tree_version="1.63.4")
+w.base_version = "1.63.4"
+w.addon_dir[OTHER_TREE] = "addon-base"
+w.tree_config["image"] = "ghcr.io/o/other"
+check("a changed image under the same version is gated", release_gate(w, detect=True), 3)
+w = World()
+w.addon_dir[OTHER_TREE] = "addon-base"
+w.status[VERSION] = 503
+check("a registry that cannot be asked", release_gate(w), 2)
+w = World()
+w.addon_dir[OTHER_TREE] = "addon-base"
+check("a base that cannot be read", release_gate(w, base="1" * 40), 2)
+w = World()
+w.addon_dir[OTHER_TREE] = "addon-base"
+w.tree_config.pop("image")
+check("a version with no image to promote", release_gate(w), 0)
 
 print("No workflow writes an image tag except through this script")
 for workflow in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
