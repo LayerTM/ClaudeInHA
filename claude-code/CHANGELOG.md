@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Claude Code 2.1.328 → 2.1.329 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md))
+
 ## [1.63.4] — 2026-11-19
 
 ### Security
