@@ -59,9 +59,18 @@ Commands:
                             candidate manifest; print `created=` and `digest=`
   promote <version> <tree> <digest>
                             publish `<image>:<version>` from a proven candidate
-  release-pr                for a release pull request: `<image>:<version>` is
-                            pullable anonymously and is this tree's proven
-                            candidate
+  release-pr                `<image>:<version>` is pullable anonymously and is
+                            this tree's proven candidate (the merge gate asks
+                            this, through release-gate)
+  release-candidate         for a release pull request: this tree's candidate
+                            is built, multi-arch, attested and labelled; exit
+                            1 when it is not, 2 when the registry cannot say
+  release-gate [--detect] <base-tree> <head-tree>
+                            exit 0 when head offers the version base offers,
+                            or is a release whose image is promoted (as
+                            release-pr); the tree ids are of the two commits.
+                            --detect only says whether head is a release: 0 no,
+                            3 yes, 2 the trees could not be read
   pullable <ref>            exit 0 and print the digest if an anonymous client
                             can pull <ref>, 1 if it cannot (denied or not
                             found), 2 if the registry could not be asked
@@ -604,6 +613,47 @@ def release_pr(image: str, version: str, tree: str, env: dict, registry_for, gh:
     return 0
 
 
+def release_candidate(image: str, version: str, tree: str, env: dict, registry_for, gh: Gh = _gh) -> int:
+    """A release pull request is ready to promote: its tree's candidate is built and proven."""
+    state, text, _ = registry_for(image).manifest(candidate_tag(version, tree))
+    if state == "unknown":
+        print(text, file=sys.stderr)
+        return 2
+    if state == "absent":
+        print(f"{text}: this tree's candidate was not built", file=sys.stderr)
+        return 1
+    try:
+        prove(version, tree, text, env["GITHUB_REPOSITORY"], registry_for, gh)
+    except (Refused, KeyError, ValueError) as error:
+        print(f"{image}:{candidate_tag(version, tree)} is not a proven candidate of this tree: {error}",
+              file=sys.stderr)
+        return 1
+    print(f"{image}:{candidate_tag(version, tree)} is {text}, this tree's proven candidate.")
+    return 0
+
+
+def release_gate(base_tree: str, head_tree: str, env: dict, registry_for, gh: Gh = _gh, get: Get = _get,
+                 detect: bool = False) -> int:
+    """The merge gate's question: may the head tree land? Only a release has to be promoted first."""
+    try:
+        repository = env["GITHUB_REPOSITORY"]
+        base = config_at_tree(base_tree, repository, gh)
+        head = config_at_tree(head_tree, repository, gh)
+        version, image = str(head.get("version")), image_of(head)
+        base_version, base_image = str(base.get("version")), image_of(base)
+    except (Refused, KeyError, ValueError, TypeError, yaml.YAMLError, SystemExit) as error:
+        print(f"the offered versions could not be read: {error}", file=sys.stderr)
+        return 2
+    # What is offered is the version AND the image it is pulled from: a tree that changes either is gated.
+    if (version == base_version and image == base_image) or image is None:
+        print(f"Version {version} is already offered, or no image is built for it: nothing to promote.")
+        return 0
+    if detect:
+        print(f"Version {version} is new.")
+        return 3
+    return release_pr(image, version, head_tree, env, registry_for, gh, get)
+
+
 def source_date_epoch(dockerfile: str) -> int:
     """The UTC time of the Dockerfile's one DEBIAN_SNAPSHOT, in seconds.
 
@@ -659,6 +709,8 @@ def main(argv: list[str]) -> int:
         if publish:
             print(f"image={image}")
         return 0
+    if command == "release-gate" and len(rest) in (2, 3) and (len(rest) == 2 or rest[0] == "--detect"):
+        return release_gate(rest[-2], rest[-1], env, registry_for, detect=len(rest) == 3)
     if command == "promote" and len(rest) == 3:
         return promote(rest[0], rest[1], rest[2], env, registry_for)
     if command == "pullable" and len(rest) == 1:
@@ -694,6 +746,8 @@ def main(argv: list[str]) -> int:
         return 0
     if command == "release-pr":
         return release_pr(image, version, tree, env, registry_for)
+    if command == "release-candidate":
+        return release_candidate(image, version, tree, env, registry_for)
     registry = registry_for(image)
     if command == "reproducibility" and not rest:
         try:
