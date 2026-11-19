@@ -7,7 +7,8 @@
 # Usage:
 #   addon_image.sh build <arch> <tag>
 #   addon_image.sh check <arch> <tag>
-# Needs GH_TOKEN for the core download; run from the repository root.
+# Needs GH_TOKEN for the core download and a buildx builder that can rewrite
+# timestamps (docker/setup-buildx-action); run from the repository root.
 set -euo pipefail
 
 command="${1:?build|check}"
@@ -39,10 +40,16 @@ build() {
   if [ "${source}" = packed ]; then
     archive=(--build-context "core-archive=${RUNNER_TEMP}/core")
   fi
+  # The build clock is derived from the Dockerfile's apt snapshot, never from
+  # the day the build runs; the exporter clamps every file time to it, so the
+  # same tree gives the same image on any day and on any checkout.
+  local epoch
+  epoch="$(python3 .github/scripts/addon_image.py source-date-epoch)"
   # The labels the Supervisor reads from an installed image (its version and
   # architecture) and the one that links the package to this repository.
-  docker build --pull \
+  docker buildx build --pull \
     "${archive[@]}" \
+    --build-arg SOURCE_DATE_EPOCH="${epoch}" \
     --platform "${platform}" \
     --build-arg BUILD_FROM="${from}" \
     --label "io.hass.version=${version}" \
@@ -52,8 +59,11 @@ build() {
     --label "io.hass.url=https://github.com/LayerTM/ClaudeInHA" \
     --label "org.opencontainers.image.source=https://github.com/LayerTM/ClaudeInHA" \
     --label "org.opencontainers.image.version=${version}" \
-    --tag "${tag}" \
+    --output "type=docker,name=${tag},rewrite-timestamp=true" \
     claude-code
+  # What identifies this build: two builds of one tree must print the same.
+  echo "image ${tag} id=$(docker image inspect --format '{{.Id}}' "${tag}")"
+  docker image inspect --format '{{range $i, $l := .RootFS.Layers}}layer {{$i}} {{$l}}{{"\n"}}{{end}}' "${tag}"
 }
 
 check() {

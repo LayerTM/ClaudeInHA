@@ -39,6 +39,15 @@ Kinds:
   nodejs-sha256 <platform>          the SHASUMS256.txt entry for
                                     node-v<version>-<platform>.tar.xz of the
                                     nodejs pin in the same file
+  debian-snapshot                   the newest snapshot.debian.org timestamp
+                                    that both the debian and the debian-security
+                                    archives have (apt reads every package
+                                    version from the pinned snapshot, so the
+                                    same tree installs the same packages on any
+                                    day). Unlike the other pins it is behind
+                                    only when it is older than SNAPSHOT_MAX_AGE:
+                                    packages move in one weekly wave, not on
+                                    every upload
 
 A checksum pin follows the version pin it belongs to (the one pin of its owner
 kind in the same file): a bump moves both together, and `check` reports a
@@ -56,6 +65,7 @@ could not be asked is never reported as up to date.
 
 from __future__ import annotations
 
+import calendar
 import json
 import shutil
 import os
@@ -63,6 +73,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import time
 import urllib.request
 
 MARKER = re.compile(r"^\s*#\s*upstream:\s*(\S+)((?:\s+\S+)*)\s*$")
@@ -71,6 +82,11 @@ VERSION = re.compile(r"^\d+(?:\.\d+)*$")
 # a semver pre-release (v27.0.0-alpha.0.0.0): published in the Node.js index, never a pin target
 PRERELEASE = re.compile(r"^v?\d+\.\d+\.\d+-\S+$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+# a snapshot.debian.org timestamp (UTC): 20261119T024521Z
+SNAPSHOT = re.compile(r"^\d{8}T\d{6}Z$")
+SNAPSHOT_LINK = re.compile(r'href="(\d{8}T\d{6}Z)/"')
+SNAPSHOT_ARCHIVES = ("debian", "debian-security")
+SNAPSHOT_MAX_AGE = 7 * 24 * 3600
 # checksum kind -> the version kind it belongs to
 CHECKSUM_OWNER = {"claude-code-sha256": "claude-code", "nodejs-sha256": "nodejs"}
 
@@ -92,6 +108,13 @@ def clean_version(raw: str, source: str) -> str:
     return value
 
 
+def snapshot_epoch(value: str) -> int:
+    """Seconds since the epoch of a snapshot timestamp."""
+    if not SNAPSHOT.match(value):
+        raise PinError(f"{value!r} is not a snapshot timestamp (YYYYMMDDTHHMMSSZ)")
+    return calendar.timegm(time.strptime(value, "%Y%m%dT%H%M%SZ"))
+
+
 def http_get(url: str) -> bytes:
     headers = {"User-Agent": "addon-pins"}
     token = os.environ.get("GITHUB_TOKEN")
@@ -110,8 +133,9 @@ def http_get(url: str) -> bytes:
 class Upstream:
     """Answers "what is the newest value" for one marker. Cached per URL."""
 
-    def __init__(self, fetch=http_get):
+    def __init__(self, fetch=http_get, clock=time.time):
         self.fetch = fetch
+        self.clock = clock
         self.cache: dict[str, bytes] = {}
 
     def get(self, url: str) -> bytes:
@@ -155,6 +179,8 @@ class Upstream:
             return clean_version(self.text(url, "tag_name"), url)
         if kind == "nodejs" and args == ["lts-ready"]:
             return self.nodejs(pin)
+        if kind == "debian-snapshot" and not args:
+            return self.snapshot()
         if kind == "claude-code" and len(args) == 2:
             base = arg_value(pin.file, args[0], pins)
             url = f"{base.rstrip('/')}/{args[1]}"
@@ -173,6 +199,23 @@ class Upstream:
                 raise PinError(f"{url} gave {checksum!r} for {args[0]}, not a SHA-256")
             return checksum
         raise PinError(f"{pin.where}: unknown upstream '{kind} {' '.join(args)}'")
+
+    def snapshot(self) -> str:
+        """The newest timestamp that every archive apt reads has a snapshot for."""
+        now = time.gmtime(self.clock())
+        newest = []
+        for archive in SNAPSHOT_ARCHIVES:
+            found: list[str] = []
+            # the month's first hours may have no snapshot yet: look one month back
+            for year, month in ((now.tm_year, now.tm_mon), (now.tm_year - (now.tm_mon == 1), now.tm_mon - 1 or 12)):
+                url = f"https://snapshot.debian.org/archive/{archive}/?year={year}&month={month}"
+                found = SNAPSHOT_LINK.findall(self.get(url).decode("utf-8", "replace"))
+                if found:
+                    break
+            if not found:
+                raise PinError(f"snapshot.debian.org lists no {archive} snapshot for the last two months")
+            newest.append(max(found))
+        return min(newest)
 
     def shasums_entry(self, url: str, filename: str) -> str:
         """The checksum on the one `<sha256>  <filename>` line of a SHASUMS file."""
@@ -361,9 +404,12 @@ def discover(root: pathlib.Path) -> list[Pin]:
             if not pinned or lines[i + 1].lstrip().startswith("#"):
                 raise PinError(f"{rel}:{i + 2}: the line after an upstream marker carries no value")
             pin = Pin(file, i + 2, marker.group(1), marker.group(2).split(), pinned["head"], pinned["value"], pinned["tail"])
-            value_shape = SHA256 if pin.is_checksum() else VERSION
+            value_shape, shape_name = (
+                (SHA256, "SHA-256") if pin.is_checksum()
+                else (SNAPSHOT, "snapshot timestamp") if pin.kind == "debian-snapshot"
+                else (VERSION, "version"))
             if not value_shape.match(pin.value):
-                raise PinError(f"{rel}:{i + 2}: {pin.value!r} is not a {'SHA-256' if pin.is_checksum() else 'version'}")
+                raise PinError(f"{rel}:{i + 2}: {pin.value!r} is not a {shape_name}")
             pins.append(pin)
     if not pins:
         raise PinError("no upstream markers found — nothing was checked")
@@ -376,6 +422,10 @@ def resolve(pins: list[Pin], upstream: Upstream) -> None:
         latest = upstream.latest(pin, pins)
         if pin.is_checksum():
             pin.target = latest
+        elif pin.kind == "debian-snapshot":
+            # one weekly wave: a snapshot younger than the limit is current
+            old = upstream.clock() - snapshot_epoch(pin.value) > SNAPSHOT_MAX_AGE
+            pin.target = latest if old and latest > pin.value else pin.value
         else:
             pin.target = latest if version_key(latest) > version_key(pin.value) else pin.value
 
@@ -435,7 +485,7 @@ def cmd_bump(root: pathlib.Path, upstream: Upstream, summary: pathlib.Path | Non
         ending = line[len(line.rstrip("\r\n")):]
         lines[pin.line_no - 1] = f"{pin.head}{pin.target}{pin.tail}{ending}"
         pin.file.write_text("".join(lines))
-        major = (not pin.is_checksum()) and version_key(pin.target)[0] != version_key(pin.value)[0]
+        major = pin.kind not in ("debian-snapshot", *CHECKSUM_OWNER) and version_key(pin.target)[0] != version_key(pin.value)[0]
         changes.append({
             "name": pin.name, "file": str(pin.file.relative_to(root)), "kind": pin.kind,
             "source": " ".join(pin.args), "from": pin.value, "to": pin.target, "major": major,

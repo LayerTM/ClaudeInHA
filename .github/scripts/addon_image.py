@@ -30,6 +30,9 @@ Commands:
                             for a release pull request from this repository
                             (env EVENT, TITLE, HEAD_REPO, REPO, BASE_CONFIG,
                             CANARY)
+  source-date-epoch         print the build clock (seconds) derived from the
+                            Dockerfile's DEBIAN_SNAPSHOT: file times, pip's
+                            .pyc stamps and apt all follow that one value
   candidate                 print `<image>:<version>-rc.<tree>` for HEAD's tree
   candidate-state <arch>    print `exists=true|false` for that architecture's
                             candidate; exit 2 if the registry cannot tell
@@ -57,6 +60,7 @@ repository is env GITHUB_REPOSITORY.
 from __future__ import annotations
 
 import base64
+import calendar
 import hashlib
 import json
 import os
@@ -64,6 +68,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -76,6 +81,7 @@ from release_notes import RELEASE_TITLE_RE  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "claude-code" / "config.yaml"
+DOCKERFILE = ROOT / "claude-code" / "Dockerfile"
 # The workflow whose attestations prove a candidate (it builds and checks them).
 SIGNER_WORKFLOW = ".github/workflows/ci.yml"
 INDEX_TYPES = {
@@ -474,6 +480,21 @@ def release_pr(image: str, version: str, tree: str, env: dict, registry_for, gh:
     return 0
 
 
+def source_date_epoch(dockerfile: str) -> int:
+    """The UTC time of the Dockerfile's one DEBIAN_SNAPSHOT, in seconds.
+
+    The build clock is a function of the snapshot, never of the day the build
+    runs, so the same tree builds the same files on any day.
+    """
+    found = re.findall(r"^ARG DEBIAN_SNAPSHOT=(\S+)\s*$", dockerfile, flags=re.M)
+    if len(found) != 1:
+        raise ValueError(f"expected exactly one 'ARG DEBIAN_SNAPSHOT=' with a value, found {len(found)}")
+    try:
+        return calendar.timegm(time.strptime(found[0], "%Y%m%dT%H%M%SZ"))
+    except ValueError as err:
+        raise ValueError(f"DEBIAN_SNAPSHOT {found[0]!r} is not a snapshot timestamp (YYYYMMDDTHHMMSSZ)") from err
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         print(__doc__, file=sys.stderr)
@@ -486,6 +507,13 @@ def main(argv: list[str]) -> int:
                   f"dropping the architecture.", file=sys.stderr)
             return 1
         print(PLATFORMS[rest[0]])
+        return 0
+    if command == "source-date-epoch" and not rest:
+        try:
+            print(source_date_epoch(DOCKERFILE.read_text()))
+        except ValueError as err:
+            print(err, file=sys.stderr)
+            return 1
         return 0
     config = load(CONFIG)
     image = image_of(config)

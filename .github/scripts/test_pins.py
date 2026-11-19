@@ -116,7 +116,7 @@ def record_relock(directory: pathlib.Path, root: pathlib.Path) -> None:
     relocked.append(directory.relative_to(root))
 
 
-def run(root: pathlib.Path, table: dict[str, bytes], *argv: str, relock=record_relock) -> tuple[int, str]:
+def run(root: pathlib.Path, table: dict[str, bytes], *argv: str, relock=record_relock, now: float | None = None) -> tuple[int, str]:
     def fetch(url: str) -> bytes:
         if url not in table:
             raise pins.PinError(f"could not read {url}: offline")
@@ -124,7 +124,7 @@ def run(root: pathlib.Path, table: dict[str, bytes], *argv: str, relock=record_r
 
     out = io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
-        code = pins.main(list(argv), upstream=pins.Upstream(fetch), root=root, relock=relock)
+        code = pins.main(list(argv), upstream=pins.Upstream(fetch, **({"clock": lambda: now} if now else {})), root=root, relock=relock)
     return code, out.getvalue()
 
 
@@ -356,6 +356,45 @@ check("an asset that locks another version fails the bump", code, 2)
 code, _ = run(repo(files=CORE_FILES), answers(**{CORE: b'{"tag_name": "v0.4.1"}'}), "bump")
 check("a release without the asset fails the bump", code, 2)
 
+print("debian snapshot")
+SNAP_OLD, SNAP_NEW = "20261101T000000Z", "20261119T144258Z"
+SNAP_DOCKERFILE = f"FROM scratch\n# upstream: debian-snapshot\nARG DEBIAN_SNAPSHOT={SNAP_OLD}\n"
+LISTING = "https://snapshot.debian.org/archive/{}/?year=2026&month={}"
+def listing(*stamps: str) -> bytes:
+    return "".join(f'<a href="{s}/">{s}</a>\n' for s in stamps).encode() + b'<a href="../">up</a>'
+def snapshots(**over) -> dict[str, bytes]:
+    table = {
+        "https://api.github.com/repos/hassio-addons/addon-debian-base/releases/latest": b'{"tag_name": "v9.4.0"}',
+        LISTING.format("debian", 11): listing("20261119T023717Z", SNAP_NEW),
+        LISTING.format("debian-security", 11): listing("20261118T201500Z", "20261119T091200Z"),
+    }
+    table.update(over)
+    return table
+def epoch(stamp: str) -> float:
+    return pins.snapshot_epoch(stamp)
+NOW = epoch("20261120T000000Z")
+root = repo(SNAP_DOCKERFILE)
+code, out = run(root, snapshots(), "check", now=NOW)
+check("a snapshot older than a week is behind", (code, f"{SNAP_OLD} -> 20261119T091200Z" in out), (1, True))
+code, _ = run(root, snapshots(), "bump", now=NOW)
+check("bump moves to the newest snapshot BOTH archives have",
+      (code, f"ARG DEBIAN_SNAPSHOT=20261119T091200Z" in (root / "addon/Dockerfile").read_text()), (0, True))
+root = repo(SNAP_DOCKERFILE)
+code, out = run(root, snapshots(), "check", now=epoch(SNAP_OLD) + 6 * 24 * 3600)
+check("a snapshot inside the week is current even though a newer one exists", code, 0)
+code, out = run(root, snapshots(), "check", now=epoch(SNAP_OLD) + 8 * 24 * 3600)
+check("the same snapshot a day past the week is behind", code, 1)
+code, out = run(root, snapshots(**{LISTING.format("debian", 11): listing()}).copy() | {LISTING.format("debian", 10): listing()},
+                "check", now=NOW)
+check("an archive with no snapshot for two months fails closed (exit 2)", code, 2)
+code, out = run(root, {k: v for k, v in snapshots().items() if "security" not in k}, "check", now=NOW)
+check("an unreadable archive fails closed (exit 2)", code, 2)
+code, _ = run(repo(SNAP_DOCKERFILE.replace(SNAP_OLD, "2026-11-01")), snapshots(), "check", now=NOW)
+check("a value that is not a snapshot timestamp is refused", code, 2)
+first = pins.Upstream(lambda url: snapshots()[url] if url in snapshots() else listing(), clock=lambda: epoch("20261101T120000Z"))
+check("early in a month the search looks back to the month before", first.snapshot() > "20261000", True)
+check("the epoch of a snapshot is the UTC time it names", pins.snapshot_epoch("20261119T000000Z"), 1795046400)
+
 print("this repository")
 found = pins.discover(REPO)
 check("every pin in the add-on declares an upstream (no unmarked pin)", len(found) > 0, True)
@@ -365,6 +404,8 @@ check("the Claude checksums have their version pin beside them",
       sum(1 for p in found if p.kind == "claude-code-sha256"), 2)
 check("the Node checksums have their version pin beside them",
       sum(1 for p in found if p.kind == "nodejs-sha256"), 2)
+check("the Debian snapshot the image installs from is a pin",
+      [p.kind for p in found if p.name == "DEBIAN_SNAPSHOT"], ["debian-snapshot"])
 check("the pinned ha-agent-core release is watched",
       [p.args[0] for p in found if p.kind == "core-lock"], ["LayerTM/ha-agent-core"])
 
