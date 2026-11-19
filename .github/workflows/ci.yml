@@ -308,8 +308,8 @@ jobs:
       # ... and regenerates the hash-locked Python requirements with uv.
       - name: Install uv
         if: needs.pins.outputs.drift == 'true'
-        # upstream: pypi uv
-        run: python3 -m pip install --quiet --disable-pip-version-check uv==0.13.9
+        # The version and its hashes: .github/ci-tools/requirements.lock (moved by pins.py).
+        run: python3 -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r .github/ci-tools/requirements.lock
       - name: Open or update the bump pull request
         if: needs.pins.outputs.drift == 'true'
         env:
@@ -387,9 +387,11 @@ jobs:
     runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v7
-      # uv: a bump regenerates the hash-locked Python requirements.
-      # upstream: pypi uv
-      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml uv==0.13.9
+      # uv: a bump regenerates the hash-locked Python requirements. Its version
+      # and hashes: .github/ci-tools/requirements.lock (moved by pins.py).
+      - run: |
+          python3 -m pip install --quiet --disable-pip-version-check pyyaml
+          python3 -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r .github/ci-tools/requirements.lock
       # Before the canary: a bump refreshes package-lock.json files with npm.
       - uses: actions/setup-node@v7
         with:
