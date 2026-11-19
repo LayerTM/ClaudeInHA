@@ -379,5 +379,20 @@ check("one promotion per version at a time", promote_wf["concurrency"],
       {"group": "promote-image-${{ inputs.version }}", "cancel-in-progress": False})
 check("its inputs", sorted(promote_wf[True]["workflow_dispatch"]["inputs"]), ["digest", "tree", "version"])
 
+print("A command run for a registry write leaves stdout to the step's key=value lines")
+# The steps pipe stdout into $GITHUB_OUTPUT, so the trace line and the child's own
+# output (docker push progress) must go to stderr.
+import subprocess  # noqa: E402
+
+probe = subprocess.run(
+    [sys.executable, "-c",
+     "import sys; sys.path.insert(0, sys.argv[1]); import addon_image; "
+     "sys.exit(addon_image._run(['echo', 'from-child']))",
+     str(pathlib.Path(__file__).resolve().parent)],
+    capture_output=True, text=True, check=False)
+check("the helper's exit status is the command's", probe.returncode, 0)
+check("nothing reaches stdout", probe.stdout, "")
+check("the trace and the child's output reach stderr", ("+ echo from-child" in probe.stderr, "from-child\n" in probe.stderr), (True, True))
+
 print(f"\n{'FAILED' if fails else 'ok'} — {fails} failing check(s)")
 sys.exit(1 if fails else 0)

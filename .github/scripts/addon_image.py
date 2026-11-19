@@ -192,8 +192,10 @@ def _gh(args: list) -> tuple[int, str, str]:
 
 
 def _run(argv: list) -> int:
-    print("+ " + " ".join(argv), flush=True)
-    return subprocess.run(argv, check=False).returncode
+    # stdout is the step's key=value output (piped into $GITHUB_OUTPUT), so the
+    # trace line and the command's own output go to stderr.
+    print("+ " + " ".join(argv), file=sys.stderr, flush=True)
+    return subprocess.run(argv, check=False, stdout=sys.stderr).returncode
 
 
 def pullable(ref: str, get: Get = _get) -> tuple[int, str]:
