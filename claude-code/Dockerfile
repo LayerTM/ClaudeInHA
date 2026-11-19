@@ -3,6 +3,16 @@ FROM ${BUILD_FROM} AS base
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# Reproducible build inputs. DEBIAN_SNAPSHOT pins every apt package version;
+# SOURCE_DATE_EPOCH (passed by the build script, derived from it) makes pip write
+# hash-checked .pyc files and lets the exporter clamp file times.
+# upstream: debian-snapshot
+ARG DEBIAN_SNAPSHOT=20261119T144258Z
+ARG SOURCE_DATE_EPOCH
+# npm writes no debug logs into layers; node keeps no compile cache in /tmp.
+ARG npm_config_logs_max=0
+ARG NODE_DISABLE_COMPILE_CACHE=1
+
 ENV TERM=xterm-256color
 # Authoritative truecolor signal: many TUIs (incl. Claude Code's renderer) gate
 # 24-bit colour on COLORTERM=truecolor rather than the TERM string. The pipe
@@ -21,8 +31,8 @@ ENV LANG=C.UTF-8
 #   shell loads no shared library, so nothing the agent could change takes part
 #   in that decision
 # - remaining: general CLI tooling for Claude and MCP servers
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+RUN --mount=type=bind,source=build-tools/apt-install.sh,target=/tmp/apt-install.sh \
+    /tmp/apt-install.sh \
         bash \
         bash-static \
         build-essential \
@@ -41,8 +51,7 @@ RUN apt-get update \
         ripgrep \
         tmux \
         unzip \
-        xz-utils \
-    && rm -rf /var/lib/apt/lists/*
+        xz-utils
 
 # Node.js from official dist tarballs (latest, deterministic, arch-aware).
 # The SHA-256 of each platform's tarball is recorded beside the version, taken
@@ -94,6 +103,10 @@ RUN /tmp/core/assemble.sh /tmp/core.tar /tmp/addon /addon
 
 FROM base
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ARG DEBIAN_SNAPSHOT
+ARG SOURCE_DATE_EPOCH
+ARG npm_config_logs_max=0
+ARG NODE_DISABLE_COMPILE_CACHE=1
 
 # --- Claude Code native binary (pinned, checksum-verified) ---
 # Not `curl https://claude.ai/install.sh | bash`: that executes whatever the
@@ -180,14 +193,13 @@ ENV IS_SANDBOX=1
 # helper and Playwright MCP point at /usr/bin/chromium (no bundled download).
 # ImageMagick gives Claude a native CLI (`magick`) for cropping/resizing those
 # screenshots (Pillow, below, covers the Python side).
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+RUN --mount=type=bind,source=build-tools/apt-install.sh,target=/tmp/apt-install.sh \
+    /tmp/apt-install.sh \
         chromium \
         fonts-noto-cjk \
         fonts-noto-color-emoji \
         fonts-liberation \
-        imagemagick \
-    && rm -rf /var/lib/apt/lists/*
+        imagemagick
 ENV CHROME_BIN=/usr/bin/chromium
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
@@ -245,9 +257,13 @@ COPY --from=assembly /addon/install-tools /usr/local/lib/install-tools
 # - ccstatusline: the rich status line the desktop Claude Code uses, wired as
 #   Claude's statusLine, so nothing is fetched with npx at runtime.
 # Their versions live in cli-tools/package.json and move with pins.py.
+# The core's npm installer leaves its random temp directories and the node-pty
+# build's temp paths behind; they differ on every build. They are removed after
+# each install below until the pinned core cleans up after itself.
 COPY cli-tools /opt/cli-tools
 RUN cd /opt/cli-tools \
     && /usr/local/lib/install-tools/npm-ci-checked.sh --omit=dev \
+    && rm -rf /tmp/tmp.* /tmp/node-compile-cache node_modules/node-pty/build/Makefile node_modules/node-pty/build/config.gypi \
     && npm cache clean --force \
     && for dep in $(jq -r '.dependencies | keys[]' package.json); do \
          jq -r 'if (.bin | type) == "string" then .name | split("/") | last else .bin | keys[] end' \
@@ -268,12 +284,14 @@ RUN cd /opt/cli-tools \
 COPY --from=assembly /addon/app /opt/agent-console
 RUN cd /opt/agent-console \
     && /usr/local/lib/install-tools/npm-ci-checked.sh --omit=dev \
+    && rm -rf /tmp/tmp.* /tmp/node-compile-cache node_modules/node-pty/build/Makefile node_modules/node-pty/build/config.gypi \
     && npm cache clean --force
 
 # ha-shot helper dependencies (playwright-core drives the system Chromium)
 COPY --from=assembly /addon/ha-tools /opt/ha-tools
 RUN cd /opt/ha-tools \
     && /usr/local/lib/install-tools/npm-ci-checked.sh --omit=dev \
+    && rm -rf /tmp/tmp.* /tmp/node-compile-cache node_modules/node-pty/build/Makefile node_modules/node-pty/build/config.gypi \
     && npm cache clean --force \
     && rm -rf /usr/local/lib/install-tools
 

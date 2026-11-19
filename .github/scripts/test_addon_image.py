@@ -394,5 +394,17 @@ check("the helper's exit status is the command's", probe.returncode, 0)
 check("nothing reaches stdout", probe.stdout, "")
 check("the trace and the child's output reach stderr", ("+ echo from-child" in probe.stderr, "from-child\n" in probe.stderr), (True, True))
 
+print("source date epoch")
+check("the build clock is the UTC time the snapshot names",
+      addon_image.source_date_epoch("FROM x\nARG DEBIAN_SNAPSHOT=20261119T000000Z\n"), 1795046400)
+for label, text in [("no snapshot", "FROM x\n"), ("a snapshot declared twice", "ARG DEBIAN_SNAPSHOT=20261119T000000Z\nARG DEBIAN_SNAPSHOT=20261120T000000Z\n"),
+                    ("a value that is not a timestamp", "ARG DEBIAN_SNAPSHOT=latest\n")]:
+    try:
+        addon_image.source_date_epoch(text)
+        check(f"{label} is refused", "accepted", "refused")
+    except ValueError:
+        check(f"{label} is refused", "refused", "refused")
+check("the real Dockerfile yields a clock", addon_image.source_date_epoch(addon_image.DOCKERFILE.read_text()) > 1_700_000_000, True)
+
 print(f"\n{'FAILED' if fails else 'ok'} — {fails} failing check(s)")
 sys.exit(1 if fails else 0)
