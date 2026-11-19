@@ -7,6 +7,9 @@
 - Home Assistant CLI (`ha`) 5.7.0 → 6.0.0 ([release notes](https://github.com/home-assistant/cli/releases/tag/6.0.0))
 - `@playwright/mcp` 0.0.85 → 0.0.86 ([release notes](https://github.com/microsoft/playwright-mcp/releases/tag/v0.0.86))
 
+### Documentation
+- Permission prompts: on Amazon Bedrock, Google Cloud Agent Platform, Microsoft Foundry and Claude apps gateway, Claude Code starts a terminal session in auto mode; the docs explain how to get per-action prompts back with `extra_args`.
+
 ## [1.63.3] — 2026-11-13
 
 ### Changed
