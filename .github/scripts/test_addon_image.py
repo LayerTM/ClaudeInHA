@@ -137,6 +137,9 @@ class World:
         self.gh_calls: list[list] = []
         self.urls: list[str] = []
         self.attested: dict[str, tuple[str, str, str]] = {}   # digest -> (commit, signer digest, repo URI)
+        self.also: dict[str, list[tuple[str, str, str]]] = {}  # more attestations of the same digest
+        self.files: dict[str, dict] = {}                      # tree -> {path: sha}; absent = cannot be listed
+        self.truncated = False
         self.commit_tree = {COMMIT: TREE, OTHER_COMMIT: OTHER_TREE}
         self.tree_config = {"version": tree_version, "image": IMAGE, "arch": ["aarch64", "amd64"]}
         entries = []
@@ -177,13 +180,19 @@ class World:
             digest = args[2].rsplit("@", 1)[1]
             if digest not in self.attested:
                 return 1, "", "no attestations found"
-            commit, signer, uri = self.attested[digest]
             return 0, json.dumps([{"verificationResult": {
                 "signature": {"certificate": {"sourceRepositoryDigest": commit, "buildSignerDigest": signer,
                                               "sourceRepositoryURI": uri}},
-                "statement": {"subject": [{"name": IMAGE, "digest": {"sha256": digest.split(":")[1]}}]}}}]), ""
+                "statement": {"subject": [{"name": IMAGE, "digest": {"sha256": digest.split(":")[1]}}]}}}
+                for commit, signer, uri in [self.attested[digest], *self.also.get(digest, [])]]), ""
         path = args[1]
-        if path == f"repos/{REPO}/git/trees/{TREE}":
+        if path.endswith("?recursive=1"):
+            files = self.files.get(path.split("/trees/")[1].split("?")[0])
+            if files is None:
+                return 1, "", "not found"
+            return 0, json.dumps({"truncated": self.truncated, "tree": [
+                {"path": f, "type": "blob", "mode": "100644", "sha": sha} for f, sha in files.items()]}), ""
+        if path in (f"repos/{REPO}/git/trees/{TREE}", f"repos/{REPO}/git/trees/{OTHER_TREE}"):
             return 0, json.dumps({"tree": [{"path": "claude-code", "type": "tree", "sha": "addon"}]}), ""
         if path == f"repos/{REPO}/git/trees/addon":
             return 0, json.dumps({"tree": [{"path": "config.yaml", "type": "blob", "sha": "cfg"}]}), ""
@@ -286,6 +295,85 @@ check("not from main", (promote(w, env={**MAIN, "GITHUB_REF": "refs/heads/x"}), 
 w = World()
 w.objects[w.index] = w.objects[w.index] + b" "
 refuses("content that does not match its digest", w)
+
+print("A digest several trees built is proven by any of them, never by the others alone")
+w = World()
+w.also[w.index] = [(OTHER_COMMIT, OTHER_COMMIT, f"https://github.com/{REPO}")]
+check("a digest attested from this tree's CI and another's is promoted", promote(w), 0)
+w = World()
+w.attested[w.index] = (OTHER_COMMIT, OTHER_COMMIT, f"https://github.com/{REPO}")
+w.also[w.index] = [(COMMIT, COMMIT, "https://github.com/x/r")]
+refuses("one attestation from another repository still refuses the digest", w)
+
+print("A proof carries over a tree-identical rebuild")
+FILES = {".github/workflows/ci.yml": "1", "claude-code/config.yaml": "2", "claude-code/Dockerfile": "3",
+         "claude-code/CHANGELOG.md": "4", "claude-code/DOCS.md": "5", "claude-code/README.md": "6",
+         "claude-code/app/test/x.js": "7", "README.md": "8"}
+
+
+def carried_world(**changes) -> "World":
+    w = World()
+    w.tags[f"{VERSION}-rc.{OTHER_TREE}"] = w.index
+    w.also[w.index] = [(OTHER_COMMIT, OTHER_COMMIT, f"https://github.com/{REPO}")]
+    for digest in w.platform.values():
+        w.also[digest] = [(OTHER_COMMIT, OTHER_COMMIT, f"https://github.com/{REPO}")]
+    w.files[TREE] = dict(FILES)
+    w.files[OTHER_TREE] = {**FILES, **{k: v for k, v in changes.items() if v is not None}}
+    for path, value in changes.items():
+        if value is None:
+            del w.files[OTHER_TREE][path]
+    return w
+
+
+def carry(world, version=VERSION, first=TREE, second=OTHER_TREE):
+    try:
+        return addon_image.carried(version, first, second, REPO, world.registry_for, world.gh)
+    except addon_image.Refused as error:
+        return f"refused: {error}"
+
+
+w = carried_world(**{".github/workflows/ci.yml": "changed", "README.md": "changed", "claude-code/CHANGELOG.md": "changed",
+                     "claude-code/DOCS.md": "changed", "claude-code/README.md": "changed", ".github/new.sh": "new"})
+check("CI files, the repository's docs and the add-on's three documents may differ", carry(w), w.index)
+check("and nothing was written to a registry", w.writes, [])
+for label, changes in [
+    ("the add-on's config", {"claude-code/config.yaml": "changed"}),
+    ("a file the image is built from", {"claude-code/Dockerfile": "changed"}),
+    ("a test inside the add-on directory (unclassified is not free)", {"claude-code/app/test/x.js": "changed"}),
+    ("a file added to the add-on directory", {"claude-code/apparmor.txt": "new"}),
+    ("a file removed from the add-on directory", {"claude-code/app/test/x.js": None}),
+]:
+    got = carry(carried_world(**changes))
+    check(f"a difference in {label} does not carry", (got.startswith("refused:"), "outside the image" in got), (True, True))
+check("the refusal names the file", "claude-code/config.yaml" in carry(carried_world(**{"claude-code/config.yaml": "x"})), True)
+
+w = carried_world()
+w.tags[f"{VERSION}-rc.{OTHER_TREE}"] = w.platform["amd64"]
+check("candidates of different digests do not carry", carry(w).startswith("refused: the candidates differ"), True)
+w = carried_world()
+del w.tags[f"{VERSION}-rc.{OTHER_TREE}"]
+check("a tree that published no candidate does not carry", carry(w).startswith("refused:"), True)
+w = carried_world()
+del w.also[w.index]
+check("an earlier tree's attestation alone never carries", carry(w).startswith("refused:") and "not attested as built from tree" in carry(w), True)
+w = carried_world()
+del w.also[w.platform["aarch64"]]
+check("nor does a platform image only the earlier tree built", carry(w).startswith("refused:"), True)
+w = carried_world()
+w.also[w.index] = [(OTHER_COMMIT, OTHER_COMMIT, "https://github.com/x/r")]
+check("an attestation from another repository does not carry", carry(w).startswith("refused:"), True)
+check("the same tree twice has nothing to carry", carry(carried_world(), first=TREE, second=TREE).startswith("refused:"), True)
+check("a short tree id is refused", carry(carried_world(), second=OTHER_TREE[:12]).startswith("refused:"), True)
+check("another version is refused", carry(carried_world(), version="1.63.0").startswith("refused:"), True)
+w = carried_world()
+w.truncated = True
+check("a listing GitHub cut short does not carry", "incomplete" in carry(w), True)
+w = carried_world()
+del w.files[OTHER_TREE]
+check("a tree that cannot be listed does not carry", carry(w).startswith("refused:"), True)
+w = carried_world()
+w.status[f"{VERSION}-rc.{TREE}"] = 503
+check("a registry that cannot answer does not carry", carry(w).startswith("refused:"), True)
 
 print("Credentials go only to this repository's own namespace")
 creds = {"ACTOR": "a", "TOKEN": "t", "GITHUB_REPOSITORY": "Owner/r"}
