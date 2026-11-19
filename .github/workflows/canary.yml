@@ -19,8 +19,14 @@ jobs:
     # A called workflow may not ask for more than its caller grants. ci.yml's
     # release job asks for contents: write and is skipped here; its pins-bump
     # job also asks for actions and pull-requests: write, and opens the bump
-    # pull request when this run finds a pin behind on main.
+    # pull request when this run finds a pin behind on main. Its candidate image
+    # jobs ask for packages, id-token and attestations: write (they push and
+    # attest a candidate only for a release pull request, but GitHub refuses to
+    # start the run unless the caller grants what any job asks for).
     permissions:
       actions: write
+      attestations: write
       contents: write
+      id-token: write
+      packages: write
       pull-requests: write
