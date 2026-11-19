@@ -18,6 +18,7 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 import pathlib
 import sys
 
@@ -84,12 +85,120 @@ def registry(token_status=200, manifest_status=200, digest="sha256:abc"):
 
     def get(url, headers, method="GET"):
         calls.append((method, url, headers.get("Authorization")))
+        if url.endswith("/v2/"):
+            return 401, {"Www-Authenticate": 'Bearer realm="https://ghcr.io/token",service="ghcr.io"'}, b""
         if "/token?" in url:
             return token_status, {}, json.dumps({"token": "t"}).encode()
         return manifest_status, ({"Docker-Content-Digest": digest} if digest else {}), b""
 
     return get, calls
 
+
+print("A registry says where its tokens come from")
+check("a bearer challenge is parsed", addon_image.parse_challenge('Bearer realm="https://r/token",service="r"'),
+      {"realm": "https://r/token", "service": "r"})
+check("the scheme is not case sensitive", addon_image.parse_challenge('bearer realm="https://r/t"'), {"realm": "https://r/t"})
+check("a basic challenge is not a bearer one", addon_image.parse_challenge('Basic realm="r"'), None)
+check("no challenge", addon_image.parse_challenge(""), None)
+check("plain HTTP for localhost with a port", addon_image.registry_scheme("localhost:5000"), "http")
+check("plain HTTP for 127.0.0.1", addon_image.registry_scheme("127.0.0.1:41000"), "http")
+check("https for ghcr", addon_image.registry_scheme("ghcr.io"), "https")
+check("https for a host that only starts like localhost", addon_image.registry_scheme("localhost.example.com"), "https")
+
+
+EMPTY = "sha256:" + hashlib.sha256(b"").hexdigest()
+
+
+def local_registry(realm=None):
+    """A distribution registry on localhost: plain HTTP, no tokens unless `realm` is given."""
+    calls = []
+
+    def get(url, headers, method="GET"):
+        calls.append((method, url, headers.get("Authorization")))
+        if url.endswith("/v2/"):
+            if realm is None:
+                return 200, {}, b"{}"
+            return 401, {"WWW-Authenticate": f'Bearer realm="{realm}",service="local"'}, b""
+        if "/token?" in url:
+            return 200, {}, json.dumps({"token": "lt"}).encode()
+        return 200, {"Docker-Content-Digest": EMPTY}, b""
+
+    return get, calls
+
+
+get, calls = local_registry()
+check("a local registry without tokens is read over plain HTTP, with no token request",
+      (addon_image.pullable("localhost:5000/layertm/claude-code:1.64.0", get), [c[1] for c in calls]),
+      ((0, EMPTY), ["http://localhost:5000/v2/", "http://localhost:5000/v2/layertm/claude-code/manifests/1.64.0"]))
+check("and without an Authorization header", calls[-1][2], None)
+get, calls = local_registry(realm="http://localhost:5000/token")
+check("a local registry with a realm gets a token from it", (addon_image.pullable("localhost:5000/a/b:1", get)[0], calls[-1][2]), (0, "Bearer lt"))
+get, calls = local_registry(realm="https://elsewhere.example/token")
+check("a realm on another host is not followed", addon_image.pullable("localhost:5000/a/b:1", get)[0], 2)
+check("a realm on another host is asked for nothing", [c[1] for c in calls if "token" in c[1]], [])
+get, calls = local_registry()
+check("a local registry reads through the Registry class too",
+      addon_image.Registry("localhost:5000/a/b", None, get).manifest("1")[:2], ("present", EMPTY))
+check("its URLs are plain HTTP", all(c[1].startswith("http://localhost:5000/") for c in calls), True)
+
+print("IMAGE_REGISTRY replaces the registry host of the image")
+check("unset leaves the image", addon_image.redirect("ghcr.io/o/addon", {}), "ghcr.io/o/addon")
+check("empty leaves the image", addon_image.redirect("ghcr.io/o/addon", {"IMAGE_REGISTRY": " "}), "ghcr.io/o/addon")
+check("set replaces the host", addon_image.redirect("ghcr.io/o/addon", {"IMAGE_REGISTRY": "localhost:5000"}), "localhost:5000/o/addon")
+check("no image stays none", addon_image.redirect(None, {"IMAGE_REGISTRY": "localhost:5000"}), None)
+check("redirecting twice is the same as once", addon_image.redirect("localhost:5000/o/addon", {"IMAGE_REGISTRY": "localhost:5000"}), "localhost:5000/o/addon")
+for bad in ("http://localhost:5000", "localhost:5000/x", "a b", "LOCALHOST"):
+    try:
+        addon_image.redirect("ghcr.io/o/addon", {"IMAGE_REGISTRY": bad})
+        check(f"'{bad}' is refused", "accepted", "refused")
+    except SystemExit:
+        check(f"'{bad}' is refused", "refused", "refused")
+check("a redirected candidate may be written (guard accepts a port)",
+      addon_image.guard("localhost:5000/o/addon:1.64.0-rc." + "a" * 40, "candidate", "1.64.0", "a" * 40), None)
+
+
+def cli(argv, env):
+    out = io.StringIO()
+    saved = dict(os.environ)
+    os.environ.pop("IMAGE_REGISTRY", None)
+    os.environ.update(env)
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            code = addon_image.main(argv)
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+    return code, out.getvalue().strip()
+
+
+real_image = addon_image.image_of(addon_image.load(addon_image.CONFIG))
+if real_image:
+    check("the script names the image as config.yaml does when nothing is set", cli(["name"], {}), (0, real_image))
+    check("the script names it on the redirected registry when it is set",
+          cli(["name"], {"IMAGE_REGISTRY": "localhost:5000"}), (0, "localhost:5000/" + real_image.partition("/")[2]))
+    code, plain = cli(["candidate"], {})
+    code, moved = cli(["candidate"], {"IMAGE_REGISTRY": "localhost:5000"})
+    check("a candidate is named on the redirected registry", moved, "localhost:5000/" + plain.partition("/")[2])
+
+print("The login goes only to this repository's own namespace")
+logins = []
+
+
+def fake_login(argv, secret):
+    logins.append((argv, secret))
+    return 0
+
+
+own = {"GITHUB_REPOSITORY": "O/r", "ACTOR": "me", "TOKEN": "tok"}
+check("the own namespace is logged into", (addon_image.login("ghcr.io/o/addon", own, fake_login), logins),
+      (0, [(["docker", "login", "ghcr.io", "-u", "me", "--password-stdin"], "tok")]))
+logins.clear()
+check("a foreign registry gets no login", (addon_image.login("registry.example/o/addon", own, fake_login), logins), (0, []))
+check("a foreign namespace on ghcr gets no login", (addon_image.login("ghcr.io/other/addon", own, fake_login), logins), (0, []))
+check("a redirected local registry gets no login", (addon_image.login("localhost:5000/o/addon", own, fake_login), logins), (0, []))
+check("no credentials, no login", (addon_image.login("ghcr.io/o/addon", {"GITHUB_REPOSITORY": "o/r"}, fake_login), logins), (0, []))
+check("no image, no login", (addon_image.login(None, own, fake_login), logins), (0, []))
+check("the token is never on the command line", any("tok" in a for argv, _ in logins for a in argv), False)
 
 print("Pullable means pullable without credentials")
 get, calls = registry()
@@ -163,6 +272,8 @@ class World:
 
     def get(self, url, headers, method="GET"):
         self.urls.append(url)
+        if url.endswith("/v2/"):
+            return 401, {"Www-Authenticate": 'Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="x"'}, b""
         if "/token?" in url:
             return self.token_status, {}, json.dumps({"token": "t"}).encode()
         reference = url.rsplit("/", 1)[1]
