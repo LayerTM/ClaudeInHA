@@ -22,6 +22,11 @@ not the role's own: candidate jobs can only write `-rc.<tree>` tags, and only
 the promotion writes `<version>`. A published version never moves, and a
 registry answer other than "present" or a definite 404 stops a write.
 
+A tree-identical rebuild publishes the same digest under its own candidate tag,
+so one digest can carry attestations from several trees' CI. A tree proves a
+digest when it is among the trees that built it; `carried` decides whether
+what was tried for an earlier tree is still what this tree offers.
+
 Commands:
   name                      print the image config.yaml names; exit 1 if none
   platform <arch>           print the Docker platform an architecture builds for
@@ -33,6 +38,13 @@ Commands:
   source-date-epoch         print the build clock (seconds) derived from the
                             Dockerfile's DEBIAN_SNAPSHOT: file times, pip's
                             .pyc stamps and apt all follow that one value
+  carried <from> <to>       exit 0 and print `digest=` when what was tried for
+                            tree <from> is what tree <to> offers: both
+                            candidates are the same image index, <to>'s own CI
+                            built it, and nothing the Supervisor reads from the
+                            add-on directory but the image does not hold
+                            differs (see CARRY_FREE); exit 1, naming the first
+                            fact that fails, otherwise
   candidate                 print `<image>:<version>-rc.<tree>` for HEAD's tree
   candidate-state <arch>    print `exists=true|false` for that architecture's
                             candidate; exit 2 if the registry cannot tell
@@ -103,6 +115,15 @@ CANDIDATE_TAG_RE = re.compile(
 )
 # registry/namespace/name:tag — the only form this add-on publishes.
 REF_RE = re.compile(r"^(?P<registry>[a-z0-9.-]+)/(?P<repo>[a-z0-9._/-]+):(?P<tag>[\w][\w.-]{0,127})$")
+
+# What may differ between two trees while a proof still carries over: everything
+# outside the add-on directory (CI, scripts, the repository's own docs), and the
+# three documents the Supervisor only displays. Whatever else is in claude-code/
+# is either in the image (its digest covers it) or read by the Supervisor
+# (config.yaml, apparmor.txt, build.yaml, translations, icons): a change there is
+# a different package, and anything unclassified is treated the same way.
+ADDON_DIR = "claude-code/"
+CARRY_FREE = {f"{ADDON_DIR}{name}" for name in ("CHANGELOG.md", "DOCS.md", "README.md")}
 
 Get = Callable[[str, dict, str], tuple]
 Gh = Callable[[list], tuple]
@@ -411,18 +432,63 @@ def prove(version: str, tree: str, digest: str, repository: str, registry_for, g
     if len(by_platform) != len(entries) or set(by_platform) != set(want):
         raise Refused(f"{image}@{digest} is for {sorted(_platform(m) for m in entries)}, "
                       f"the tree declares {sorted(want)}")
-    if attested_trees(image, digest, repository, gh) != {tree}:
-        raise Refused(f"{image}@{digest} was not attested as built from tree {tree} only")
+    if tree not in attested_trees(image, digest, repository, gh):
+        raise Refused(f"{image}@{digest} was not attested as built from tree {tree}")
     for platform, arch in sorted(want.items()):
         image_digest = by_platform[platform]
-        if attested_trees(image, image_digest, repository, gh) != {tree}:
-            raise Refused(f"{platform} image {image_digest} was not attested as built from tree {tree} only")
+        if tree not in attested_trees(image, image_digest, repository, gh):
+            raise Refused(f"{platform} image {image_digest} was not attested as built from tree {tree}")
         _, manifest = registry.require(image_digest)
         labels = (json.loads(registry.blob(manifest["config"]["digest"])).get("config") or {}).get("Labels") or {}
         if labels.get("io.hass.version") != version or labels.get("io.hass.arch") != arch:
             raise Refused(f"{platform} image {image_digest} is labelled "
                           f"{labels.get('io.hass.version')}/{labels.get('io.hass.arch')}, not {version}/{arch}")
     return registry, arches
+
+
+def tree_files(tree: str, repository: str, gh: Gh) -> dict[str, tuple[str, str]]:
+    """path -> (mode, object id) of every file in `tree`; a listing GitHub cut short is refused."""
+    found = gh_json(gh, ["api", f"repos/{repository}/git/trees/{tree}?recursive=1"])
+    if not isinstance(found, dict) or not isinstance(found.get("tree"), list):
+        raise Refused(f"tree {tree} was not listed")
+    if found.get("truncated"):
+        raise Refused(f"the listing of tree {tree} is incomplete, so a difference could hide in it")
+    return {e["path"]: (e["mode"], e["sha"]) for e in found["tree"] if e["type"] != "tree"}
+
+
+def carried(version: str, from_tree: str, to_tree: str, repository: str, registry_for, gh: Gh) -> str:
+    """The digest both trees' candidates share, or Refused naming the first fact that fails.
+
+    Same index digest means the same bytes were built twice; `to_tree` must be
+    among the trees whose CI built it (an earlier tree's attestation alone
+    never carries). The remaining question is the package around the image.
+    """
+    for name, tree in (("from", from_tree), ("to", to_tree)):
+        if not TREE_RE.match(tree):
+            raise Refused(f"the {name} tree must be a full 40-hex tree id, got '{tree}'")
+    if from_tree == to_tree:
+        raise Refused("the trees are the same: there is nothing to carry over")
+    configs = {t: config_at_tree(t, repository, gh) for t in (from_tree, to_tree)}
+    if any(str(c.get("version")) != version for c in configs.values()):
+        raise Refused(f"the trees are versions {[c.get('version') for c in configs.values()]}, not both {version}")
+    image = image_of(configs[to_tree])
+    if image is None or image_of(configs[from_tree]) != image:
+        raise Refused("the trees do not name one image")
+    registry = registry_for(image)
+    digests = {}
+    for tree in (from_tree, to_tree):
+        digests[tree], _ = registry.require(candidate_tag(version, tree))
+    if digests[from_tree] != digests[to_tree]:
+        raise Refused(f"the candidates differ: {digests[from_tree]} for the first tree, {digests[to_tree]} for the second")
+    digest = digests[to_tree]
+    prove(version, to_tree, digest, repository, registry_for, gh)
+    before, after = tree_files(from_tree, repository, gh), tree_files(to_tree, repository, gh)
+    changed = sorted(path for path in before.keys() | after.keys() if before.get(path) != after.get(path))
+    blocking = [p for p in changed if p.startswith(ADDON_DIR) and p not in CARRY_FREE]
+    if blocking:
+        shown = ", ".join(blocking[:5]) + (f" and {len(blocking) - 5} more" if len(blocking) > 5 else "")
+        raise Refused(f"the add-on directory differs outside the image and its documents: {shown}")
+    return digest
 
 
 def promote(version: str, tree: str, digest: str, env: dict, registry_for, gh: Gh = _gh, run: Run = _run) -> int:
@@ -559,6 +625,14 @@ def main(argv: list[str]) -> int:
     candidate = f"{image}:{candidate_tag(version, tree)}"
     if command == "candidate":
         print(candidate)
+        return 0
+    if command == "carried" and len(rest) == 2:
+        try:
+            digest = carried(version, rest[0], rest[1], env["GITHUB_REPOSITORY"], registry_for, _gh)
+        except (Refused, KeyError, ValueError) as error:
+            print(f"not carried: {error}", file=sys.stderr)
+            return 1
+        print(f"digest={digest}")
         return 0
     if command == "release-pr":
         return release_pr(image, version, tree, env, registry_for)
