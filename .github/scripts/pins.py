@@ -16,6 +16,13 @@ either: it is a `core-lock` pin on the GitHub repository its own `url` names,
 compared with that repository's latest release. Bumping it replaces the file
 with the `core.lock.json` asset of that release.
 
+A tracked requirements.in with a requirements.lock beside it needs no markers
+either: each line is a `pypi <package>` pin and must be `name==version`. The
+lock is every distribution, transitive ones included, with every hash
+(`pip install --require-hashes`); a bump regenerates it with uv, and a lock
+that does not hold each pin at its version, or holds a requirement without a
+hash, is refused.
+
 A tracked package.json with a package-lock.json beside it needs no markers:
 each of its `dependencies` is an `npm <package>` pin and must be an exact
 version. Bumping one also refreshes that lockfile (npm, scripts off), so the
@@ -39,6 +46,17 @@ Kinds:
   nodejs-sha256 <platform>          the SHASUMS256.txt entry for
                                     node-v<version>-<platform>.tar.xz of the
                                     nodejs pin in the same file
+  github-asset-sha256 <repo> <asset>
+                                    the sha256 GitHub records for <asset> of
+                                    the release of the github-release pin on
+                                    <repo> in the same file (a download checked
+                                    against it at build time)
+  image-digest <repo> <image>       the digest of a base image's multi-architecture
+                                    index (sha256 of the index itself): the tag is
+                                    the one every github-release pin on <repo>
+                                    names for <image>, in any file. The digest is
+                                    its own pin because build.yaml's build_from
+                                    accepts a tag only; the Dockerfile appends it
   debian-snapshot                   the newest snapshot.debian.org timestamp
                                     that both the debian and the debian-security
                                     archives have (apt reads every package
@@ -66,6 +84,7 @@ could not be asked is never reported as up to date.
 from __future__ import annotations
 
 import calendar
+import hashlib
 import json
 import shutil
 import os
@@ -88,7 +107,8 @@ SNAPSHOT_LINK = re.compile(r'href="(\d{8}T\d{6}Z)/"')
 SNAPSHOT_ARCHIVES = ("debian", "debian-security")
 SNAPSHOT_MAX_AGE = 7 * 24 * 3600
 # checksum kind -> the version kind it belongs to
-CHECKSUM_OWNER = {"claude-code-sha256": "claude-code", "nodejs-sha256": "nodejs"}
+CHECKSUM_OWNER = {"claude-code-sha256": "claude-code", "nodejs-sha256": "nodejs",
+                  "github-asset-sha256": "github-release"}
 
 
 class PinError(Exception):
@@ -120,6 +140,12 @@ def http_get(url: str) -> bytes:
     token = os.environ.get("GITHUB_TOKEN")
     if token and url.startswith("https://api.github.com/"):
         headers["Authorization"] = f"Bearer {token}"
+    if url.startswith("https://ghcr.io/v2/"):
+        repo = url.split("/manifests/")[0].removeprefix("https://ghcr.io/v2/")
+        anonymous = json.loads(http_get(f"https://ghcr.io/token?scope=repository:{repo}:pull"))["token"]
+        headers["Authorization"] = "Bearer " + anonymous
+        headers["Accept"] = ("application/vnd.oci.image.index.v1+json, "
+                             "application/vnd.docker.distribution.manifest.list.v2+json")
     last = None
     for _ in range(3):
         try:
@@ -185,6 +211,11 @@ class Upstream:
             base = arg_value(pin.file, args[0], pins)
             url = f"{base.rstrip('/')}/{args[1]}"
             return clean_version(self.get(url).decode("utf-8", "replace"), url)
+        if kind == "github-asset-sha256" and len(args) == 2:
+            owner = owner_pin(pin, pins)
+            return self.asset_sha256(args[0], owner.target or owner.value, args[1])
+        if kind == "image-digest" and len(args) == 2:
+            return self.image_digest(pin, pins)
         if pin.is_checksum() and len(args) == 1:
             owner = owner_pin(pin, pins)
             version = owner.target if owner.target else owner.value
@@ -199,6 +230,44 @@ class Upstream:
                 raise PinError(f"{url} gave {checksum!r} for {args[0]}, not a SHA-256")
             return checksum
         raise PinError(f"{pin.where}: unknown upstream '{kind} {' '.join(args)}'")
+
+    def asset_sha256(self, repo: str, version: str, asset: str) -> str:
+        """The sha256 GitHub records for one asset of the release of `version`."""
+        last: PinError | None = None
+        for tag in (version, f"v{version}"):
+            url = f"https://api.github.com/repos/{repo}/releases/tags/{tag}"
+            try:
+                assets = self.field(url, "assets")
+            except PinError as err:
+                last = err
+                continue
+            if not isinstance(assets, list):
+                raise PinError(f"{url} has no list of assets")
+            found = [a.get("digest") for a in assets if isinstance(a, dict) and a.get("name") == asset]
+            if len(found) != 1:
+                raise PinError(f"{url} lists {asset} {len(found)} times, expected exactly once")
+            digest = found[0]
+            if not isinstance(digest, str) or not digest.startswith("sha256:") or not SHA256.match(digest[7:]):
+                raise PinError(f"{url} records {digest!r} for {asset}, not a sha256")
+            return digest[7:]
+        raise PinError(f"no release of {repo} is tagged {version} or v{version}: {last}")
+
+    def image_digest(self, pin: "Pin", pins: list["Pin"]) -> str:
+        """The digest of the image index the tag names: the sha256 of the index document itself."""
+        repo, image = pin.args
+        registry, _, name = image.partition("/")
+        if registry != "ghcr.io" or not name:
+            raise PinError(f"{pin.where}: only ghcr.io images are supported, found {image!r}")
+        tags = {p.target or p.value for p in pins
+                if p.kind == "github-release" and p.args == [repo] and image in p.head}
+        if len(tags) != 1:
+            raise PinError(f"{pin.where}: expected the github-release pins of {repo} for {image} to name one tag, found {sorted(tags)}")
+        index_url = f"https://ghcr.io/v2/{name}/manifests/{tags.pop()}"
+        body = self.get(index_url)
+        index = self.json(index_url)
+        if not isinstance(index, dict) or not isinstance(index.get("manifests"), list) or not index["manifests"]:
+            raise PinError(f"{index_url} is not an image index")
+        return hashlib.sha256(body).hexdigest()
 
     def snapshot(self) -> str:
         """The newest timestamp that every archive apt reads has a snapshot for."""
@@ -288,7 +357,8 @@ def arg_value(file: pathlib.Path, name: str, pins: list[Pin]) -> str:
 def owner_pin(pin: Pin, pins: list[Pin]) -> Pin:
     """The version pin a checksum pin belongs to: the one pin of its owner kind in the same file."""
     kind = CHECKSUM_OWNER[pin.kind]
-    owners = [p for p in pins if p.file == pin.file and p.kind == kind]
+    owners = [p for p in pins if p.file == pin.file and p.kind == kind
+              and (pin.kind != "github-asset-sha256" or p.args == [pin.args[0]])]
     if len(owners) != 1:
         raise PinError(f"{pin.where}: a {pin.kind} pin needs exactly one {kind} pin in its file, found {len(owners)}")
     return owners[0]
@@ -349,6 +419,61 @@ def npm_manifest_pins(file: pathlib.Path, root: pathlib.Path, text: str) -> list
     return found
 
 
+REQUIREMENT = re.compile(r"^(?P<head>(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)==)(?P<value>\d+(?:\.\d+)*)(?P<tail>\s*)$")
+LOCK_ENTRY = re.compile(r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)==(?P<version>[^\s;]+)")
+
+
+def normalized(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def lock_blocks(text: str):
+    """(line number, name, version, text) of each requirement with its continuation lines."""
+    block: list[str] = []
+    head = None
+    for number, line in enumerate(text.splitlines(), 1):
+        entry = LOCK_ENTRY.match(line)
+        if entry:
+            if head:
+                yield (*head, "\n".join(block))
+            head, block = (number, entry["name"], entry["version"]), [line]
+        elif head and line.startswith((" ", "\t")):
+            block.append(line)
+    if head:
+        yield (*head, "\n".join(block))
+
+
+def pip_manifest_pins(file: pathlib.Path, root: pathlib.Path, text: str) -> list[Pin]:
+    """The requirements of a requirements.in that has a requirements.lock, one pin each.
+
+    The lock must hold every pin at its version, and every requirement in it
+    must carry a hash: `pip install --require-hashes` refuses the rest, and a
+    lock that says something else than its manifest would install other versions.
+    """
+    rel = file.relative_to(root)
+    found: list[Pin] = []
+    for i, line in enumerate(text.splitlines()):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        req = REQUIREMENT.match(line)
+        if not req:
+            raise PinError(f"{rel}:{i + 1}: {line.strip()!r} is not an exact `name==version` requirement")
+        found.append(Pin(file, i + 1, "pypi", [req["name"]], req["head"], req["value"], req["tail"]))
+    if not found:
+        raise PinError(f"{rel}: no requirements")
+    lock = file.with_name("requirements.lock")
+    held: dict[str, str] = {}
+    for number, name, version, block in lock_blocks(lock.read_text()):
+        if not re.search(r"--hash=sha256:[0-9a-f]{64}", block):
+            raise PinError(f"{lock.relative_to(root)}:{number}: {name} has no hash")
+        held[normalized(name)] = version
+    for pin in found:
+        have = held.get(normalized(pin.args[0]))
+        if have != pin.value:
+            raise PinError(f"{lock.relative_to(root)} holds {pin.args[0]} at {have!r}, {rel} pins {pin.value}")
+    return found
+
+
 CORE_LOCK_URL = re.compile(r"^https://github\.com/(?P<repo>[^/]+/[^/]+)/releases/download/v(?P<version>[^/]+)/")
 
 
@@ -391,6 +516,9 @@ def discover(root: pathlib.Path) -> list[Pin]:
         if file.name == "package.json" and (file.parent / "package-lock.json").is_file():
             pins.extend(npm_manifest_pins(file, root, text))
             continue
+        if file.name == "requirements.in" and file.with_name("requirements.lock").is_file():
+            pins.extend(pip_manifest_pins(file, root, text))
+            continue
         shape = UNDECLARED.get(file.name)
         for i, line in enumerate(lines):
             if shape and shape.match(line) and not (i and MARKER.match(lines[i - 1])):
@@ -405,7 +533,7 @@ def discover(root: pathlib.Path) -> list[Pin]:
                 raise PinError(f"{rel}:{i + 2}: the line after an upstream marker carries no value")
             pin = Pin(file, i + 2, marker.group(1), marker.group(2).split(), pinned["head"], pinned["value"], pinned["tail"])
             value_shape, shape_name = (
-                (SHA256, "SHA-256") if pin.is_checksum()
+                (SHA256, "SHA-256") if pin.is_checksum() or pin.kind == "image-digest"
                 else (SNAPSHOT, "snapshot timestamp") if pin.kind == "debian-snapshot"
                 else (VERSION, "version"))
             if not value_shape.match(pin.value):
@@ -418,9 +546,11 @@ def discover(root: pathlib.Path) -> list[Pin]:
 
 def resolve(pins: list[Pin], upstream: Upstream) -> None:
     """Set each pin's target. Versions first: a checksum follows its version."""
-    for pin in sorted(pins, key=Pin.is_checksum):
+    for pin in sorted(pins, key=lambda p: p.is_checksum() or p.kind == "image-digest"):
         latest = upstream.latest(pin, pins)
         if pin.is_checksum():
+            pin.target = latest
+        elif pin.kind == "image-digest":
             pin.target = latest
         elif pin.kind == "debian-snapshot":
             # one weekly wave: a snapshot younger than the limit is current
@@ -452,7 +582,20 @@ def cmd_check(root: pathlib.Path, upstream: Upstream) -> int:
     return 0
 
 
+PIP_COMPILE = ["pip", "compile", "requirements.in", "--universal", "--python-version", "3.13",
+               "--generate-hashes", "--no-header", "--upgrade", "--output-file", "requirements.lock"]
+
+
 def refresh_lockfile(directory: pathlib.Path, root: pathlib.Path) -> None:
+    if (directory / "requirements.in").is_file():
+        uv = shutil.which("uv")
+        if not uv:
+            raise PinError(f"{directory.relative_to(root)}: uv is needed to refresh requirements.lock")
+        run = subprocess.run([uv, *PIP_COMPILE], cwd=directory, capture_output=True, text=True, check=False)
+        if run.returncode != 0:
+            raise PinError(f"{directory.relative_to(root)}: uv could not refresh requirements.lock: {run.stderr.strip()}")
+        print(f"locked   {(directory / 'requirements.lock').relative_to(root)}")
+        return
     npm = shutil.which("npm")
     if not npm:
         raise PinError(f"{directory.relative_to(root)}: npm is needed to refresh package-lock.json")
@@ -485,13 +628,13 @@ def cmd_bump(root: pathlib.Path, upstream: Upstream, summary: pathlib.Path | Non
         ending = line[len(line.rstrip("\r\n")):]
         lines[pin.line_no - 1] = f"{pin.head}{pin.target}{pin.tail}{ending}"
         pin.file.write_text("".join(lines))
-        major = pin.kind not in ("debian-snapshot", *CHECKSUM_OWNER) and version_key(pin.target)[0] != version_key(pin.value)[0]
+        major = pin.kind not in ("debian-snapshot", "image-digest", *CHECKSUM_OWNER) and version_key(pin.target)[0] != version_key(pin.value)[0]
         changes.append({
             "name": pin.name, "file": str(pin.file.relative_to(root)), "kind": pin.kind,
             "source": " ".join(pin.args), "from": pin.value, "to": pin.target, "major": major,
         })
         print(f"bumped   {label(pin, root)}: {pin.value} -> {pin.target}")
-    for directory in sorted({p.file.parent for p in stale(pins) if p.file.name == "package.json"}):
+    for directory in sorted({p.file.parent for p in stale(pins) if p.file.name in ("package.json", "requirements.in")}):
         relock(directory, root)
     if not changes:
         print(f"all {len(pins)} pins match their upstream")

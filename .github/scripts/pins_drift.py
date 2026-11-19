@@ -123,7 +123,7 @@ def git(root: pathlib.Path, *args: str, check: bool = True) -> str:
 def describe(changes: list[dict]) -> list[str]:
     lines = []
     for change in changes:
-        if change["kind"].endswith("-sha256"):
+        if change["kind"].endswith("-sha256") or change["kind"] == "image-digest":
             continue
         major = " (new major version)" if change.get("major") else ""
         lines.append(f"- {change['name']}: {change['from']} → {change['to']}{major} — `{change['file']}`, "

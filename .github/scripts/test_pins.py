@@ -395,6 +395,142 @@ first = pins.Upstream(lambda url: snapshots()[url] if url in snapshots() else li
 check("early in a month the search looks back to the month before", first.snapshot() > "20261000", True)
 check("the epoch of a snapshot is the UTC time it names", pins.snapshot_epoch("20261119T000000Z"), 1795046400)
 
+print("github asset checksums")
+AH, AY = "e" * 64, "f" * 64
+REL = "https://api.github.com/repos/{}/releases/tags/{}"
+ASSET_DOCKERFILE = f"""FROM scratch
+# upstream: github-release owner/tool
+ARG TOOL_VERSION=1.0.0
+# upstream: github-asset-sha256 owner/tool tool_amd64
+ARG TOOL_SHA256_AMD64={"0" * 64}
+# upstream: github-release other/cli
+ARG CLI_VERSION=2.0.0
+# upstream: github-asset-sha256 other/cli cli_amd64
+ARG CLI_SHA256_AMD64={"1" * 64}
+"""
+def release(*assets: tuple[str, object]) -> bytes:
+    return json.dumps({"assets": [{"name": n, "digest": d} for n, d in assets]}).encode()
+def assets_table(**over) -> dict[str, bytes]:
+    table = answers() | {
+        "https://api.github.com/repos/owner/tool/releases/latest": b'{"tag_name": "v1.0.0"}',
+        "https://api.github.com/repos/other/cli/releases/latest": b'{"tag_name": "2.0.0"}',
+        REL.format("owner/tool", "1.0.0"): b"",
+        REL.format("owner/tool", "v1.0.0"): release(("tool_amd64", f"sha256:{AH}"), ("tool_arm64", f"sha256:{AY}")),
+        REL.format("other/cli", "2.0.0"): release(("cli_amd64", f"sha256:{'1' * 64}")),
+    }
+    return table | over
+root = repo(ASSET_DOCKERFILE)
+code, out = run(root, assets_table(), "check")
+check("a checksum that differs from the one GitHub records is behind (also with a v-prefixed tag)",
+      (code, "TOOL_SHA256_AMD64" in out, "CLI_SHA256_AMD64" in out.replace("current", "")), (1, True, True))
+code, _ = run(root, assets_table(), "bump")
+check("bump writes the recorded checksum, each pin against its OWN repository's release",
+      (root / "addon/Dockerfile").read_text().count(AH), 1)
+code, _ = run(root, assets_table(), "check")
+check("after the bump everything matches", code, 0)
+for label, table in [
+    ("a digest that is not sha256", assets_table(**{REL.format("owner/tool", "v1.0.0"): release(("tool_amd64", "md5:abc"))})),
+    ("a release without a digest", assets_table(**{REL.format("owner/tool", "v1.0.0"): release(("tool_amd64", None))})),
+    ("a sha256 that is not 64 hex digits", assets_table(**{REL.format("owner/tool", "v1.0.0"): release(("tool_amd64", "sha256:abc"))})),
+    ("an asset missing from the release", assets_table(**{REL.format("owner/tool", "v1.0.0"): release(("other", f"sha256:{AH}"))})),
+    ("a release that does not exist", {k: v for k, v in assets_table().items() if "tags/" not in k or "other/cli" in k}),
+]:
+    code, _ = run(repo(ASSET_DOCKERFILE), table, "check")
+    check(f"{label} fails closed", code, 2)
+code, _ = run(repo(ASSET_DOCKERFILE.replace("# upstream: github-release other/cli\nARG CLI_VERSION=2.0.0\n", "")), assets_table(), "check")
+check("a checksum whose repository has no version pin in the file is refused", code, 2)
+
+print("base image digest")
+import hashlib
+IMG = "ghcr.io/owner/img"
+D_OLD = "c" * 64
+IMG_DOCKERFILE = f"""ARG BUILD_FROM
+# upstream: image-digest owner/base {IMG}
+ARG BUILD_FROM_SHA256={D_OLD}
+FROM ${{BUILD_FROM}}@sha256:${{BUILD_FROM_SHA256}} AS base
+"""
+IMG_BUILD = f"""build_from:
+  # upstream: github-release owner/base
+  amd64: {IMG}:9.5.2
+  # upstream: github-release owner/base
+  aarch64: {IMG}:9.5.2
+"""
+INDEX = "https://ghcr.io/v2/owner/img/manifests/{}"
+def index(tag: str) -> bytes:
+    return json.dumps({"manifests": [{"digest": "sha256:" + "1" * 64, "platform": {"os": "linux", "architecture": "amd64"}}], "tag": tag}).encode()
+def digest_of(body: bytes) -> str:
+    return hashlib.sha256(body).hexdigest()
+def image_table(**over) -> dict[str, bytes]:
+    table = answers() | {"https://api.github.com/repos/owner/base/releases/latest": b'{"tag_name": "v9.5.2"}',
+                         INDEX.format("9.5.2"): index("9.5.2")}
+    return table | over
+code, out = run(repo(IMG_DOCKERFILE, IMG_BUILD), image_table(), "check")
+check("a digest that is not the sha256 of the tag's index is behind",
+      (code, f"{D_OLD} -> {digest_of(index('9.5.2'))}" in out), (1, True))
+root = repo(IMG_DOCKERFILE, IMG_BUILD)
+run(root, image_table(), "bump")
+check("bump writes the digest of the index document",
+      f"ARG BUILD_FROM_SHA256={digest_of(index('9.5.2'))}\n" in (root / "addon/Dockerfile").read_text(), True)
+code, _ = run(root, image_table(), "check")
+check("after the bump everything matches", code, 0)
+newer = image_table(**{"https://api.github.com/repos/owner/base/releases/latest": b'{"tag_name": "v9.6.0"}',
+                       INDEX.format("9.6.0"): index("9.6.0")})
+root = repo(IMG_DOCKERFILE, IMG_BUILD)
+run(root, newer, "bump")
+check("a newer release moves the tag in build.yaml AND the digest of THAT tag together",
+      (f"amd64: {IMG}:9.6.0" in (root / "addon/build.yaml").read_text(),
+       f"BUILD_FROM_SHA256={digest_of(index('9.6.0'))}" in (root / "addon/Dockerfile").read_text()), (True, True))
+for label, table in [
+    ("an answer that is not an index", image_table(**{INDEX.format("9.5.2"): b'{"layers": []}'})),
+    ("an index with no manifests", image_table(**{INDEX.format("9.5.2"): b'{"manifests": []}'})),
+    ("a registry that could not be read", {k: v for k, v in image_table().items() if "ghcr" not in k}),
+]:
+    code, _ = run(repo(IMG_DOCKERFILE, IMG_BUILD), table, "check")
+    check(f"{label} fails closed", code, 2)
+code, _ = run(repo(IMG_DOCKERFILE.replace("ghcr.io/owner/img", "docker.io/owner/img"), IMG_BUILD.replace("ghcr.io", "docker.io")), image_table(), "check")
+check("a registry other than ghcr.io is refused", code, 2)
+code, _ = run(repo(IMG_DOCKERFILE, IMG_BUILD.replace("aarch64: ghcr.io/owner/img:9.5.2", "aarch64: ghcr.io/owner/img:9.5.3")),
+              image_table(**{INDEX.format("9.5.3"): index("9.5.3")}), "check")
+check("architectures that name different tags for the image are refused", code, 2)
+code, _ = run(repo(IMG_DOCKERFILE, "build_from:\n"), image_table(), "check")
+check("a digest with no release pin for its image is refused", code, 2)
+code, _ = run(repo(IMG_DOCKERFILE.replace(D_OLD, "short"), IMG_BUILD), image_table(), "check")
+check("a digest that is not 64 hex digits is refused", code, 2)
+code, _ = run(repo(IMG_DOCKERFILE.replace(f"# upstream: image-digest owner/base {IMG}\n", ""), IMG_BUILD), image_table(), "check")
+check("a digest line without its marker is refused", code, 2)
+
+print("pip requirements and lock")
+def lock_text(**versions: str) -> str:
+    v = {"Foo": "1.0.0", "bar": "2.0.0", "baz": "0.1.0"} | versions
+    return (f"foo=={v['Foo']} \\\n    --hash=sha256:{'a' * 64}\n"
+            f"bar=={v['bar']} ; sys_platform == 'linux' \\\n    --hash=sha256:{'b' * 64} \\\n    --hash=sha256:{'c' * 64}\n"
+            f"    # via foo\n"
+            f"baz=={v['baz']} \\\n    --hash=sha256:{'d' * 64}\n")
+REQ = "# header\nFoo==1.0.0\nbar==2.0.0\n"
+PIP_FILES = {"addon/py-tools/requirements.in": REQ, "addon/py-tools/requirements.lock": lock_text()}
+PIP_TABLE = answers() | {"https://pypi.org/pypi/Foo/json": b'{"info": {"version": "1.0.0"}}',
+                         "https://pypi.org/pypi/bar/json": b'{"info": {"version": "2.0.0"}}'}
+code, out = run(repo(files=PIP_FILES), PIP_TABLE, "check")
+check("requirements are pins, the lock agrees (names normalised) -> current", code, 0)
+code, out = run(repo(files=PIP_FILES), PIP_TABLE | {"https://pypi.org/pypi/bar/json": b'{"info": {"version": "2.1.0"}}'}, "check")
+check("a newer release is reported", (code, "2.0.0 -> 2.1.0" in out), (1, True))
+relocked.clear()
+root = repo(files=PIP_FILES)
+run(root, PIP_TABLE | {"https://pypi.org/pypi/bar/json": b'{"info": {"version": "2.1.0"}}'}, "bump")
+check("bump rewrites the requirement and regenerates the lock beside it",
+      ("bar==2.1.0" in (root / "addon/py-tools/requirements.in").read_text(), relocked), (True, [pathlib.Path("addon/py-tools")]))
+for label, files in [
+    ("a requirement without a hash", {"addon/py-tools/requirements.lock": lock_text().replace(f" \\\n    --hash=sha256:{'d' * 64}", "")}),
+    ("a lock that holds another version than the manifest", {"addon/py-tools/requirements.lock": lock_text(Foo="1.0.1")}),
+    ("a lock that lacks a pinned package", {"addon/py-tools/requirements.lock": lock_text().replace("foo==", "foo2==")}),
+    ("a range in the manifest", {"addon/py-tools/requirements.in": REQ.replace("bar==2.0.0", "bar>=2.0.0")}),
+    ("a hash that is not sha256", {"addon/py-tools/requirements.lock": lock_text().replace("a" * 64, "a" * 10)}),
+]:
+    code, _ = run(repo(files=PIP_FILES | files), PIP_TABLE, "check")
+    check(f"{label} is refused", code, 2)
+code, _ = run(repo(files={"addon/py-tools/requirements.in": REQ}), PIP_TABLE, "check")
+check("a requirements.in without a lock is not a pin file (nothing is pinned by it)", code, 0)
+
 print("this repository")
 found = pins.discover(REPO)
 check("every pin in the add-on declares an upstream (no unmarked pin)", len(found) > 0, True)
@@ -406,6 +542,13 @@ check("the Node checksums have their version pin beside them",
       sum(1 for p in found if p.kind == "nodejs-sha256"), 2)
 check("the Debian snapshot the image installs from is a pin",
       [p.kind for p in found if p.name == "DEBIAN_SNAPSHOT"], ["debian-snapshot"])
+check("the base image is pinned by digest",
+      [p.name for p in found if p.kind == "image-digest"], ["BUILD_FROM_SHA256"])
+check("ha and yq downloads have a checksum each per architecture",
+      sorted(p.args[1] for p in found if p.kind == "github-asset-sha256"),
+      ["ha_aarch64", "ha_amd64", "yq_linux_amd64", "yq_linux_arm64"])
+check("the Python packages are pinned by requirements.in",
+      sorted(p.args[0] for p in found if p.file.name == "requirements.in"), ["Pillow", "hass-mcp", "homeassistant-cli"])
 check("the pinned ha-agent-core release is watched",
       [p.args[0] for p in found if p.kind == "core-lock"], ["LayerTM/ha-agent-core"])
 

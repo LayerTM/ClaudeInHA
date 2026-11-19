@@ -305,6 +305,11 @@ jobs:
         if: needs.pins.outputs.drift == 'true'
         with:
           node-version: "26"
+      # ... and regenerates the hash-locked Python requirements with uv.
+      - name: Install uv
+        if: needs.pins.outputs.drift == 'true'
+        # upstream: pypi uv
+        run: python3 -m pip install --quiet --disable-pip-version-check uv==0.13.9
       - name: Open or update the bump pull request
         if: needs.pins.outputs.drift == 'true'
         env:
@@ -382,7 +387,9 @@ jobs:
     runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v7
-      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      # uv: a bump regenerates the hash-locked Python requirements.
+      # upstream: pypi uv
+      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml uv==0.13.9
       # Before the canary: a bump refreshes package-lock.json files with npm.
       - uses: actions/setup-node@v7
         with:

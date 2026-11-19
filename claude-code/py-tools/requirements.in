@@ -1,0 +1,5 @@
+# Python packages of the image: exact versions, moved by pins.py.
+# requirements.lock holds every distribution with every hash.
+homeassistant-cli==1.0.0
+hass-mcp==0.6.1
+Pillow==13.0.0
