@@ -45,6 +45,11 @@ Commands:
                             add-on directory but the image does not hold
                             differs (see CARRY_FREE); exit 1, naming the first
                             fact that fails, otherwise
+  reproducibility           print, as summary lines, whether earlier candidates of
+                            this version built from the same add-on directory
+                            have the same digest as HEAD's; it only reports
+                            (exit 0), a difference is a build that is not
+                            reproducible
   candidate                 print `<image>:<version>-rc.<tree>` for HEAD's tree
   candidate-state <arch>    print `exists=true|false` for that architecture's
                             candidate; exit 2 if the registry cannot tell
@@ -122,6 +127,7 @@ REF_RE = re.compile(r"^(?P<registry>[a-z0-9.-]+)/(?P<repo>[a-z0-9._/-]+):(?P<tag
 # is either in the image (its digest covers it) or read by the Supervisor
 # (config.yaml, apparmor.txt, build.yaml, translations, icons): a change there is
 # a different package, and anything unclassified is treated the same way.
+TAG_PAGE = 1000
 ADDON_DIR = "claude-code/"
 CARRY_FREE = {f"{ADDON_DIR}{name}" for name in ("CHANGELOG.md", "DOCS.md", "README.md")}
 
@@ -303,6 +309,14 @@ class Registry:
         if state != "present":
             raise Refused(text)
         return body
+
+    def tags(self) -> tuple[list[str], bool]:
+        """(tags, complete): the registry lists at most TAG_PAGE of them in one answer."""
+        state, text, body = self._fetch("tags", f"list?n={TAG_PAGE}")
+        if state != "present":
+            raise Refused(text)
+        listed = json.loads(body).get("tags") or []
+        return listed, len(listed) < TAG_PAGE
 
     def require(self, reference: str) -> tuple[str, dict]:
         state, text, body = self.manifest(reference)
@@ -491,6 +505,50 @@ def carried(version: str, from_tree: str, to_tree: str, repository: str, registr
     return digest
 
 
+def addon_dir_id(tree: str, repository: str, gh: Gh) -> str:
+    """The object id of claude-code/ in `tree`: equal ids are equal directories."""
+    entries = gh_json(gh, ["api", f"repos/{repository}/git/trees/{tree}"])["tree"]
+    addon = [e["sha"] for e in entries if e["path"] == "claude-code" and e["type"] == "tree"]
+    if len(addon) != 1:
+        raise Refused(f"tree {tree} has no claude-code directory")
+    return addon[0]
+
+
+def reproducibility(version: str, tree: str, repository: str, registry: Registry, gh: Gh) -> list[str]:
+    """What earlier candidates of this version say about this tree's build.
+
+    A build whose add-on directory is the same as an earlier candidate's has
+    the same inputs, so it must have the same digest. A difference means
+    something outside the tree leaked into the image. Reports only.
+    """
+    own, _ = registry.require(candidate_tag(version, tree))
+    own_dir = addon_dir_id(tree, repository, gh)
+    listed, complete = registry.tags()
+    others = sorted({m["tree"] for t in listed if (m := CANDIDATE_TAG_RE.match(t)) and m["version"] == version
+                     and not m["arch"] and m["tree"] != tree})
+    lines = []
+    same = 0
+    for other in others:
+        try:
+            if addon_dir_id(other, repository, gh) != own_dir:
+                continue
+            theirs, _ = registry.require(candidate_tag(version, other))
+        except Refused as error:
+            lines.append(f"- candidate of tree {other[:12]} could not be compared: {error}")
+            continue
+        same += 1
+        if theirs == own:
+            lines.append(f"- reproducible: tree {other[:12]} has the same add-on directory and the same digest {own}")
+        else:
+            lines.append(f"- **NOT reproducible**: tree {other[:12]} has the same add-on directory but the digest "
+                         f"{theirs}, this build is {own}")
+    if not same:
+        lines.append(f"- no earlier candidate of {version} has this add-on directory: nothing to compare")
+    if not complete:
+        lines.append(f"- the registry listed {TAG_PAGE} tags, so earlier candidates may be missing from this report")
+    return ["**Reproducibility of the candidate**", *lines]
+
+
 def promote(version: str, tree: str, digest: str, env: dict, registry_for, gh: Gh = _gh, run: Run = _run) -> int:
     """Publish `<image>:<version>` as `digest` once `digest` is proven; never move it."""
     if env.get("GITHUB_REF") != "refs/heads/main":
@@ -637,6 +695,12 @@ def main(argv: list[str]) -> int:
     if command == "release-pr":
         return release_pr(image, version, tree, env, registry_for)
     registry = registry_for(image)
+    if command == "reproducibility" and not rest:
+        try:
+            print("\n".join(reproducibility(version, tree, env["GITHUB_REPOSITORY"], registry, _gh)))
+        except (Refused, KeyError, ValueError) as error:
+            print(f"**Reproducibility of the candidate**\n- could not be established: {error}")
+        return 0
     if command == "candidate-state" and len(rest) == 1:
         state, text, _ = registry.manifest(f"{candidate_tag(version, tree)}-{rest[0]}")
         if state == "unknown":
