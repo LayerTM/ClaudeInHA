@@ -20,6 +20,10 @@ It also holds one rule about downloads: curl's --retry covers only a timeout and
 HTTP 408/429/500/502/503/504, so a connection that dies mid-transfer (exit 56)
 is never retried by it. A curl that asks for --retry therefore also asks for
 --retry-all-errors, in every Dockerfile, shell script and workflow.
+
+And one about Python packages: a `pip install` installs only from a hash-locked
+requirements file (`--require-hashes`), so a package index that serves another
+file under a pinned name fails the install instead of running in CI or the image.
 """
 
 from __future__ import annotations
@@ -42,6 +46,9 @@ DOCKER_RUN = re.compile(r"^[ \t]*docker run\b(?:.*\\\n)*.*", re.MULTILINE)
 CURL = re.compile(r"\bcurl\b(?:(?!&&|\|\||[;|\n]).)*")
 RETRY = re.compile(r"(?<![\w-])--retry(?![\w-])")
 RETRY_ALL = re.compile(r"(?<![\w-])--retry-all-errors(?![\w-])")
+# One `pip install` command (also `python -m pip install`, `uv pip install`).
+PIP_INSTALL = re.compile(r"\bpip3?\s+install\b(?:(?!&&|\|\||[;|\n]).)*")
+REQUIRE_HASHES = re.compile(r"(?<![\w-])--require-hashes(?![\w-])")
 SCANNED = re.compile(r"(^|/)Dockerfile[^/]*$|\.(sh|ya?ml)$")
 
 
@@ -52,6 +59,17 @@ def curl_retry_complaints(name: str, text: str) -> list[str]:
         f"{name}: curl has --retry but not --retry-all-errors: {m.group(0).strip()[:90]}"
         for m in CURL.finditer(joined)
         if RETRY.search(m.group(0)) and not RETRY_ALL.search(m.group(0))
+    ]
+
+
+def pip_hash_complaints(name: str, text: str) -> list[str]:
+    """Each `pip install` in `text` that does not demand hashes (a comment line runs nothing)."""
+    code = re.sub(r"^[ \t]*#.*$", "", text, flags=re.MULTILINE)
+    joined = re.sub(r"\\\n", " ", code)
+    return [
+        f"{name}: pip install without --require-hashes: {m.group(0).strip()[:90]}"
+        for m in PIP_INSTALL.finditer(joined)
+        if not REQUIRE_HASHES.search(m.group(0))
     ]
 
 
@@ -66,7 +84,7 @@ def check_curl_retries(root: pathlib.Path) -> list[str]:
     for rel in listed.stdout.splitlines():
         if SCANNED.search(rel) and (root / rel).is_file():
             text = (root / rel).read_text(encoding="utf-8", errors="replace")
-            complaints += curl_retry_complaints(rel, text)
+            complaints += curl_retry_complaints(rel, text) + pip_hash_complaints(rel, text)
     return complaints
 
 

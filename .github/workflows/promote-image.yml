@@ -43,7 +43,7 @@ jobs:
       attestations: read
     steps:
       - uses: actions/checkout@v7
-      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - run: python3 -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r .github/ci-tools/requirements.lock
       - name: Publish the version from its proven candidate
         env:
           VERSION: ${{ inputs.version }}
