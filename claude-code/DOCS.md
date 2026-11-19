@@ -537,6 +537,8 @@ starts in, `/homeassistant`, is not prompted for. With `bypass_permissions` on i
 `protect_secrets` holds in both. Chats from Assist or automations through the companion integration
 never prompt: they run with a narrow, fixed set of allowed tools and everything else is refused.
 
+On Amazon Bedrock, Google Cloud Agent Platform, Microsoft Foundry and Claude apps gateway (reached through `environment_vars`), Claude Code starts a terminal session with no permission mode in auto mode: it decides by itself which actions are safe instead of asking each time. To be asked as described above, add `--permission-mode` and `manual` as two entries of `extra_args`.
+
 ### The Home Assistant token
 
 `ha_token` is optional. When set, Claude calls the Home Assistant API with that user's rights, so it
