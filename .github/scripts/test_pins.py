@@ -564,7 +564,7 @@ check("the image's Python packages are pinned by requirements.in",
       sorted(p.args[0] for p in found if p.file.parent.name == "py-tools" and p.file.name == "requirements.in"),
       ["Pillow", "hass-mcp", "homeassistant-cli"])
 check("the tools the workflows install are pinned and hash-locked the same way",
-      [p.args[0] for p in found if p.file.parent.name == "ci-tools" and p.file.name == "requirements.in"], ["uv"])
+      [p.args[0] for p in found if p.file.parent.name == "ci-tools" and p.file.name == "requirements.in"], ["uv", "pyyaml"])
 check("the pinned ha-agent-core release is watched",
       [p.args[0] for p in found if p.kind == "core-lock"], ["LayerTM/ha-agent-core"])
 
