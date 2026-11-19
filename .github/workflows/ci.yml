@@ -523,6 +523,16 @@ jobs:
         with:
           subject-name: ${{ steps.plan.outputs.image }}
           subject-digest: ${{ steps.join.outputs.digest }}
+      # Two builds of one add-on directory must give one digest. This reports
+      # when an earlier candidate of this version disagrees; it never fails the run.
+      - name: Does the candidate reproduce an earlier one
+        if: steps.plan.outputs.publish == 'true'
+        continue-on-error: true
+        env:
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/addon_image.py reproducibility >> "$GITHUB_STEP_SUMMARY"
       - name: The candidate to try and to promote
         if: steps.plan.outputs.publish == 'true'
         env:

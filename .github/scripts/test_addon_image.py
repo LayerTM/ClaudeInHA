@@ -140,6 +140,7 @@ class World:
         self.also: dict[str, list[tuple[str, str, str]]] = {}  # more attestations of the same digest
         self.files: dict[str, dict] = {}                      # tree -> {path: sha}; absent = cannot be listed
         self.truncated = False
+        self.addon_dir: dict[str, str] = {}                   # tree -> object id of claude-code/
         self.commit_tree = {COMMIT: TREE, OTHER_COMMIT: OTHER_TREE}
         self.tree_config = {"version": tree_version, "image": IMAGE, "arch": ["aarch64", "amd64"]}
         entries = []
@@ -164,6 +165,8 @@ class World:
         if "/token?" in url:
             return self.token_status, {}, json.dumps({"token": "t"}).encode()
         reference = url.rsplit("/", 1)[1]
+        if reference.startswith("list?"):
+            return 200, {}, json.dumps({"tags": list(self.tags)}).encode()
         if reference in self.status:
             return self.status[reference], {}, b""
         digest = reference if reference.startswith("sha256:") else self.tags.get(reference)
@@ -193,7 +196,8 @@ class World:
             return 0, json.dumps({"truncated": self.truncated, "tree": [
                 {"path": f, "type": "blob", "mode": "100644", "sha": sha} for f, sha in files.items()]}), ""
         if path in (f"repos/{REPO}/git/trees/{TREE}", f"repos/{REPO}/git/trees/{OTHER_TREE}"):
-            return 0, json.dumps({"tree": [{"path": "claude-code", "type": "tree", "sha": "addon"}]}), ""
+            tree = path.rsplit("/", 1)[1]
+            return 0, json.dumps({"tree": [{"path": "claude-code", "type": "tree", "sha": self.addon_dir.get(tree, "addon")}]}), ""
         if path == f"repos/{REPO}/git/trees/addon":
             return 0, json.dumps({"tree": [{"path": "config.yaml", "type": "blob", "sha": "cfg"}]}), ""
         if path == f"repos/{REPO}/git/blobs/cfg":
@@ -374,6 +378,43 @@ check("a tree that cannot be listed does not carry", carry(w).startswith("refuse
 w = carried_world()
 w.status[f"{VERSION}-rc.{TREE}"] = 503
 check("a registry that cannot answer does not carry", carry(w).startswith("refused:"), True)
+
+print("A build is compared with earlier candidates of the same add-on directory")
+
+
+def report(world, tree=OTHER_TREE) -> str:
+    return "\n".join(addon_image.reproducibility(VERSION, tree, REPO, world.registry_for(IMAGE), world.gh))
+
+
+w = carried_world()
+text = report(w)
+check("the same add-on directory and the same digest is reproducible", ("- reproducible: tree " + TREE[:12] in text, "NOT" in text), (True, False))
+w = carried_world()
+w.tags[f"{VERSION}-rc.{OTHER_TREE}"] = w.platform["amd64"]
+check("the same add-on directory with another digest is reported as not reproducible",
+      ("**NOT reproducible**: tree " + TREE[:12] in report(w)), True)
+w = carried_world()
+w.addon_dir[OTHER_TREE] = "different"
+w.tags[f"{VERSION}-rc.{OTHER_TREE}"] = w.platform["amd64"]
+text = report(w)
+check("another add-on directory is not compared, however the digests differ", ("NOT" in text, "nothing to compare" in text), (False, True))
+w = carried_world()
+w.tags[f"{VERSION}-rc.{TREE}-amd64"] = w.platform["amd64"]
+w.tags[f"1.63.0-rc.{'e' * 40}"] = w.platform["amd64"]
+check("per-architecture tags and other versions are not candidates to compare with",
+      report(w).count("- reproducible:"), 1)
+w = carried_world()
+w.status[f"{VERSION}-rc.{TREE}"] = 503
+check("an earlier candidate that cannot be read is said so, not skipped", "could not be compared" in report(w), True)
+w = World()
+check("a first candidate has nothing to compare", "nothing to compare" in report(w, TREE), True)
+w = carried_world()
+w.token_status = 500
+try:
+    report(w)
+    check("an unreadable registry raises (the command reports it and still exits 0)", "returned", "raised")
+except addon_image.Refused:
+    check("an unreadable registry raises (the command reports it and still exits 0)", "raised", "raised")
 
 print("Credentials go only to this repository's own namespace")
 creds = {"ACTOR": "a", "TOKEN": "t", "GITHUB_REPOSITORY": "Owner/r"}
