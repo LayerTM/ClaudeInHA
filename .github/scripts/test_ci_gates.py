@@ -150,6 +150,19 @@ check("a continuation line is one command", len(curl_retry_complaints("f", "RUN 
 check("a flag on a continuation line counts", curl_retry_complaints("f", "RUN curl -fsSL --retry 3 \\\n    --retry-all-errors -o /f https://x/y"), [])
 check("each curl in a && chain is judged alone", len(curl_retry_complaints("f", "curl --retry 3 --retry-all-errors a && curl --retry 3 b")), 1)
 
+print("A pip install must demand hashes")
+from ci_gates import pip_hash_complaints  # noqa: E402
+
+check("an unhashed install is refused", len(pip_hash_complaints("f", "run: python3 -m pip install --quiet pyyaml")), 1)
+check("pip3 is the same command", len(pip_hash_complaints("f", "pip3 install requests")), 1)
+check("uv pip install is the same command", len(pip_hash_complaints("f", "uv pip install requests")), 1)
+check("--require-hashes is accepted", pip_hash_complaints("f", "python3 -m pip install --require-hashes --no-deps -r a.lock"), [])
+check("a flag on a continuation line counts", pip_hash_complaints("f", "RUN pip install --no-deps \\\n    --require-hashes -r a.lock"), [])
+check("--require-hashes of another command does not count", len(pip_hash_complaints("f", "pip install x && echo --require-hashes")), 1)
+check("each pip in a && chain is judged alone", len(pip_hash_complaints("f", "pip install --require-hashes -r a && pip install b")), 1)
+check("a comment line runs nothing", pip_hash_complaints("f", "# or: pip install pre-commit\n  # pip install x\n"), [])
+check("the word pip alone is not an install", pip_hash_complaints("f", "apt-get install python3-pip"), [])
+
 print("This repository's own workflow")
 done = subprocess.run(
     [sys.executable, str(SCRIPT), str(WORKFLOW)], capture_output=True, text=True
@@ -174,6 +187,7 @@ check("a script's networked run is found",
 check("a script's offline run passes",
       ci_gates.network_complaints("x.sh", "docker run --rm \\\n  --network none img true\n"), [])
 check("the repository's scripts pass", ci_gates.check_script_networks(REPO), [])
+check("the repository's Dockerfile, scripts and workflows pass the download and pip rules", ci_gates.check_curl_retries(REPO), [])
 
 print(f"\n{'FAILED' if fails else 'ok'} — {fails} failing check(s)")
 sys.exit(1 if fails else 0)

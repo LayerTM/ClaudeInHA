@@ -170,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - run: python3 -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r .github/ci-tools/requirements.lock
       - name: Test the script that checks the gate list
         run: python3 .github/scripts/test_ci_gates.py
       - name: Every gate is a gate the release waits for, and no image step has a network
@@ -327,7 +327,7 @@ jobs:
       list: ${{ steps.read.outputs.list }}
     steps:
       - uses: actions/checkout@v7
-      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - run: python3 -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r .github/ci-tools/requirements.lock
       - name: Test the script the matrix comes from
         run: python3 .github/scripts/test_addon_arches.py
       - name: Read the architectures the add-on declares
@@ -390,7 +390,6 @@ jobs:
       # uv: a bump regenerates the hash-locked Python requirements. Its version
       # and hashes: .github/ci-tools/requirements.lock (moved by pins.py).
       - run: |
-          python3 -m pip install --quiet --disable-pip-version-check pyyaml
           python3 -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r .github/ci-tools/requirements.lock
       # Before the canary: a bump refreshes package-lock.json files with npm.
       - uses: actions/setup-node@v7
@@ -436,7 +435,7 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@v7
-      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - run: python3 -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r .github/ci-tools/requirements.lock
       - name: Does this run publish a candidate
         id: plan
         env:
@@ -498,7 +497,7 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@v7
-      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - run: python3 -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r .github/ci-tools/requirements.lock
       - name: Does this run publish a candidate
         id: plan
         env:
@@ -564,7 +563,7 @@ jobs:
       attestations: read
     steps:
       - uses: actions/checkout@v7
-      - run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      - run: python3 -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r .github/ci-tools/requirements.lock
       - name: Test the script that reads and publishes the image
         run: python3 .github/scripts/test_addon_image.py
       - name: Self-test the apt install helper
