@@ -145,14 +145,14 @@ ARG NODE_DISABLE_COMPILE_CACHE=1
 # documented home, it belongs here: it would let a bump verify that a new version
 # is authentic, where a recorded checksum can only hold it to what was seen.
 # upstream: claude-code CLAUDE_DOWNLOAD_BASE latest
-ARG CLAUDE_CODE_VERSION=2.1.329
+ARG CLAUDE_CODE_VERSION=2.1.330
 # From <version>/manifest.json: .platforms["linux-x64"].checksum and
 # .platforms["linux-arm64"].checksum. A version bump moves these two with it;
 # forgetting stops the build at the checksum rather than at a user's next start.
 # upstream: claude-code-sha256 linux-x64
-ARG CLAUDE_CODE_SHA256_AMD64=30e2724e2aecb1bf5dc9f3130901afb71c5fa229051c190a6d7ad9aff6378d6d
+ARG CLAUDE_CODE_SHA256_AMD64=f390eaa0814e6a1bff74cbb47acb74cb9c89d30ced809fe0af5af00c7bfe8ebb
 # upstream: claude-code-sha256 linux-arm64
-ARG CLAUDE_CODE_SHA256_ARM64=8489e2c7ba7846b4681b84e559fed4ed5bb265e129e21dc9de9e322157fb2bea
+ARG CLAUDE_CODE_SHA256_ARM64=6016f90cac783e367fb1aa97c768a2efb94a0128a5b46b70fb3d8fcbbd9dd444
 ARG CLAUDE_DOWNLOAD_BASE=https://downloads.claude.ai/claude-code-releases
 # Every fallible step carries its own message. In a single `A && B && C || D`
 # chain the `||` binds to the WHOLE chain, so the first failure jumps straight to
