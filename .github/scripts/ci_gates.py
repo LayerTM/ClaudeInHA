@@ -24,6 +24,12 @@ is never retried by it. A curl that asks for --retry therefore also asks for
 And one about Python packages: a `pip install` installs only from a hash-locked
 requirements file (`--require-hashes`), so a package index that serves another
 file under a pinned name fails the install instead of running in CI or the image.
+
+And the same for npm: an image or workflow step never runs `npm install <package>`
+(a version alone is not an integrity check); it installs a package.json with
+`npm ci` from the package-lock.json beside it, which fails on a tarball whose
+integrity differs. The console's own update of the persistent CLI runs at
+runtime, outside the build, and is not a step.
 """
 
 from __future__ import annotations
@@ -49,6 +55,9 @@ RETRY_ALL = re.compile(r"(?<![\w-])--retry-all-errors(?![\w-])")
 # One `pip install` command (also `python -m pip install`, `uv pip install`).
 PIP_INSTALL = re.compile(r"\bpip3?\s+install\b(?:(?!&&|\|\||[;|\n]).)*")
 REQUIRE_HASHES = re.compile(r"(?<![\w-])--require-hashes(?![\w-])")
+# One `npm install|i|add` command; `npm install` of no package (a lockfile refresh) is fine.
+NPM_INSTALL = re.compile(r"\bnpm\s+(?:install|i|add)\b((?:(?!&&|\|\||[;|\n]).)*)")
+NPM_SCANNED = re.compile(r"(^|/)Dockerfile[^/]*$|^\.github/.*\.(sh|ya?ml)$")
 SCANNED = re.compile(r"(^|/)Dockerfile[^/]*$|\.(sh|ya?ml)$")
 
 
@@ -73,6 +82,17 @@ def pip_hash_complaints(name: str, text: str) -> list[str]:
     ]
 
 
+def npm_package_complaints(name: str, text: str) -> list[str]:
+    """Each `npm install <package>` in `text` (a comment line runs nothing)."""
+    code = re.sub(r"^[ \t]*#.*$", "", text, flags=re.MULTILINE)
+    joined = re.sub(r"\\\n", " ", code)
+    return [
+        f"{name}: npm install of a package by name, not from a lock (use npm ci): {m.group(0).strip()[:90]}"
+        for m in NPM_INSTALL.finditer(joined)
+        if any(not arg.startswith("-") for arg in m.group(1).split())
+    ]
+
+
 def check_curl_retries(root: pathlib.Path) -> list[str]:
     """Scan every tracked Dockerfile, shell script and workflow under `root`."""
     listed = subprocess.run(
@@ -85,6 +105,8 @@ def check_curl_retries(root: pathlib.Path) -> list[str]:
         if SCANNED.search(rel) and (root / rel).is_file():
             text = (root / rel).read_text(encoding="utf-8", errors="replace")
             complaints += curl_retry_complaints(rel, text) + pip_hash_complaints(rel, text)
+            if NPM_SCANNED.search(rel):
+                complaints += npm_package_complaints(rel, text)
     return complaints
 
 

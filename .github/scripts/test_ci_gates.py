@@ -187,6 +187,16 @@ check("a script's networked run is found",
 check("a script's offline run passes",
       ci_gates.network_complaints("x.sh", "docker run --rm \\\n  --network none img true\n"), [])
 check("the repository's scripts pass", ci_gates.check_script_networks(REPO), [])
+print("An npm install must come from a lock")
+from ci_gates import npm_package_complaints  # noqa: E402
+
+check("a version-only install is refused", len(npm_package_complaints("f", 'RUN npm install --global --no-audit "some-package@${V}"')), 1)
+check("npm i and npm add are the same command", len(npm_package_complaints("f", "npm i left-pad && npm add right-pad")), 2)
+check("npm ci is accepted", npm_package_complaints("f", "RUN npm ci --omit=dev"), [])
+check("a lockfile refresh names no package", npm_package_complaints("f", "npm install --package-lock-only --ignore-scripts"), [])
+check("a continuation line carries the package", len(npm_package_complaints("f", "RUN npm install --global \\\n    pkg@1")), 1)
+check("a comment line runs nothing", npm_package_complaints("f", "# `npm install --global pkg` would put them\n"), [])
+check("the repository's Dockerfile has no version-only npm install", [c for c in ci_gates.check_curl_retries(REPO) if "npm install" in c], [])
 check("the repository's Dockerfile, scripts and workflows pass the download and pip rules", ci_gates.check_curl_retries(REPO), [])
 
 print(f"\n{'FAILED' if fails else 'ok'} — {fails} failing check(s)")
