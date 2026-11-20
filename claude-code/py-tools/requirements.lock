@@ -695,9 +695,9 @@ h11==0.16.0 \
     # via
     #   httpcore
     #   uvicorn
-hass-mcp==0.6.1 \
-    --hash=sha256:7cf5cfa7fd34a7a4c7328cf388399f3966346817c903aece094bc59289349bb9 \
-    --hash=sha256:8f18d2743524b17a035d18ac3feb87dafeb25cb77e2c6257514ae4fee2fff35a
+hass-mcp==0.6.2 \
+    --hash=sha256:0440711d9806d904f244a9d4fda4d75b55839479d8173a2c1934bfcaea8d4be8 \
+    --hash=sha256:8b324231473a92555cef4f970ddab5b78242ddaa450139e501a40abbce3b0195
     # via -r requirements.in
 homeassistant-cli==1.0.0 \
     --hash=sha256:159218b40d96b7933ebb867be59de693740eba94ceea6656149933891f34076d \
