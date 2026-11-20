@@ -4,6 +4,7 @@
 
 ### Changed
 - Claude Code 2.1.328 → 2.1.329 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md))
+- hass-mcp 0.6.1 → 0.6.2 ([release notes](https://github.com/voska/hass-mcp/releases/tag/v0.6.2))
 
 Built on ha-agent-core 0.15.1 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.15.1)).
 
