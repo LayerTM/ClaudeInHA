@@ -199,5 +199,35 @@ check("a comment line runs nothing", npm_package_complaints("f", "# `npm install
 check("the repository's Dockerfile has no version-only npm install", [c for c in ci_gates.check_curl_retries(REPO) if "npm install" in c], [])
 check("the repository's Dockerfile, scripts and workflows pass the download and pip rules", ci_gates.check_curl_retries(REPO), [])
 
+print("A pipe must run under a pipefail shell")
+import yaml  # noqa: E402
+from ci_gates import pipefail_complaints  # noqa: E402
+
+PIPED = "name: w\non: [push]\n{top}jobs:\n  j:\n{job}    runs-on: ubuntu-latest\n    steps:\n      - {step}run: producer | tee -a \"$GITHUB_OUTPUT\"\n"
+
+
+def piped(top="", job="", step=""):
+    return pipefail_complaints("w.yml", yaml.safe_load(PIPED.format(top=top, job=job, step=step)))
+
+
+check("a pipe under the default shell is refused", len(piped()), 1)
+check("it names the step", "job 'j' step 1" in piped()[0], True)
+check("a step's shell: bash passes", piped(step="shell: bash\n        "), [])
+check("workflow defaults pass", piped(top="defaults:\n  run:\n    shell: bash\n"), [])
+check("job defaults pass", piped(job="    defaults:\n      run:\n        shell: bash\n"), [])
+check("an explicit pipefail-less bash -e is refused", len(piped(step="shell: bash -e {0}\n        ")), 1)
+check("a step's shell overrides a good default", len(piped(top="defaults:\n  run:\n    shell: bash\n", step="shell: sh\n        ")), 1)
+check("|| is not a pipe", pipefail_complaints("w.yml", yaml.safe_load("jobs:\n  j:\n    steps:\n      - run: a || b\n")), [])
+check("a comment line is not a pipe", pipefail_complaints("w.yml", yaml.safe_load("jobs:\n  j:\n    steps:\n      - run: |\n          # a | b\n          true\n")), [])
+check("a step with no pipe needs no shell", pipefail_complaints("w.yml", yaml.safe_load("jobs:\n  j:\n    steps:\n      - run: true\n")), [])
+repo_run = subprocess.run([sys.executable, str(SCRIPT), str(WORKFLOW)], capture_output=True, text=True, cwd=REPO)
+check("every workflow in the repository passes", repo_run.returncode, 0)
+
+print("The mechanism: a failing producer behind tee")
+bare = subprocess.run(["bash", "-e", "-c", "false | tee /dev/null"], capture_output=True)
+piper = subprocess.run(["bash", "-eo", "pipefail", "-c", "false | tee /dev/null"], capture_output=True)
+check("bash -e stays green", bare.returncode, 0)
+check("bash -eo pipefail fails", piper.returncode, 1)
+
 print(f"\n{'FAILED' if fails else 'ok'} — {fails} failing check(s)")
 sys.exit(1 if fails else 0)

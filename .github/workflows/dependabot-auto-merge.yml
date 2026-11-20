@@ -30,6 +30,12 @@ permissions:
   contents: write
   pull-requests: write
 
+# bash -eo pipefail: GitHub's default shell (bash -e) lets a pipeline succeed
+# when its left side fails, e.g. `producer | tee -a "$GITHUB_OUTPUT"`.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   guard:
     if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' }}
@@ -45,7 +51,7 @@ jobs:
         run: |
           if files="$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')" \
             && [ -n "$files" ] \
-            && ! printf '%s\n' "$files" | grep -qxF '.github/workflows/dependabot-auto-merge.yml'; then
+            && ! grep -qxF '.github/workflows/dependabot-auto-merge.yml' <<<"$files"; then
             echo "proceed=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi

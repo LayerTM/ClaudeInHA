@@ -19,6 +19,12 @@ concurrency:
   group: main-measured
   cancel-in-progress: false
 
+# bash -eo pipefail: GitHub's default shell (bash -e) lets a pipeline succeed
+# when its left side fails, e.g. `producer | tee -a "$GITHUB_OUTPUT"`.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   reconcile:
     name: CI ran on the head of main

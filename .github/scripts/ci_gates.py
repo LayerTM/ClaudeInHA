@@ -30,6 +30,12 @@ And the same for npm: an image or workflow step never runs `npm install <package
 `npm ci` from the package-lock.json beside it, which fails on a tarball whose
 integrity differs. The console's own update of the persistent CLI runs at
 runtime, outside the build, and is not a step.
+
+And one about pipes: a workflow `run:` that pipes runs under a pipefail shell. GitHub's
+default (`bash -e {0}`, no `shell:`) returns the LAST command's status, so
+`producer | tee -a "$GITHUB_OUTPUT"` stays green when the producer fails; `shell: bash`
+(`bash --noprofile --norc -eo pipefail {0}`) fails the step that failed. A step's own
+`shell:`, or a job's or the workflow's `defaults.run.shell`, supplies it.
 """
 
 from __future__ import annotations
@@ -91,6 +97,41 @@ def npm_package_complaints(name: str, text: str) -> list[str]:
         for m in NPM_INSTALL.finditer(joined)
         if any(not arg.startswith("-") for arg in m.group(1).split())
     ]
+
+
+# A pipe, not `||`.
+PIPE = re.compile(r"(?<!\|)\|(?!\|)")
+
+
+def pipefail_complaints(name: str, workflow) -> list[str]:
+    """Each step of a parsed workflow that pipes under a shell without pipefail."""
+    if not isinstance(workflow, dict) or not isinstance(workflow.get("jobs"), dict):
+        return []
+
+    def shell_of(owner) -> object:
+        defaults = owner.get("defaults") if isinstance(owner, dict) else None
+        run = defaults.get("run") if isinstance(defaults, dict) else None
+        return run.get("shell") if isinstance(run, dict) else None
+
+    complaints = []
+    for job_id, job in workflow["jobs"].items():
+        if not isinstance(job, dict):
+            continue
+        for index, step in enumerate(job.get("steps") or []):
+            body = step.get("run") if isinstance(step, dict) else None
+            if not isinstance(body, str):
+                continue
+            code = "\n".join(line for line in body.splitlines() if not line.lstrip().startswith("#"))
+            if not PIPE.search(code):
+                continue
+            shell = step.get("shell") or shell_of(job) or shell_of(workflow)
+            if not (isinstance(shell, str) and (shell == "bash" or "pipefail" in shell)):
+                complaints.append(
+                    f"{name}: job '{job_id}' step {index + 1} pipes without a pipefail shell "
+                    f"(set `shell: bash` on the step or under `defaults.run`): a failing "
+                    f"producer would leave the step green"
+                )
+    return complaints
 
 
 def check_curl_retries(root: pathlib.Path) -> list[str]:
@@ -157,6 +198,7 @@ def check(path: pathlib.Path) -> list[str]:
     # resolve to a real home where this runs; a token check from a test would be a
     # failed login there.
     complaints += network_complaints(path.name, path.read_text(encoding="utf-8"))
+    complaints += pipefail_complaints(path.name, workflow)
     for job in sorted(gates - waits_for):
         complaints.append(
             f"job '{job}' is a gate the '{RELEASE}' job does not wait for — "
@@ -171,6 +213,9 @@ def main() -> None:
     path = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT
     root = DEFAULT.parents[2]
     complaints = check(path) + check_curl_retries(root) + check_script_networks(root)
+    for other in sorted((root / ".github/workflows").glob("*.yml")):
+        if other.resolve() != path.resolve():
+            complaints += pipefail_complaints(other.name, yaml.safe_load(other.read_text(encoding="utf-8")))
     if complaints:
         for line in complaints:
             print(line, file=sys.stderr)

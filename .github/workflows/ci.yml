@@ -33,6 +33,12 @@ on:
 permissions:
   contents: read
 
+# bash -eo pipefail: GitHub's default shell (bash -e) lets a pipeline succeed
+# when its left side fails, e.g. `producer | tee -a "$GITHUB_OUTPUT"`.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   prompt-server:
     name: Prompt server
