@@ -2,4 +2,4 @@
 # requirements.lock holds every distribution with every hash
 # (`pip install --require-hashes --no-deps -r`).
 uv==0.13.9
-pyyaml==6.0.3
+pyyaml==6.0.4
