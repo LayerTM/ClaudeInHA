@@ -1,5 +1,5 @@
 name: "Claude Code"
-version: "1.63.4"
+version: "1.63.5"
 slug: claude-code
 image: "ghcr.io/layertm/claude-code"
 description: "Claude Code AI assistant embedded in Home Assistant — web console with tabs, clipboard, file attachments, browser testing, and a bundled HA skill pack"

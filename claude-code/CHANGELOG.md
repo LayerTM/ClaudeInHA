@@ -1,10 +1,15 @@
 # Changelog
 
-## Unreleased
+## [1.63.5] — 2026-11-26
 
 ### Changed
+- The add-on image is built reproducibly: the base image, the Debian packages (from a dated snapshot), the Python packages (every distribution by hash) and the `ha` and `yq` binaries (by checksum) are pinned, and the build leaves no per-build state in its layers, so the same source gives the same image.
 - Claude Code 2.1.328 → 2.1.330 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md))
 - hass-mcp 0.6.1 → 0.6.2 ([release notes](https://github.com/voska/hass-mcp/releases/tag/v0.6.2))
+
+### Fixed
+- The engine session check no longer fails on a slow or emulated host whose engine needs more than 2 seconds for its first start; it now has one overall deadline.
+- A warm session (`prompt_keep_warm`) warms on a host whose engine takes longer to start.
 
 Built on ha-agent-core 0.15.1 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.15.1)).
 
