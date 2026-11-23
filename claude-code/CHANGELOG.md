@@ -10,6 +10,7 @@
 ### Fixed
 - The engine session check no longer fails on a slow or emulated host whose engine needs more than 2 seconds for its first start; it now has one overall deadline.
 - A warm session (`prompt_keep_warm`) warms on a host whose engine takes longer to start.
+- Chromium (dashboard screenshots, Playwright MCP) no longer prints `[: ...: unexpected operator` on every start, and its rule that moves shared memory off a small `/dev/shm` now applies in the add-on's container, where the runtime stacks two mounts on `/dev/shm`.
 
 Built on ha-agent-core 0.15.1 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.15.1)).
 
