@@ -205,6 +205,14 @@ RUN --mount=type=bind,source=build-tools/apt-install.sh,target=/tmp/apt-install.
         fonts-noto-color-emoji \
         fonts-liberation \
         imagemagick
+# Debian's chromium.d/dev-shm decides from `findmnt -T /dev/shm` whether /dev/shm
+# is big enough for Chromium. Where the container runtime stacks two mounts on
+# /dev/shm (HAOS does), findmnt prints two lines, `[ ... -lt ... ]` fails with
+# "unexpected operator", and the rule silently never applies. It reads the first
+# mount line here; the build fails if the package's line ever changes shape.
+RUN sed -i 's|-T /dev/shm)|-T /dev/shm \| head -n 1)|' /etc/chromium.d/dev-shm \
+    && { grep -qF -- 'avail -T /dev/shm | head -n 1)' /etc/chromium.d/dev-shm \
+         || { echo "chromium.d/dev-shm no longer has the findmnt line this image edits"; exit 1; }; }
 ENV CHROME_BIN=/usr/bin/chromium
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
