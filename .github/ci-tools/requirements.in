@@ -1,5 +1,5 @@
 # Python tools the workflows install: exact versions, moved by pins.py.
 # requirements.lock holds every distribution with every hash
 # (`pip install --require-hashes --no-deps -r`).
-uv==0.13.9
+uv==0.13.10
 pyyaml==6.0.4

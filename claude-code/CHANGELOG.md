@@ -4,7 +4,7 @@
 
 ### Changed
 - The add-on image is built reproducibly: the base image, the Debian packages (from a dated snapshot), the Python packages (every distribution by hash) and the `ha` and `yq` binaries (by checksum) are pinned, and the build leaves no per-build state in its layers, so the same source gives the same image.
-- Claude Code 2.1.328 → 2.1.330 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md))
+- Claude Code 2.1.328 → 2.1.332 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md))
 - hass-mcp 0.6.1 → 0.6.2 ([release notes](https://github.com/voska/hass-mcp/releases/tag/v0.6.2))
 
 ### Fixed
