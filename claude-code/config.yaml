@@ -69,6 +69,7 @@ options:
   proactive_alerts: false
   proactive_alerts_interval_minutes: 15
   alert_battery_below: 15
+  alert_battery_margin: 0
   alert_water_leak: true
   alert_open_at_night: true
   alert_night_start: "23:00"
@@ -76,11 +77,14 @@ options:
   alert_temp_enabled: false
   alert_temp_low: 5
   alert_temp_high: 45
+  alert_temp_margin: 0
   alert_temp_entities: []
   alert_co2_above: 1400
+  alert_co2_margin: 100
   alert_humidity_enabled: false
   alert_humidity_low: 25
   alert_humidity_high: 70
+  alert_humidity_margin: 0
   alert_offline: true
   alert_offline_entities: []
   alert_quiet_hours: ""
@@ -127,6 +131,7 @@ schema:
   proactive_alerts: bool
   proactive_alerts_interval_minutes: "int(1,1440)?"
   alert_battery_below: "int(0,100)?"
+  alert_battery_margin: "int(0,100)?"
   alert_water_leak: bool
   alert_open_at_night: bool
   alert_night_start: "str?"
@@ -134,12 +139,15 @@ schema:
   alert_temp_enabled: bool
   alert_temp_low: "float?"
   alert_temp_high: "float?"
+  alert_temp_margin: "float(0,)?"
   alert_temp_entities:
     - "str"
   alert_co2_above: "int(0,)?"
+  alert_co2_margin: "int(0,)?"
   alert_humidity_enabled: bool
   alert_humidity_low: "float?"
   alert_humidity_high: "float?"
+  alert_humidity_margin: "float(0,)?"
   alert_offline: bool
   alert_offline_entities:
     - "str"

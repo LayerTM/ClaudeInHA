@@ -174,6 +174,12 @@ configuration:
     description: >-
       Alert when any battery entity drops below this percentage (default 15).
       Set 0 to disable low-battery alerts.
+  alert_battery_margin:
+    name: Low-Battery Clear Margin (%)
+    description: >-
+      An active low-battery alert clears only once the level is at least the
+      threshold plus this many percentage points (default 0). 0 clears it as
+      soon as the level is no longer below the threshold.
   alert_water_leak:
     name: Water-Leak Alerts (critical)
     description: >-
@@ -207,6 +213,12 @@ configuration:
     description: >-
       Alert when an enabled temperature sensor reads above this value
       (default 45). Only used when Temperature Alerts is on.
+  alert_temp_margin:
+    name: Temperature Clear Margin (°)
+    description: >-
+      An active temperature alert clears only once the reading is this far back
+      inside the band, in the sensor's own unit (default 0). Must be less than
+      half of the band.
   alert_temp_entities:
     name: Room Temperature Sensors
     description: >-
@@ -220,6 +232,12 @@ configuration:
       Alert when a carbon-dioxide sensor reads above this value, so you know
       when a room needs airing out (default 1400). 0 turns it off. Not critical:
       held back during quiet hours.
+  alert_co2_margin:
+    name: CO2 Clear Margin (ppm)
+    description: >-
+      An active CO2 alert clears only once the reading is this far below the
+      threshold (default 100: threshold 1400, clears at 1300). 0 clears it as
+      soon as the reading is no longer above the threshold.
   alert_humidity_enabled:
     name: Humidity Alerts
     description: >-
@@ -236,6 +254,11 @@ configuration:
     description: >-
       Alert when a humidity sensor reads above this value (default 70). Only
       used when Humidity Alerts is on.
+  alert_humidity_margin:
+    name: Humidity Clear Margin (%)
+    description: >-
+      An active humidity alert clears only once the reading is this far back
+      inside the band (default 0). Must be less than half of the band.
   alert_offline:
     name: Offline / Network Alerts (critical)
     description: >-

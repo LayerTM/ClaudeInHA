@@ -177,6 +177,12 @@ configuration:
     description: >-
       Alarmuj, gdy dowolna encja baterii spadnie poniżej tego procentu
       (domyślnie 15). Ustaw 0, aby wyłączyć alerty o niskiej baterii.
+  alert_battery_margin:
+    name: Margines wyłączenia alertu o baterii (%)
+    description: >-
+      Aktywny alert o niskiej baterii znika dopiero, gdy poziom osiągnie co
+      najmniej próg powiększony o tyle punktów procentowych (domyślnie 0).
+      0 wyłącza go, gdy tylko poziom przestaje być poniżej progu.
   alert_water_leak:
     name: Alerty o wycieku wody (krytyczne)
     description: >-
@@ -213,6 +219,12 @@ configuration:
     description: >-
       Alarmuj, gdy włączony czujnik temperatury pokaże powyżej tej wartości
       (domyślnie 45). Używane tylko, gdy alerty temperatury są włączone.
+  alert_temp_margin:
+    name: Margines wyłączenia alertu o temperaturze (°)
+    description: >-
+      Aktywny alert o temperaturze znika dopiero, gdy odczyt wróci o tyle w głąb
+      przedziału, w jednostce samego czujnika (domyślnie 0). Musi być mniejszy
+      niż połowa przedziału.
   alert_temp_entities:
     name: Pokojowe czujniki temperatury
     description: >-
@@ -226,6 +238,12 @@ configuration:
       Alarmuj, gdy czujnik dwutlenku węgla pokaże powyżej tej wartości, abyś
       wiedział, kiedy pokój trzeba przewietrzyć (domyślnie 1400). 0 wyłącza. Nie
       jest krytyczny: w cichych godzinach wstrzymywany.
+  alert_co2_margin:
+    name: Margines wyłączenia alertu CO2 (ppm)
+    description: >-
+      Aktywny alert CO2 znika dopiero, gdy odczyt spadnie o tyle poniżej progu
+      (domyślnie 100: próg 1400, znika przy 1300). 0 wyłącza go, gdy tylko
+      odczyt przestaje przekraczać próg.
   alert_humidity_enabled:
     name: Alerty wilgotności
     description: >-
@@ -243,6 +261,11 @@ configuration:
     description: >-
       Alarmuj, gdy czujnik wilgotności pokaże powyżej tej wartości (domyślnie
       70). Używane tylko, gdy alerty wilgotności są włączone.
+  alert_humidity_margin:
+    name: Margines wyłączenia alertu o wilgotności (%)
+    description: >-
+      Aktywny alert o wilgotności znika dopiero, gdy odczyt wróci o tyle w głąb
+      przedziału (domyślnie 0). Musi być mniejszy niż połowa przedziału.
   alert_offline:
     name: Alerty offline / sieciowe (krytyczne)
     description: >-

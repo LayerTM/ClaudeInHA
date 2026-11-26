@@ -12,7 +12,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # SOURCE_DATE_EPOCH (passed by the build script, derived from it) makes pip write
 # hash-checked .pyc files and lets the exporter clamp file times.
 # upstream: debian-snapshot
-ARG DEBIAN_SNAPSHOT=20261119T144258Z
+ARG DEBIAN_SNAPSHOT=20261126T142853Z
 ARG SOURCE_DATE_EPOCH
 # npm writes no debug logs into layers; node keeps no compile cache in /tmp.
 ARG npm_config_logs_max=0
