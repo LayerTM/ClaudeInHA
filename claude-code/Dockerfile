@@ -3,7 +3,7 @@ ARG BUILD_FROM
 # tag's multi-architecture index, so a rebuilt tag cannot change the image. It is
 # a pin of its own because build.yaml's build_from accepts a tag only.
 # upstream: image-digest hassio-addons/addon-debian-base ghcr.io/hassio-addons/debian-base
-ARG BUILD_FROM_SHA256=1faf86975f6215114064f597c1b8cc03f3793ff15f2bd1cad5989a675a541062
+ARG BUILD_FROM_SHA256=d33ea7a92d8d59a654658eb6d1ec9a312f09e80448417f55a494182707393339
 FROM ${BUILD_FROM}@sha256:${BUILD_FROM_SHA256} AS base
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -12,7 +12,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # SOURCE_DATE_EPOCH (passed by the build script, derived from it) makes pip write
 # hash-checked .pyc files and lets the exporter clamp file times.
 # upstream: debian-snapshot
-ARG DEBIAN_SNAPSHOT=20261119T144258Z
+ARG DEBIAN_SNAPSHOT=20261126T142853Z
 ARG SOURCE_DATE_EPOCH
 # npm writes no debug logs into layers; node keeps no compile cache in /tmp.
 ARG npm_config_logs_max=0

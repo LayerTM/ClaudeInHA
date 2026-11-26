@@ -117,9 +117,11 @@ It watches for:
 - **Open at night** (`alert_open_at_night`, on) — a door, window, garage, or opening left `on` during the night window (`alert_night_start`–`alert_night_end`, default 23:00–06:00).
 - **Low battery** (`alert_battery_below`, default 15%; 0 = off) — any `battery` entity below the threshold.
 - **Temperature out of band** (`alert_temp_enabled`, off by default) — a `temperature` sensor below `alert_temp_low` (5) or above `alert_temp_high` (45). Off by default because sensible bands vary. By default it checks **every** `temperature` sensor — including device temperatures (a NAS or switch CPU running at 45–75°), which would false-trigger. Set `alert_temp_entities` to a list of just your **room** temperature sensors to scope the check to those (see below).
-- **High CO2** (`alert_co2_above`, default 1400 ppm; 0 = off) — any `carbon_dioxide` sensor reading above the threshold, so you know when a room needs airing out. Non-critical (held back during quiet hours).
+- **High CO2** (`alert_co2_above`, default 1400 ppm; 0 = off) — any `carbon_dioxide` sensor reading above the threshold, so you know when a room needs airing out. Once active it clears at the threshold minus `alert_co2_margin` (default 100 ppm). Non-critical (held back during quiet hours).
 - **Humidity out of band** (`alert_humidity_enabled`, off by default) — a `humidity` sensor below `alert_humidity_low` (25%) or above `alert_humidity_high` (70%), so you catch a damp bathroom/cellar or over-dry room. Non-critical (held back during quiet hours).
 - **Offline / network** (`alert_offline`, on) — any entity you list in `alert_offline_entities` that reports `unavailable`/`unknown`, or (for a `device_tracker`) `not_home`. **Critical**: always sent, even during quiet hours. Watches nothing until you list an entity — see below for adding your internet gateway or another critical device.
+
+**Clear margins.** An alert is raised as soon as a value passes its threshold. Once active, a CO2, battery, temperature or humidity alert clears only when the value is back past that threshold by the rule's margin, so a reading that hovers at the threshold is one alert, not many. With the default `alert_co2_margin` of 100 and a threshold of 1400 ppm, an active CO2 alert clears at 1300 ppm, and until then it can show a reading between 1301 and 1400. `alert_battery_margin`, `alert_temp_margin` and `alert_humidity_margin` default to 0 (no margin). For temperature and humidity only the side that raised the alert holds it. A margin under which an alert could never clear (CO2: not below the threshold; battery: threshold plus margin above 100; temperature and humidity: half of the band or more) counts as 0, and the add-on log says so at start-up. An unavailable sensor clears its alert.
 
 **Dedupe:** you are notified only when an entity *newly* enters an anomaly. A
 still-open door won't re-notify every cycle — the active anomalies are remembered
@@ -150,10 +152,10 @@ true`, then enable, disable, or tune each check:
 |-------|-----------|----------|------|
 | Water leak | `alert_water_leak` | `false` | — (critical, always sent) |
 | Open at night | `alert_open_at_night`, `alert_night_start`, `alert_night_end` | `alert_open_at_night: false` | change the night window |
-| Low battery | `alert_battery_below` | `0` | raise/lower the % threshold |
-| Temperature | `alert_temp_enabled`, `alert_temp_low`, `alert_temp_high`, `alert_temp_entities` | `alert_temp_enabled: false` | set your low/high band; scope to specific sensors with `alert_temp_entities` |
-| High CO2 | `alert_co2_above` | `0` | set the ppm threshold (default 1400) |
-| Humidity | `alert_humidity_enabled`, `alert_humidity_low`, `alert_humidity_high` | `alert_humidity_enabled: false` | set your low/high %RH band |
+| Low battery | `alert_battery_below`, `alert_battery_margin` | `alert_battery_below: 0` | raise/lower the % threshold |
+| Temperature | `alert_temp_enabled`, `alert_temp_low`, `alert_temp_high`, `alert_temp_margin`, `alert_temp_entities` | `alert_temp_enabled: false` | set your low/high band; scope to specific sensors with `alert_temp_entities` |
+| High CO2 | `alert_co2_above`, `alert_co2_margin` | `alert_co2_above: 0` | set the ppm threshold (default 1400) and the clear margin (default 100) |
+| Humidity | `alert_humidity_enabled`, `alert_humidity_low`, `alert_humidity_high`, `alert_humidity_margin` | `alert_humidity_enabled: false` | set your low/high %RH band |
 | Offline / network | `alert_offline`, `alert_offline_entities` | `alert_offline: false` | edit the watched-entity list |
 
 **Adding a device to the offline watch.** `alert_offline_entities` is empty by

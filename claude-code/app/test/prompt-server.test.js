@@ -52,6 +52,12 @@ fs.writeFileSync(process.env.CLAUDE_PROMPT_OPTIONS, JSON.stringify({
   proactive_alerts: true,
 }));
 
+// The relay reads Home Assistant's exposed-entities list over the Supervisor's
+// proxy, which a test host has not: every entity of the fake home
+// (fixtures/fake-core.js) is exposed. Set first, because the relay takes the
+// reader when it is required.
+const { HOME } = require('./fixtures/fake-core');
+require('../server/prompt/exposure').readExposedIds = async () => new Set(HOME.map((e) => e.id));
 const security = require('../server/prompt/security');
 const {
   createPromptApp, createRateLimiter, createBudget, fetchSnapshot, resizeSnapshot, createChatHealth, fileStore,
