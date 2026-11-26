@@ -26,6 +26,12 @@ configuration:
       dashboard screenshots (ha-shot), use hass-cli and the hass-mcp tools, and
       reach Home Assistant over WebSocket/REST as you. Stored encrypted and
       persists across add-on updates. Leave empty to skip these features.
+  core_certificate_sha256:
+    name: Home Assistant certificate SHA-256
+    description: >-
+      Optional. Only if Home Assistant serves HTTPS with a certificate the
+      add-on cannot verify and that is not in /ssl: its SHA-256 fingerprint.
+      Leave empty otherwise.
   bypass_permissions:
     name: Skip Permission Prompts
     description: >-
