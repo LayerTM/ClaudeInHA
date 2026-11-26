@@ -13,6 +13,7 @@
 
 ### Changed
 - A CO2 alert that is already active now clears 100 ppm below the threshold (`alert_co2_margin`), so a reading that hovers at the threshold raises one alert. The battery, temperature and humidity margins default to 0.
+- Base image debian-base 9.5.2 → 9.6.0 (Debian 13.8, bashio 0.20.0) ([release notes](https://github.com/hassio-addons/addon-debian-base/releases/tag/v9.6.0))
 - Debian packages come from the 2026-11-26 snapshot.
 - Updated packages in the add-on's app: encodeurl 2.0.3, media-typer 1.1.1, negotiator 1.1.0, object-inspect 1.14.0, on-finished 2.4.2, qs 6.17.1, router 2.3.0.
 
