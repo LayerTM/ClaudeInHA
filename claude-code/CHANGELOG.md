@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.63.6] — 2026-11-26
+
+### Fixed
+- On Home Assistant 2026.12 a proposal names a device only when Home Assistant exposes it to its assistant. Since that release a partial name is answered with every exposed device whose name, alias or id contains the text, so a device that is not exposed, and whose id is part of an exposed device's id, could be proposed. Exposure is now read from Home Assistant's own list of exposed entities, through the Supervisor with the add-on's own token, whichever user's token the add-on was given; when that list cannot be read, nothing is proposed.
+- On Home Assistant 2026.12 a device name that only appears inside other names is reported as not found, as on earlier releases.
+
+### Changed
+- Updated packages in the add-on's app: encodeurl 2.0.3, media-typer 1.1.1, negotiator 1.1.0, object-inspect 1.14.0, on-finished 2.4.2, qs 6.17.1, router 2.3.0.
+
+Built on ha-agent-core 0.15.2 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.15.2)).
+
 ## [1.63.5] — 2026-11-26
 
 ### Changed
