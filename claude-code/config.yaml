@@ -1,5 +1,5 @@
 name: "Claude Code"
-version: "1.63.6"
+version: "1.64.0"
 slug: claude-code
 image: "ghcr.io/layertm/claude-code"
 description: "Claude Code AI assistant embedded in Home Assistant — web console with tabs, clipboard, file attachments, browser testing, and a bundled HA skill pack"
@@ -48,6 +48,7 @@ options:
   api_key: ""
   oauth_token: ""
   ha_token: ""
+  core_certificate_sha256: ""
   bypass_permissions: false
   protect_secrets: true
   auto_update: true
@@ -104,6 +105,7 @@ schema:
   api_key: "password"
   oauth_token: "password"
   ha_token: "password"
+  core_certificate_sha256: "str?"
   bypass_permissions: bool
   protect_secrets: bool
   auto_update: bool

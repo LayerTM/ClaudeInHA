@@ -26,6 +26,12 @@ configuration:
       hass-mcp і звертатися до Home Assistant по WebSocket/REST від вашого імені.
       Зберігається зашифрованим і переживає оновлення аддона. Залиште порожнім,
       щоб пропустити ці можливості.
+  core_certificate_sha256:
+    name: SHA-256 сертифіката Home Assistant
+    description: >-
+      Необов'язково. Лише якщо Home Assistant працює через HTTPS із
+      сертифікатом, який аддон не може перевірити і якого немає в /ssl: його
+      відбиток SHA-256. В інших випадках залиште порожнім.
   bypass_permissions:
     name: Пропускати запити дозволів
     description: >-

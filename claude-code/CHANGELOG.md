@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.64.0] — 2026-11-27
+
+### Added
+- When Home Assistant serves HTTPS, the app's chat service checks the certificate on every connection to it. It is accepted when its chain leads to an authority Node trusts, or when it is a certificate kept under `/ssl` or named by the new `core_certificate_sha256` option (its SHA-256 fingerprint). Otherwise the log and a Home Assistant notification give the fingerprint. In this version the connection is still made; a later version may refuse it. The certificate's name is not checked. Home Assistant without HTTPS is not affected.
+
+### Changed
+- A device named by an alias can now be proposed: only when no entity matches by name or id, Home Assistant, asked for it by id, returns the very device it matched for the alias, and no other exposed device looks the same. Otherwise the matches are listed for you to choose.
+
+Built on ha-agent-core 0.16.0 ([release notes](https://github.com/LayerTM/ha-agent-core/releases/tag/v0.16.0)).
+
 ## [1.63.6] — 2026-11-26
 
 ### Added

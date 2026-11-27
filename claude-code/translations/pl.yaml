@@ -26,6 +26,12 @@ configuration:
       narzędzi hass-mcp oraz łączyć się z Home Assistant przez WebSocket/REST
       jako Ty. Przechowywany zaszyfrowany i zachowywany między aktualizacjami
       dodatku. Zostaw puste, aby pominąć te funkcje.
+  core_certificate_sha256:
+    name: SHA-256 certyfikatu Home Assistant
+    description: >-
+      Opcjonalne. Tylko gdy Home Assistant działa przez HTTPS z certyfikatem,
+      którego dodatek nie może zweryfikować i którego nie ma w /ssl: jego
+      odcisk SHA-256. W przeciwnym razie zostaw puste.
   bypass_permissions:
     name: Pomijaj prośby o uprawnienia
     description: >-

@@ -66,6 +66,7 @@ reconciled on every start. Entries you remove from `plugins` or `marketplaces` a
 |---|---|
 | `api_key` / `oauth_token` | Authentication (see above). Stored encrypted by the Supervisor. |
 | `ha_token` | A Home Assistant Long-Lived Access Token (Profile → Security). Enables dashboard screenshots, `hass-cli`, `hass-mcp` — including its tools for reading **and editing** Lovelace dashboards — and WebSocket/REST access as you. Persists across updates. Optional. |
+| `core_certificate_sha256` | Optional. SHA-256 fingerprint of Home Assistant's HTTPS certificate, only for a certificate the app cannot verify and that is not in `/ssl` (see [Troubleshooting](#troubleshooting)). Empty by default |
 | `bypass_permissions` | Start Claude with `--dangerously-skip-permissions` (fully autonomous). |
 | `protect_secrets` | On by default. Claude can neither read nor change the files where Home Assistant keeps credentials. See [Security and privacy](#security-and-privacy) for the list and its limits. Takes effect at the next app start. |
 | `auto_update` | Update the CLI at every app start. Manual `update-claude` always works. |
@@ -557,10 +558,19 @@ Everything that matters lives in `/data` and survives restarts and updates: logi
 - **Blank screen** — check the app log; restart the app.
 - **401 / frozen after long idle** — the ingress session expires after 15 minutes without traffic; the console reloads automatically, or refresh the page.
 - **Copy does not reach the clipboard** — rare now (selecting text copies in the pointer gesture, which works over plain HTTP too). If a browser blocks the clipboard even inside a gesture, the text is still saved to the 📥 tray — one tap to copy — and serving HA over HTTPS avoids it entirely.
-- **TLS on Home Assistant itself** — if you set `ssl_certificate` in the `http:` integration, or moved
+- **TLS on Home Assistant itself** — if Home Assistant serves HTTPS, or you moved
   Core off port 8123, the app follows automatically: it asks the Supervisor where Core listens
   instead of assuming `http://homeassistant:8123`. Nothing to configure. Inside the app,
   `$HA_URL` always holds the right address — prefer it over a hardcoded one in scripts.
+- **"Home Assistant's certificate could not be verified"** — when Home Assistant serves HTTPS, the
+  app's chat service checks the certificate it is shown. If it cannot verify it, it logs the
+  certificate's SHA-256 fingerprint and raises this notification; in this version it still connects,
+  a later version may refuse. After checking that the fingerprint is your certificate's
+  (`openssl x509 -noout -fingerprint -sha256 -in fullchain.pem`), trust it in one of two ways: keep
+  the certificate file under `/ssl`, or paste the fingerprint into `core_certificate_sha256` (set it
+  again when the certificate is renewed). Then restart the app. If the fingerprints differ, do not
+  pin it: something else is answering as Home Assistant. From 2026.11, Home Assistant ignores the
+  `ssl_*` keys of `http:` in `configuration.yaml`; turn HTTPS on in the Home Assistant UI.
 - **`bypass_permissions` refuses to start** — the app sets `IS_SANDBOX=1` automatically; if a CLI update ever breaks this, run `claude install <previous-version> --force` in a shell tab and report an issue.
 
 ## Works with
