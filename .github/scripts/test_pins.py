@@ -11,12 +11,15 @@ Run: python3 .github/scripts/test_pins.py
 from __future__ import annotations
 
 import contextlib
+import email.message
+import http.client
 import io
 import json
 import pathlib
 import subprocess
 import sys
 import tempfile
+import urllib.error
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import pins  # noqa: E402
@@ -139,6 +142,61 @@ def check(label: str, got, want) -> None:
         print(f"  NOT ok - {label} (got {got!r}, want {want!r})")
         fails += 1
 
+
+print("fetching: only a transient failure is retried, after a wait")
+
+
+class Reply(io.BytesIO):
+    """What urlopen hands back: a readable context manager."""
+
+
+def fetch_with(*outcomes):
+    """Runs http_get against scripted urlopen outcomes -> (result, calls, waits)."""
+    script, calls, waits = list(outcomes), [], []
+
+    def urlopen(request, timeout):
+        calls.append(request.full_url)
+        outcome = script.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return Reply(outcome)
+
+    real = pins.urllib.request.urlopen
+    pins.urllib.request.urlopen = urlopen
+    try:
+        result = pins.http_get("https://registry.example/pkg", sleep=waits.append)
+    except pins.PinError as err:
+        result = err
+    finally:
+        pins.urllib.request.urlopen = real
+    return result, len(calls), waits
+
+
+def status(code: int, retry_after: str | None = None) -> urllib.error.HTTPError:
+    headers = email.message.Message()
+    if retry_after is not None:
+        headers["Retry-After"] = retry_after
+    return urllib.error.HTTPError("https://registry.example/pkg", code, "scripted", headers, None)
+
+
+check("429 then 200 -> the value, after the wait Retry-After asked for",
+      fetch_with(status(429, "7"), b"v"), (b"v", 2, [7]))
+check("a long Retry-After is capped", fetch_with(status(429, "3600"), b"v"), (b"v", 2, [60]))
+check("an unreadable Retry-After falls back to the backoff",
+      fetch_with(status(503, "soon"), b"v"), (b"v", 2, [2]))
+check("a dated Retry-After falls back to the backoff",
+      fetch_with(status(503, "Fri, 27 Nov 2026 10:00:00 GMT"), b"v"), (b"v", 2, [2]))
+check("5xx, a network error, a timeout and a cut answer are retried with a growing wait",
+      fetch_with(status(502), urllib.error.URLError("reset"), TimeoutError("timed out"), b"v"),
+      (b"v", 4, [2, 5, 15]))
+check("a cut-off body is retried", fetch_with(http.client.IncompleteRead(b""), b"v"), (b"v", 2, [2]))
+result, calls, waits = fetch_with(status(404), b"v")
+check("a 404 fails at once", (type(result), calls, waits), (pins.PinError, 1, []))
+check("the failure names the URL and the answer",
+      "https://registry.example/pkg" in str(result) and "404" in str(result), True)
+result, calls, waits = fetch_with(*[status(429)] * 4)
+check("a failure that does not pass is reported after the last wait",
+      (type(result), calls, waits, "429" in str(result)), (pins.PinError, 4, [2, 5, 15], True))
 
 print("check")
 code, out = run(repo(), answers(), "check")

@@ -85,6 +85,7 @@ from __future__ import annotations
 
 import calendar
 import hashlib
+import http.client
 import json
 import shutil
 import os
@@ -93,6 +94,7 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
 MARKER = re.compile(r"^\s*#\s*upstream:\s*(\S+)((?:\s+\S+)*)\s*$")
@@ -106,6 +108,10 @@ SNAPSHOT = re.compile(r"^\d{8}T\d{6}Z$")
 SNAPSHOT_LINK = re.compile(r'href="(\d{8}T\d{6}Z)/"')
 SNAPSHOT_ARCHIVES = ("debian", "debian-security")
 SNAPSHOT_MAX_AGE = 7 * 24 * 3600
+# seconds to wait before each further attempt at a fetch that failed for a passing reason
+RETRY_WAITS = (2, 5, 15)
+# the longest wait an upstream's Retry-After is granted
+RETRY_AFTER_CAP = 60
 # checksum kind -> the version kind it belongs to
 CHECKSUM_OWNER = {"claude-code-sha256": "claude-code", "nodejs-sha256": "nodejs",
                   "github-asset-sha256": "github-release"}
@@ -135,25 +141,44 @@ def snapshot_epoch(value: str) -> int:
     return calendar.timegm(time.strptime(value, "%Y%m%dT%H%M%SZ"))
 
 
-def http_get(url: str) -> bytes:
+def transient(err: Exception) -> bool:
+    """Whether the same request may succeed later: throttled, a server fault, or the network."""
+    if isinstance(err, urllib.error.HTTPError):
+        return err.code == 429 or 500 <= err.code < 600
+    return isinstance(err, (OSError, http.client.HTTPException))
+
+
+def retry_wait(err: Exception, backoff: int) -> int:
+    """The upstream's Retry-After in seconds, capped; the backoff when it names none."""
+    if isinstance(err, urllib.error.HTTPError):
+        asked = (err.headers.get("Retry-After") or "").strip()
+        if re.fullmatch(r"[0-9]+", asked):
+            return min(int(asked), RETRY_AFTER_CAP)
+    return backoff
+
+
+def http_get(url: str, sleep=time.sleep) -> bytes:
     headers = {"User-Agent": "addon-pins"}
     token = os.environ.get("GITHUB_TOKEN")
     if token and url.startswith("https://api.github.com/"):
         headers["Authorization"] = f"Bearer {token}"
     if url.startswith("https://ghcr.io/v2/"):
         repo = url.split("/manifests/")[0].removeprefix("https://ghcr.io/v2/")
-        anonymous = json.loads(http_get(f"https://ghcr.io/token?scope=repository:{repo}:pull"))["token"]
+        token_url = f"https://ghcr.io/token?scope=repository:{repo}:pull"
+        anonymous = json.loads(http_get(token_url, sleep))["token"]
         headers["Authorization"] = "Bearer " + anonymous
         headers["Accept"] = ("application/vnd.oci.image.index.v1+json, "
                              "application/vnd.docker.distribution.manifest.list.v2+json")
-    last = None
-    for _ in range(3):
+    waits = iter(RETRY_WAITS)
+    while True:
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=30) as resp:
                 return resp.read()
         except Exception as err:  # noqa: BLE001 — every failure is reported, none is swallowed
-            last = err
-    raise PinError(f"could not read {url}: {last}")
+            backoff = next(waits, None)
+            if backoff is None or not transient(err):
+                raise PinError(f"could not read {url}: {err}") from err
+            sleep(retry_wait(err, backoff))
 
 
 class Upstream:
